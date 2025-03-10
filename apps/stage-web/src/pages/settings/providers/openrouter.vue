@@ -3,31 +3,35 @@ import { Collapsable } from '@proj-airi/stage-ui/components'
 import { useProvidersStore } from '@proj-airi/stage-ui/stores'
 import { useToggle } from '@vueuse/core'
 import { storeToRefs } from 'pinia'
-import { onMounted, ref, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 
 const router = useRouter()
 const providersStore = useProvidersStore()
 const { providers } = storeToRefs(providersStore)
 
-const apiKey = ref(providers.value['openrouter-ai']?.apiKey || '')
-const baseUrl = ref(providers.value['openrouter-ai']?.baseUrl || '')
+// Get provider metadata
+const providerId = 'openrouter-ai'
+const providerMetadata = computed(() => providersStore.getProviderMetadata(providerId))
+
+const apiKey = ref(providers.value[providerId]?.apiKey || '')
+const baseUrl = ref(providers.value[providerId]?.baseUrl || '')
 
 const advancedVisible = ref(false)
 const toggleAdvancedVisible = useToggle(advancedVisible)
 
 onMounted(() => {
-  if (!providers.value['openrouter-ai']) {
-    providers.value['openrouter-ai'] = {
-      baseUrl: 'https://openrouter.ai/api/v1/',
-    }
-  }
+  providersStore.initializeProvider(providerId)
+
+  // Initialize refs with current values
+  apiKey.value = providers.value[providerId]?.apiKey || ''
+  baseUrl.value = providers.value[providerId]?.baseUrl || providerMetadata.value?.baseUrlDefault || ''
 })
 
 watch([apiKey, baseUrl], () => {
-  providers.value['openrouter-ai'] = {
+  providers.value[providerId] = {
     apiKey: apiKey.value,
-    baseUrl: baseUrl.value || 'https://openrouter.ai/api/v1/',
+    baseUrl: baseUrl.value || providerMetadata.value?.baseUrlDefault || '',
   }
 })
 </script>
@@ -42,7 +46,7 @@ watch([apiKey, baseUrl], () => {
         <span text="neutral-300 dark:neutral-500">Provider</span>
       </div>
       <div text-3xl font-semibold>
-        OpenRouter
+        {{ providerMetadata?.localizedName }}
       </div>
     </h1>
   </div>
@@ -60,7 +64,7 @@ watch([apiKey, baseUrl], () => {
             <span class="text-red-500">*</span>
           </div>
           <div class="text-xs text-zinc-500 dark:text-zinc-400" text-nowrap>
-            API Key for OpenRouter
+            API Key for {{ providerMetadata?.localizedName }}
           </div>
         </div>
         <input
@@ -103,13 +107,13 @@ watch([apiKey, baseUrl], () => {
             border="zinc-300 dark:zinc-800 solid 1 focus:zinc-400 dark:focus:zinc-600"
             transition="border duration-250 ease-in-out"
             w-full rounded px-2 py-1 text-nowrap text-sm outline-none
-            placeholder="https://openrouter.ai/api/v1/"
+            :placeholder="providerMetadata?.baseUrlDefault"
           >
         </label>
       </div>
     </Collapsable>
   </form>
   <div fixed bottom-0 right-0 text="neutral-100/80 dark:neutral-500/20">
-    <div text="40" i-lobe-icons:openrouter translate-x-10 translate-y-10 />
+    <div text="40" :class="providerMetadata?.icon" translate-x-10 translate-y-10 />
   </div>
 </template>
