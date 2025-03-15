@@ -26,8 +26,8 @@ const router = useRouter()
     <Live2DSettings w="50%" h="80vh" />
   </div>
 
-  <div fixed bottom-0 right-0 z--1 text="neutral-100/80 dark:neutral-500/20">
-    <div text="40" i-lucide:person-standing translate-x-10 translate-y-10 />
+  <div text="neutral-100/50 dark:neutral-500/20" pointer-events-none fixed bottom-0 right-0 translate-x-10 translate-y-10>
+    <div text="40" i-lucide:person-standing />
   </div>
 </template>
 
