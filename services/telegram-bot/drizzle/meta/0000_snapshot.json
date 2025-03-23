@@ -1,5 +1,5 @@
 {
-  "id": "a0e77bb2-1f38-4803-a80a-db59462c4a0c",
+  "id": "cb80f718-7bc0-4328-9843-9538a0b143d5",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -22,22 +22,22 @@
           "notNull": true,
           "default": "''"
         },
-        "fromId": {
-          "name": "fromId",
+        "from_id": {
+          "name": "from_id",
           "type": "text",
           "primaryKey": false,
           "notNull": true,
           "default": "''"
         },
-        "fromName": {
-          "name": "fromName",
+        "from_name": {
+          "name": "from_name",
           "type": "text",
           "primaryKey": false,
           "notNull": true,
           "default": "''"
         },
-        "inChatId": {
-          "name": "inChatId",
+        "in_chat_id": {
+          "name": "in_chat_id",
           "type": "text",
           "primaryKey": false,
           "notNull": true,
@@ -50,36 +50,81 @@
           "notNull": true,
           "default": "''"
         },
-        "isReply": {
-          "name": "isReply",
+        "is_reply": {
+          "name": "is_reply",
           "type": "boolean",
           "primaryKey": false,
           "notNull": true,
           "default": false
         },
-        "replyToName": {
-          "name": "replyToName",
+        "reply_to_name": {
+          "name": "reply_to_name",
           "type": "text",
           "primaryKey": false,
           "notNull": true,
           "default": "''"
         },
-        "createdAt": {
-          "name": "createdAt",
+        "created_at": {
+          "name": "created_at",
           "type": "bigint",
           "primaryKey": false,
           "notNull": true,
           "default": 0
         },
-        "updatedAt": {
-          "name": "updatedAt",
+        "updated_at": {
+          "name": "updated_at",
           "type": "bigint",
           "primaryKey": false,
           "notNull": true,
           "default": 0
+        },
+        "content_vector_1536": {
+          "name": "content_vector_1536",
+          "type": "vector(1536)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "content_vector_768": {
+          "name": "content_vector_768",
+          "type": "vector(768)",
+          "primaryKey": false,
+          "notNull": false
         }
       },
-      "indexes": {},
+      "indexes": {
+        "chat_messages_content_vector_1536_index": {
+          "name": "chat_messages_content_vector_1536_index",
+          "columns": [
+            {
+              "expression": "content_vector_1536",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last",
+              "opclass": "vector_cosine_ops"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "hnsw",
+          "with": {}
+        },
+        "chat_messages_content_vector_768_index": {
+          "name": "chat_messages_content_vector_768_index",
+          "columns": [
+            {
+              "expression": "content_vector_768",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last",
+              "opclass": "vector_cosine_ops"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "hnsw",
+          "with": {}
+        }
+      },
       "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
@@ -105,58 +150,36 @@
           "notNull": true,
           "default": "''"
         },
-        "chatId": {
-          "name": "chatId",
+        "chat_id": {
+          "name": "chat_id",
           "type": "text",
           "primaryKey": false,
           "notNull": true,
           "default": "''"
         },
-        "chatName": {
-          "name": "chatName",
+        "chat_name": {
+          "name": "chat_name",
           "type": "text",
           "primaryKey": false,
           "notNull": true,
           "default": "''"
         },
-        "createdAt": {
-          "name": "createdAt",
+        "created_at": {
+          "name": "created_at",
           "type": "bigint",
           "primaryKey": false,
           "notNull": true,
           "default": 0
         },
-        "updatedAt": {
-          "name": "updatedAt",
+        "updated_at": {
+          "name": "updated_at",
           "type": "bigint",
           "primaryKey": false,
           "notNull": true,
           "default": 0
         }
       },
-      "indexes": {
-        "platform_chat_id_unique_index": {
-          "name": "platform_chat_id_unique_index",
-          "columns": [
-            {
-              "expression": "platform",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "chatId",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
+      "indexes": {},
       "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
@@ -182,22 +205,22 @@
           "notNull": true,
           "default": "''"
         },
-        "fileId": {
-          "name": "fileId",
+        "file_id": {
+          "name": "file_id",
           "type": "text",
           "primaryKey": false,
           "notNull": true,
           "default": "''"
         },
-        "imageBase64": {
-          "name": "imageBase64",
+        "image_base64": {
+          "name": "image_base64",
           "type": "text",
           "primaryKey": false,
           "notNull": true,
           "default": "''"
         },
-        "imagePath": {
-          "name": "imagePath",
+        "image_path": {
+          "name": "image_path",
           "type": "text",
           "primaryKey": false,
           "notNull": true,
@@ -210,22 +233,67 @@
           "notNull": true,
           "default": "''"
         },
-        "createdAt": {
-          "name": "createdAt",
+        "created_at": {
+          "name": "created_at",
           "type": "bigint",
           "primaryKey": false,
           "notNull": true,
           "default": 0
         },
-        "updatedAt": {
-          "name": "updatedAt",
+        "updated_at": {
+          "name": "updated_at",
           "type": "bigint",
           "primaryKey": false,
           "notNull": true,
           "default": 0
+        },
+        "description_vector_1536": {
+          "name": "description_vector_1536",
+          "type": "vector(1536)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "description_vector_768": {
+          "name": "description_vector_768",
+          "type": "vector(768)",
+          "primaryKey": false,
+          "notNull": false
         }
       },
-      "indexes": {},
+      "indexes": {
+        "photos_description_vector_1536_index": {
+          "name": "photos_description_vector_1536_index",
+          "columns": [
+            {
+              "expression": "description_vector_1536",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last",
+              "opclass": "vector_cosine_ops"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "hnsw",
+          "with": {}
+        },
+        "photos_description_vector_768_index": {
+          "name": "photos_description_vector_768_index",
+          "columns": [
+            {
+              "expression": "description_vector_768",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last",
+              "opclass": "vector_cosine_ops"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "hnsw",
+          "with": {}
+        }
+      },
       "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
@@ -251,22 +319,22 @@
           "notNull": true,
           "default": "''"
         },
-        "fileId": {
-          "name": "fileId",
+        "file_id": {
+          "name": "file_id",
           "type": "text",
           "primaryKey": false,
           "notNull": true,
           "default": "''"
         },
-        "imageBase64": {
-          "name": "imageBase64",
+        "image_base64": {
+          "name": "image_base64",
           "type": "text",
           "primaryKey": false,
           "notNull": true,
           "default": "''"
         },
-        "imagePath": {
-          "name": "imagePath",
+        "image_path": {
+          "name": "image_path",
           "type": "text",
           "primaryKey": false,
           "notNull": true,
@@ -279,22 +347,67 @@
           "notNull": true,
           "default": "''"
         },
-        "createdAt": {
-          "name": "createdAt",
+        "created_at": {
+          "name": "created_at",
           "type": "bigint",
           "primaryKey": false,
           "notNull": true,
           "default": 0
         },
-        "updatedAt": {
-          "name": "updatedAt",
+        "updated_at": {
+          "name": "updated_at",
           "type": "bigint",
           "primaryKey": false,
           "notNull": true,
           "default": 0
+        },
+        "description_vector_1536": {
+          "name": "description_vector_1536",
+          "type": "vector(1536)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "description_vector_768": {
+          "name": "description_vector_768",
+          "type": "vector(768)",
+          "primaryKey": false,
+          "notNull": false
         }
       },
-      "indexes": {},
+      "indexes": {
+        "stickers_description_vector_1536_index": {
+          "name": "stickers_description_vector_1536_index",
+          "columns": [
+            {
+              "expression": "description_vector_1536",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last",
+              "opclass": "vector_cosine_ops"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "hnsw",
+          "with": {}
+        },
+        "stickers_description_vector_768_index": {
+          "name": "stickers_description_vector_768_index",
+          "columns": [
+            {
+              "expression": "description_vector_768",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last",
+              "opclass": "vector_cosine_ops"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "hnsw",
+          "with": {}
+        }
+      },
       "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
