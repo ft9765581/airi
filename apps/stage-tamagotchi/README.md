@@ -36,3 +36,14 @@ $ pnpm build:mac
 # For Linux
 $ pnpm build:linux
 ```
+
+## TODO List
+
+- [ ] Window control: Move, resize, hide, show
+- [ ] Motions follow the cursor
+- [x] System tray
+- [x] i18n
+- [ ] Multi-DPI
+- [ ] Multi monitor
+- [ ] Send message via macOS Spotlight
+- [ ] Steam
