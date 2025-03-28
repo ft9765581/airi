@@ -58,7 +58,7 @@ function updateTrackColor() {
     :min="scaledMin"
     :max="scaledMax"
     :step="scaledStep"
-    class="data-gui-range slider-progress"
+    class="form_input-range slider-progress"
     @input="(e) => {
       (e.target as HTMLInputElement).style.setProperty('--value', (e.target as HTMLInputElement).value)
     }"
@@ -68,7 +68,7 @@ function updateTrackColor() {
 <style scoped>
 /*generated with Input range slider CSS style generator (version 20211225)
 https://toughengineer.github.io/demo/slider-styler*/
-.data-gui-range {
+.form_input-range {
   --height: 2em;
 
   min-height: var(--height);
@@ -100,7 +100,7 @@ https://toughengineer.github.io/demo/slider-styler*/
   --track-value-padding: 2px;
 }
 
-.dark .data-gui-range {
+.dark .form_input-range {
   --thumb-background: oklch(70% var(--theme-colors-chroma-200) calc(var(--theme-colors-hue) + 0));
   --thumb-background-hover: oklch(90% var(--theme-colors-chroma-200) calc(var(--theme-colors-hue) + 0));
   --thumb-background-active: oklch(80% var(--theme-colors-chroma-200) calc(var(--theme-colors-hue) + 0));
@@ -116,18 +116,18 @@ https://toughengineer.github.io/demo/slider-styler*/
 }
 
 /*progress support*/
-.data-gui-range.slider-progress {
+.form_input-range.slider-progress {
   --range: calc(var(--max) - var(--min));
   --ratio: calc((var(--value) - var(--min)) / var(--range));
   --sx: calc(0.5 * 0em + var(--ratio) * (100% - 0em));
 }
 
-.data-gui-range:focus {
+.form_input-range:focus {
   outline: none;
 }
 
 /*webkit*/
-.data-gui-range::-webkit-slider-thumb {
+.form_input-range::-webkit-slider-thumb {
   appearance: none;
   width: var(--thumb-width);
   height: var(--thumb-height);
@@ -145,7 +145,7 @@ https://toughengineer.github.io/demo/slider-styler*/
     transform 0.2s ease-in-out;
 }
 
-.data-gui-range::-webkit-slider-runnable-track {
+.form_input-range::-webkit-slider-runnable-track {
   height: var(--track-height);
   border: var(--track-border);
   border-radius: var(--track-border-radius);
@@ -158,23 +158,23 @@ https://toughengineer.github.io/demo/slider-styler*/
     border-color 0.2s ease-in-out;
 }
 
-.data-gui-range::-webkit-slider-thumb:hover {
+.form_input-range::-webkit-slider-thumb:hover {
   background: var(--thumb-background-hover);
 }
 
-.data-gui-range:hover::-webkit-slider-runnable-track {
+.form_input-range:hover::-webkit-slider-runnable-track {
   background: var(--track-background-hover);
 }
 
-.data-gui-range::-webkit-slider-thumb:active {
+.form_input-range::-webkit-slider-thumb:active {
   background: var(--thumb-background-active);
 }
 
-.data-gui-range:active::-webkit-slider-runnable-track {
+.form_input-range:active::-webkit-slider-runnable-track {
   background: var(--track-background-active);
 }
 
-.data-gui-range.slider-progress::-webkit-slider-runnable-track {
+.form_input-range.slider-progress::-webkit-slider-runnable-track {
   /* margin-left: var(--track-value-padding); */
   margin-right: calc(0 - var(--track-value-padding));
   background:
@@ -182,14 +182,14 @@ https://toughengineer.github.io/demo/slider-styler*/
     var(--track-background);
 }
 
-.data-gui-range.slider-progress:hover::-webkit-slider-runnable-track {
+.form_input-range.slider-progress:hover::-webkit-slider-runnable-track {
   background:
     linear-gradient(var(--track-value-background-hover), var(--track-value-background-hover)) 0 / var(--sx) 100%
       no-repeat,
     var(--track-background-hover);
 }
 
-.data-gui-range.slider-progress:active::-webkit-slider-runnable-track {
+.form_input-range.slider-progress:active::-webkit-slider-runnable-track {
   background:
     linear-gradient(var(--track-value-background-active), var(--track-value-background-active)) 0 / var(--sx) 100%
       no-repeat,
@@ -197,7 +197,7 @@ https://toughengineer.github.io/demo/slider-styler*/
 }
 
 /*mozilla*/
-.data-gui-range::-moz-range-thumb {
+.form_input-range::-moz-range-thumb {
   width: var(--thumb-width);
   height: var(--thumb-height);
   border-radius: var(--thumb-border-radius);
@@ -208,7 +208,7 @@ https://toughengineer.github.io/demo/slider-styler*/
   margin-left: calc(0 - var(--track-value-padding));
 }
 
-.data-gui-range::-moz-range-track {
+.form_input-range::-moz-range-track {
   height: var(--track-height);
   border: var(--track-border);
   border-radius: var(--track-border-radius);
@@ -219,36 +219,36 @@ https://toughengineer.github.io/demo/slider-styler*/
   width: calc(100% - var(--track-value-padding) * 2);
 }
 
-.data-gui-range::-moz-range-thumb:hover {
+.form_input-range::-moz-range-thumb:hover {
   background: var(--thumb-background-hover);
 }
 
-.data-gui-range:hover::-moz-range-track {
+.form_input-range:hover::-moz-range-track {
   background: var(--track-background-hover);
 }
 
-.data-gui-range::-moz-range-thumb:active {
+.form_input-range::-moz-range-thumb:active {
   background: var(--thumb-background-active);
 }
 
-.data-gui-range:active::-moz-range-track {
+.form_input-range:active::-moz-range-track {
   background: var(--track-background-active);
 }
 
-.data-gui-range.slider-progress::-moz-range-track {
+.form_input-range.slider-progress::-moz-range-track {
   background:
     linear-gradient(var(--track-value-background), var(--track-value-background)) 0 / var(--sx) 100% no-repeat,
     var(--track-background);
 }
 
-.data-gui-range.slider-progress:hover::-moz-range-track {
+.form_input-range.slider-progress:hover::-moz-range-track {
   background:
     linear-gradient(var(--track-value-background-hover), var(--track-value-background-hover)) 0 / var(--sx) 100%
       no-repeat,
     var(--track-background-hover);
 }
 
-.data-gui-range.slider-progress:active::-moz-range-track {
+.form_input-range.slider-progress:active::-moz-range-track {
   background:
     linear-gradient(var(--track-value-background-active), var(--track-value-background-active)) 0 / var(--sx) 100%
       no-repeat,
@@ -256,17 +256,17 @@ https://toughengineer.github.io/demo/slider-styler*/
 }
 
 /*ms*/
-.data-gui-range::-ms-fill-upper {
+.form_input-range::-ms-fill-upper {
   background: transparent;
   border-color: transparent;
 }
 
-.data-gui-range::-ms-fill-lower {
+.form_input-range::-ms-fill-lower {
   background: transparent;
   border-color: transparent;
 }
 
-.data-gui-range::-ms-thumb {
+.form_input-range::-ms-thumb {
   width: var(--thumb-width);
   height: var(--thumb-height);
   border-radius: var(--thumb-border-radius);
@@ -281,7 +281,7 @@ https://toughengineer.github.io/demo/slider-styler*/
   cursor: col-resize;
 }
 
-.data-gui-range::-ms-track {
+.form_input-range::-ms-track {
   height: var(--track-height);
   border-radius: var(--track-border-radius);
   background: var(--track-background);
@@ -291,23 +291,23 @@ https://toughengineer.github.io/demo/slider-styler*/
   cursor: col-resize;
 }
 
-.data-gui-range::-ms-thumb:hover {
+.form_input-range::-ms-thumb:hover {
   background: var(--thumb-background-hover);
 }
 
-.data-gui-range:hover::-ms-track {
+.form_input-range:hover::-ms-track {
   background: var(--track-background-hover);
 }
 
-.data-gui-range::-ms-thumb:active {
+.form_input-range::-ms-thumb:active {
   background: var(--thumb-background-active);
 }
 
-.data-gui-range:active::-ms-track {
+.form_input-range:active::-ms-track {
   background: var(--track-background-active);
 }
 
-.data-gui-range.slider-progress::-ms-fill-lower {
+.form_input-range.slider-progress::-ms-fill-lower {
   height: var(--track-height);
   border-radius: var(--track-border-radius) 0 0 var(--track-border-radius);
   margin: 0;
@@ -320,11 +320,11 @@ https://toughengineer.github.io/demo/slider-styler*/
   margin-right: calc(0 - var(--track-value-padding));
 }
 
-.data-gui-range.slider-progress:hover::-ms-fill-lower {
+.form_input-range.slider-progress:hover::-ms-fill-lower {
   background: var(--track-value-background-hover);
 }
 
-.data-gui-range.slider-progress:active::-ms-fill-lower {
+.form_input-range.slider-progress:active::-ms-fill-lower {
   background: var(--track-value-background-active);
 }
 </style>
