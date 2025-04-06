@@ -48,19 +48,40 @@ watch(() => [settings.usePageSpecificTransitions, settings.disableTransitions], 
     </h1>
   </div>
 
-  <Section :title="t('settings.sections.section.general.title')" icon="i-solar:filters-bold-duotone">
+  <Section
+    v-motion
+    :title="t('settings.sections.section.general.title')"
+    icon="i-solar:filters-bold-duotone"
+    :initial="{ opacity: 0, y: 10 }"
+    :enter="{ opacity: 1, y: 0 }"
+    :duration="250 + (1 * 10)"
+    :delay="1 * 50"
+    transition="all ease-in-out duration-250"
+  >
     <!-- Theme Setting -->
     <CheckBar
       v-model="dark"
+      v-motion
+      :initial="{ opacity: 0, y: 10 }"
+      :enter="{ opacity: 1, y: 0 }"
+      :duration="250 + (2 * 10)"
+      :delay="2 * 50"
       icon-on="i-solar:moon-stars-bold-duotone"
       icon-off="i-solar:sun-fog-bold-duotone"
       text="settings.theme"
+      transition="all ease-in-out duration-250"
     />
     <!-- Language Setting -->
     <div
+      v-motion
       class="w-full flex items-center justify-between rounded-lg px-4 py-3 text-sm outline-none transition-all duration-250 ease-in-out"
       bg="neutral-50 dark:neutral-800"
       hover="bg-neutral-200 dark:bg-neutral-700"
+      :initial="{ opacity: 0, y: 10 }"
+      :enter="{ opacity: 1, y: 0 }"
+      :duration="250 + (3 * 10)"
+      :delay="3 * 50"
+      transition="all ease-in-out duration-250"
     >
       {{ $t('settings.language.title') }}
       <select
@@ -78,8 +99,25 @@ watch(() => [settings.usePageSpecificTransitions, settings.disableTransitions], 
     </div>
   </Section>
 
-  <Section :title="t('settings.pages.themes.sections.section.custom-color.title')" icon="i-solar:pallete-2-bold-duotone">
-    <div flex items-center justify-between>
+  <Section
+    v-motion
+    :title="t('settings.pages.themes.sections.section.custom-color.title')"
+    icon="i-solar:pallete-2-bold-duotone"
+    :initial="{ opacity: 0, y: 10 }"
+    :enter="{ opacity: 1, y: 0 }"
+    :duration="250 + (4 * 10)"
+    :delay="4 * 50"
+    transition="all ease-in-out duration-250"
+  >
+    <div
+      v-motion flex items-center
+      justify-between
+      :initial="{ opacity: 0, y: 10 }"
+      :enter="{ opacity: 1, y: 0 }"
+      :duration="250 + (5 * 10)"
+      :delay="5 * 50"
+      transition="all ease-in-out duration-250"
+    >
       <span text-lg font-semibold>{{ $t('settings.pages.themes.sections.section.custom-color.fields.field.primary-color.label') }}</span>
       <label relative flex cursor-pointer items-center gap-2>
         <input
@@ -95,18 +133,40 @@ watch(() => [settings.usePageSpecificTransitions, settings.disableTransitions], 
     </div>
     <input
       v-model="settings.themeColorsHue"
+      v-motion
+      :initial="{ opacity: 0, y: 10 }"
+      :enter="{ opacity: 1, y: 0 }"
+      :duration="250 + (6 * 10)"
+      :delay="6 * 50"
+      transition="all ease-in-out duration-250"
       type="range" min="0" max="360" step="0.01" class="theme-hue-slider"
       :disabled="settings.themeColorsHueDynamic"
       :class="settings.themeColorsHueDynamic ? 'opacity-25 cursor-not-allowed' : 'cursor-pointer'"
     >
-    <div class="color-bar">
+    <div
+      v-motion
+      class="color-bar"
+      :initial="{ opacity: 0, y: 10 }"
+      :enter="{ opacity: 1, y: 0 }"
+      :duration="250 + (7 * 10)"
+      :delay="7 * 50"
+      transition="all ease-in-out duration-250"
+    >
       <span bg-primary-50>50</span>
       <span bg-primary-100>100</span>
       <span bg-primary-200>200</span>
       <span bg-primary-300>300</span>
       <span bg-primary-400>400</span>
       <span bg-primary-500>500</span>
-      <div text-white>
+      <div
+        v-motion
+        text-white
+        :initial="{ opacity: 0, y: 10 }"
+        :enter="{ opacity: 1, y: 0 }"
+        :duration="250 + (8 * 10)"
+        :delay="8 * 50"
+        transition="all ease-in-out duration-250"
+      >
         <span bg-primary-600>600</span>
         <span bg-primary-700>700</span>
         <span bg-primary-800>800</span>
@@ -114,7 +174,15 @@ watch(() => [settings.usePageSpecificTransitions, settings.disableTransitions], 
         <span bg-primary-950>950</span>
       </div>
     </div>
-    <div class="color-bar transparency-grid">
+    <div
+      v-motion
+      class="color-bar transparency-grid"
+      :initial="{ opacity: 0, y: 10 }"
+      :enter="{ opacity: 1, y: 0 }"
+      :duration="250 + (9 * 10)"
+      :delay="9 * 50"
+      transition="all ease-in-out duration-250"
+    >
       <span bg="primary-500/5">500/5</span>
       <span bg="primary-500/10">500/10</span>
       <span bg="primary-500/20">500/20</span>
@@ -129,12 +197,26 @@ watch(() => [settings.usePageSpecificTransitions, settings.disableTransitions], 
     </div>
   </Section>
 
-  <Section title="settings.pages.themes.sections.section.theme-presets.title" icon="i-solar:magic-stick-2-bold-duotone">
+  <Section
+    v-motion title="settings.pages.themes.sections.section.theme-presets.title"
+    icon="i-solar:magic-stick-2-bold-duotone"
+    :initial="{ opacity: 0, y: 10 }"
+    :enter="{ opacity: 1, y: 0 }"
+    :duration="250 + (10 * 10)"
+    :delay="10 * 50"
+    transition="all ease-in-out duration-250"
+  >
     <div
       v-for="({ title, description, colors }, i) in $tm('settings.pages.themes.sections.section.theme-presets.presets')" :key="i"
+      v-motion
       class="w-full flex items-center justify-between rounded-lg px-4 py-3 outline-none transition-all duration-250 ease-in-out"
       bg="neutral-100 dark:neutral-800"
       hover="bg-neutral-200 dark:bg-neutral-700"
+      :initial="{ opacity: 0, y: 10 }"
+      :enter="{ opacity: 1, y: 0 }"
+      :duration="250 + (11 * 10) + (i * 10)"
+      :delay="11 * 50 + (i * 50)"
+      transition="all ease-in-out duration-250"
     >
       <div>
         <span font-medium>{{ $rt(title) }}</span>
@@ -146,20 +228,40 @@ watch(() => [settings.usePageSpecificTransitions, settings.disableTransitions], 
     </div>
   </Section>
 
-  <Section title="settings.pages.themes.sections.section.developer.title" icon="i-solar:code-bold-duotone">
+  <Section
+    v-motion title="settings.pages.themes.sections.section.developer.title"
+    icon="i-solar:code-bold-duotone"
+    :initial="{ opacity: 0, y: 10 }"
+    :enter="{ opacity: 1, y: 0 }"
+    :duration="250 + (18 * 10)"
+    :delay="18 * 50"
+    transition="all ease-in-out duration-250"
+  >
     <CheckBar
       v-model="settings.disableTransitions"
+      v-motion
       icon-on="i-solar:people-nearby-bold-duotone"
       icon-off="i-solar:running-2-line-duotone"
       text="settings.animations.stage-transitions.title"
+      :initial="{ opacity: 0, y: 10 }"
+      :enter="{ opacity: 1, y: 0 }"
+      :duration="250 + (19 * 10)"
+      :delay="19 * 50"
+      transition="all ease-in-out duration-250"
     />
     <CheckBar
       v-model="settings.usePageSpecificTransitions"
+      v-motion
       :disabled="settings.disableTransitions"
       icon-on="i-solar:running-2-line-duotone"
       icon-off="i-solar:people-nearby-bold-duotone"
       text="settings.animations.use-page-specific-transitions.title"
       description="settings.animations.use-page-specific-transitions.description"
+      :initial="{ opacity: 0, y: 10 }"
+      :enter="{ opacity: 1, y: 0 }"
+      :duration="250 + (20 * 10)"
+      :delay="20 * 50"
+      transition="all ease-in-out duration-250"
     />
   </Section>
 
@@ -174,8 +276,15 @@ watch(() => [settings.usePageSpecificTransitions, settings.disableTransitions], 
     position="calc(100dvw - 9.5rem), calc(100dvh - 9.5rem)"
     text-color="text-neutral-200/50 dark:text-neutral-600/20"
   />
-  <div v-if="!settings.usePageSpecificTransitions" text="neutral-200/50 dark:neutral-500/20" pointer-events-none fixed bottom-0 right-0 z--1 translate-x-10 translate-y-10>
-    <div text="40" i-lucide:paintbrush />
+  <div
+    v-motion
+    text="neutral-200/50 dark:neutral-600/20" pointer-events-none
+    fixed top="[65dvh]" right--15 z--1
+    :initial="{ scale: 0.9, opacity: 0, rotate: 30 }"
+    :enter="{ scale: 1, opacity: 1, rotate: 0 }"
+    :duration="250"
+  >
+    <div text="60" i-lucide:paintbrush />
   </div>
 </template>
 

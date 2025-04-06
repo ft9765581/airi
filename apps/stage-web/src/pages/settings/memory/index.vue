@@ -35,5 +35,15 @@ const { t } = useI18n()
         {{ t('settings.pages.memory.title') }}
       </div>
     </h1>
+    <div
+      v-motion
+      text="neutral-200/50 dark:neutral-600/20" pointer-events-none
+      fixed top="[65dvh]" right--15 z--1
+      :initial="{ scale: 0.9, opacity: 0, y: 40 }"
+      :enter="{ scale: 1, opacity: 1, y: 0 }"
+      :duration="250"
+    >
+      <div text="60" i-lucide:sprout />
+    </div>
   </div>
 </template>
