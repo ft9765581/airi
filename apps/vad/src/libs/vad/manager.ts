@@ -117,6 +117,21 @@ export class VADAudioManager {
     }
   }
 
+  public async stopMicrophone(): Promise<void> {
+    if (this.mediaStream) {
+      this.mediaStream.getTracks().forEach(track => track.stop())
+      this.mediaStream = null
+    }
+
+    if (this.sourceNode) {
+      this.sourceNode.disconnect()
+      this.sourceNode = null
+    }
+
+    this.audioContext?.suspend()
+    this.audioWorkletNode?.disconnect()
+  }
+
   /**
    * Stop capturing audio
    */

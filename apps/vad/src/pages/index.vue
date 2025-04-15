@@ -84,6 +84,7 @@ async function setupSpeechDetection() {
 }
 
 async function destroySpeechDetection() {
+  await audioManager.value?.stop()
   await audioManager.value?.dispose()
   isInitialized.value = false
   isRunning.value = false
@@ -110,8 +111,8 @@ async function startVad() {
   }
 }
 
-function stopVad() {
-  audioManager.value?.stop()
+async function stopVad() {
+  await audioManager.value?.stopMicrophone()
   isRunning.value = false
   isSpeechDetected.value = false
 }
