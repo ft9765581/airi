@@ -1,0 +1,44 @@
+{
+  "name": "@proj-airi/ui-loading-screens",
+  "type": "module",
+  "private": true,
+  "description": "A collection of loading screens that used by Project AIRI",
+  "author": {
+    "name": "Neko Ayaka",
+    "email": "neko@ayaka.moe",
+    "url": "https://github.com/nekomeowww"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/moeru-ai/airi.git",
+    "directory": "packages/ui-loading-screens"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs"
+    }
+  },
+  "scripts": {
+    "dev": "pnpm run stub",
+    "stub": "unbuild --stub",
+    "build": "unbuild && pnpm run play:build",
+    "play:dev": "vite",
+    "play:build": "vite build",
+    "play:preview": "vite preview",
+    "typecheck": "vue-tsc --noEmit"
+  },
+  "dependencies": {
+    "@vueuse/core": "^13.1.0",
+    "vue": "^3.5.13"
+  },
+  "devDependencies": {
+    "@unocss/reset": "^66.1.0-beta.12",
+    "@vitejs/plugin-vue": "^5.2.3",
+    "unplugin-vue-router": "^0.12.0",
+    "vite-plugin-vue-devtools": "^7.7.5",
+    "vue-router": "^4.5.1",
+    "vue-tsc": "^3.0.0-alpha.4"
+  }
+}
