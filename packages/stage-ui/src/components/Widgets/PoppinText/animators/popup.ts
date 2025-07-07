@@ -1,23 +1,30 @@
-import type { Animator } from '.'
+import type { Animator, CreateAnimatorOptions } from '.'
 
 import { createTimeline } from 'animejs'
 
-export const popupAnimator: Animator = (elements: HTMLElement[]) => {
-  const timeline = createTimeline({ loop: true })
-    .set(elements, {
-      opacity: 0,
-      translateY: '1.1em',
-      translateZ: 0,
-    })
-    .add(elements, {
-      opacity: [0, 1],
-      translateY: ['1.1em', 0],
-      translateZ: 0,
-      duration: 750,
-      delay: (_, i) => 50 * i,
-    })
+export function createPopupAnimator(options: CreateAnimatorOptions): Animator {
+  return (elements: HTMLElement[]) => {
+    if (elements.length === 0) {
+      // NO DIV0
+      return () => {}
+    }
 
-  return () => {
-    timeline.remove(elements)
+    const timeline = createTimeline({ loop: true })
+      .set(elements, {
+        opacity: 0,
+        translateY: '1.1em',
+        translateZ: 0,
+      })
+      .add(elements, {
+        opacity: [0, 1],
+        translateY: ['1.1em', 0],
+        translateZ: 0,
+        ...options,
+        delay: (_, i) => options.duration / elements.length * i,
+      })
+
+    return () => {
+      timeline.remove(elements)
+    }
   }
 }
