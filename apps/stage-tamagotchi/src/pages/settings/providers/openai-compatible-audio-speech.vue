@@ -2,8 +2,6 @@
 import type { RemovableRef } from '@vueuse/core'
 import type { SpeechProvider } from '@xsai-ext/shared-providers'
 
-import OpenAICompatibleSpeechPlayground from '@proj-airi/stage-ui/components/Scenarios/Providers/OpenAICompatibleSpeechPlayground.vue'
-
 import {
   ProviderAdvancedSettings,
   ProviderApiKeyInput,
@@ -11,8 +9,10 @@ import {
   ProviderBasicSettings,
   ProviderSettingsContainer,
   ProviderSettingsLayout,
+  SpeechPlaygroundOpenAICompatible,
 } from '@proj-airi/stage-ui/components'
-import { useProvidersStore, useSpeechStore } from '@proj-airi/stage-ui/stores'
+import { useSpeechStore } from '@proj-airi/stage-ui/stores/modules/speech'
+import { useProvidersStore } from '@proj-airi/stage-ui/stores/providers'
 import { FieldRange } from '@proj-airi/ui'
 import { storeToRefs } from 'pinia'
 import { computed, onMounted, ref, watch } from 'vue'
@@ -159,7 +159,7 @@ function handleResetSettings() {
       </ProviderAdvancedSettings>
     </ProviderSettingsContainer>
 
-    <OpenAICompatibleSpeechPlayground
+    <SpeechPlaygroundOpenAICompatible
       v-model:model-value="model"
       v-model:voice="voice"
       :generate-speech="handleGenerateSpeech"
