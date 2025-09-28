@@ -86,7 +86,7 @@ vrmDialog.onChange(handleAddVRMModel)
           <DropdownMenuPortal>
             <DropdownMenuContent
               class="will-change-[opacity,transform] z-10000 max-w-45 rounded-lg p-0.5 shadow-md outline-none data-[side=bottom]:animate-slideUpAndFade data-[side=left]:animate-slideRightAndFade data-[side=right]:animate-slideLeftAndFade data-[side=top]:animate-slideDownAndFade"
-              bg="neutral-700/50 dark:neutral-950/50"
+              bg="neutral-100/50 dark:neutral-950/50"
               transition="colors duration-200 ease-in-out"
               backdrop-blur-sm
               align="end"
