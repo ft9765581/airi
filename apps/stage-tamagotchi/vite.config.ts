@@ -20,12 +20,41 @@ export default defineConfig({
       '@proj-airi/stage-ui/*',
       '@proj-airi/drizzle-duckdb-wasm',
       '@proj-airi/drizzle-duckdb-wasm/*',
+
+      // Live2D SDK
+      '@framework/live2dcubismframework',
+      '@framework/math/cubismmatrix44',
+      '@framework/type/csmvector',
+      '@framework/math/cubismviewmatrix',
+      '@framework/cubismdefaultparameterid',
+      '@framework/cubismmodelsettingjson',
+      '@framework/effect/cubismbreath',
+      '@framework/effect/cubismeyeblink',
+      '@framework/model/cubismusermodel',
+      '@framework/motion/acubismmotion',
+      '@framework/motion/cubismmotionqueuemanager',
+      '@framework/type/csmmap',
+      '@framework/utils/cubismdebug',
+      '@framework/model/cubismmoc',
     ],
   },
   resolve: {
     alias: {
-      '@proj-airi/stage-ui': resolve(join(import.meta.dirname, '..', '..', 'packages', 'stage-ui', 'src')),
+      '@proj-airi/server-sdk': resolve(join(import.meta.dirname, '..', '..', 'packages', 'server-sdk', 'src')),
       '@proj-airi/i18n': resolve(join(import.meta.dirname, '..', '..', 'packages', 'i18n', 'src')),
+      '@proj-airi/stage-ui': resolve(join(import.meta.dirname, '..', '..', 'packages', 'stage-ui', 'src')),
+      '@proj-airi/stage-pages': resolve(join(import.meta.dirname, '..', '..', 'packages', 'stage-pages', 'src')),
+    },
+  },
+  server: {
+    watch: {
+      ignored: ['**/src-tauri/**'],
+    },
+    warmup: {
+      clientFiles: [
+        `${resolve(join(import.meta.dirname, '..', '..', 'packages', 'stage-ui', 'src'))}/*.vue`,
+        `${resolve(join(import.meta.dirname, '..', '..', 'packages', 'stage-pages', 'src'))}/*.vue`,
+      ],
     },
   },
   plugins: [
@@ -44,7 +73,10 @@ export default defineConfig({
 
     VueRouter({
       dts: resolve(import.meta.dirname, 'src/typed-router.d.ts'),
-      routesFolder: 'src/pages',
+      routesFolder: [
+        resolve(import.meta.dirname, 'src', 'pages'),
+        resolve(import.meta.dirname, '..', '..', 'packages', 'stage-pages', 'src', 'pages'),
+      ],
     }),
 
     VitePluginVueDevTools(),
@@ -67,9 +99,4 @@ export default defineConfig({
     Download('https://dist.ayaka.moe/vrm-models/VRoid-Hub/AvatarSample-A/AvatarSample_A.vrm', 'AvatarSample_A.vrm', 'assets/vrm/models/AvatarSample-A'),
     Download('https://dist.ayaka.moe/vrm-models/VRoid-Hub/AvatarSample-B/AvatarSample_B.vrm', 'AvatarSample_B.vrm', 'assets/vrm/models/AvatarSample-B'),
   ],
-  server: {
-    watch: {
-      ignored: ['**/src-tauri/**'],
-    },
-  },
 })
