@@ -21,7 +21,9 @@
     "build:unpack": "pnpm run build && electron-builder --dir",
     "build:win": "pnpm run build && electron-builder --win",
     "build:mac": "pnpm run build && electron-builder --mac",
-    "build:linux": "pnpm run build && electron-builder --linux"
+    "build:linux": "pnpm run build && electron-builder --linux",
+    "rename-artifacts": "mkdir -p bundle && tsx scripts/rename-artifacts.ts",
+    "name-of-artifacts": "tsx scripts/name-of-artifacts.ts"
   },
   "dependencies": {
     "@date-fns/utc": "^2.1.1",
@@ -144,6 +146,7 @@
     "vite-bundle-visualizer": "^1.2.1",
     "vite-plugin-vue-devtools": "^8.0.2",
     "vite-plugin-vue-layouts": "^0.11.0",
-    "vue-tsc": "^3.1.0"
+    "vue-tsc": "^3.1.0",
+    "yaml": "^2.8.1"
   }
 }
