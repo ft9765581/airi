@@ -77,11 +77,11 @@ async function main() {
       renameTo = join(bundlePrefix, filename)
       break
     case 'x86_64-unknown-linux-gnu':
-      renameFrom = join(srcPrefix, 'appimage', `${beforeProductName}-${beforeVersion}-linux-amd64.AppImage`)
+      renameFrom = join(srcPrefix, `${beforeProductName}-${beforeVersion}-linux-amd64.AppImage`)
       renameTo = join(bundlePrefix, filename)
       break
     case 'aarch64-unknown-linux-gnu':
-      renameFrom = join(srcPrefix, 'appimage', `${beforeProductName}-${beforeVersion}-linux-arm64.AppImage`)
+      renameFrom = join(srcPrefix, `${beforeProductName}-${beforeVersion}-linux-arm64.AppImage`)
       renameTo = join(bundlePrefix, filename)
       break
     case 'aarch64-apple-darwin':
