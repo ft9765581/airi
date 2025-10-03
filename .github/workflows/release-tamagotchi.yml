@@ -40,26 +40,31 @@ jobs:
           - os: macos-13
             artifact: darwin-x64
             target: x86_64-apple-darwin
+            builder-args: --macos --x64
             ext: dmg
 
           - os: macos-latest
             artifact: darwin-arm64
             target: aarch64-apple-darwin
+            builder-args: --macos --arm64
             ext: dmg
 
           - os: ubuntu-latest
             artifact: linux-x64
             target: x86_64-unknown-linux-gnu
+            builder-args: --linux --x64
             ext: AppImage
 
           - os: ubuntu-24.04-arm
             artifact: linux-arm64
             target: aarch64-unknown-linux-gnu
+            builder-args: --linux --arm64
             ext: AppImage
 
           - os: windows-latest
             artifact: windows-x64-setup
             target: x86_64-pc-windows-msvc
+            builder-args: --windows --x64
             ext: exe
 
     runs-on: ${{ matrix.os }}
@@ -82,21 +87,23 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
 
-      - name: Build (Windows Only)
+      # ---------
+      # Build
+      # ---------
+
+      - run: pnpm run build:packages
+
+      - name: Build (Windows Only) # Windows
         if: matrix.os == 'windows-latest'
-        run: pnpm run -F @proj-airi/stage-tamagotchi build:win
+        run: pnpm run -F @proj-airi/stage-tamagotchi build ${{ matrix.builder-args }}
 
-      - name: Build (macOS Only)
+      - name: Build (macOS Only) # macOS
         if: matrix.os == 'macos-13' || matrix.os == 'macos-latest'
-        run: pnpm run -F @proj-airi/stage-tamagotchi build:mac
+        run: pnpm run -F @proj-airi/stage-tamagotchi build ${{ matrix.builder-args }}
 
-      - name: Build (Linux Only)
+      - name: Build (Linux Only) # Linux
         if: matrix.os == 'ubuntu-latest' || matrix.os == 'ubuntu-24.04-arm'
-        run: pnpm run -F @proj-airi/stage-tamagotchi build:linux
-
-      - id: version
-        run: |
-          echo VERSION=$(node -p "JSON.parse(require('node:fs').readFileSync(require('node:path').join('apps', 'stage-tamagotchi', 'package.json')).toString('utf-8')).version") >> $GITHUB_ENV
+        run: pnpm run -F @proj-airi/stage-tamagotchi build ${{ matrix.builder-args }}
 
       # ---------
       # Nightly (schedule) builds only
