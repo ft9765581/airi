@@ -27,7 +27,7 @@ async function main() {
     .option(
       '--out <path>',
       'Path to output the filename',
-      { default: '', type: [String] },
+      { default: 'bundle_name', type: [String] },
     )
 
   const args = cli.parse()

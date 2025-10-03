@@ -73,11 +73,11 @@ async function main() {
 
   switch (target) {
     case 'x86_64-pc-windows-msvc':
-      renameFrom = join(srcPrefix, `${beforeProductName}-${beforeVersion}-windows-x64-setup.exe`)
+      renameFrom = join(srcPrefix, `${beforeProductName}-${beforeVersion}-windows-x86_64-setup.exe`)
       renameTo = join(bundlePrefix, filename)
       break
     case 'x86_64-unknown-linux-gnu':
-      renameFrom = join(srcPrefix, `${beforeProductName}-${beforeVersion}-linux-amd64.AppImage`)
+      renameFrom = join(srcPrefix, `${beforeProductName}-${beforeVersion}-linux-x86_64.AppImage`)
       renameTo = join(bundlePrefix, filename)
       break
     case 'aarch64-unknown-linux-gnu':
@@ -89,7 +89,7 @@ async function main() {
       renameTo = join(bundlePrefix, filename)
       break
     case 'x86_64-apple-darwin':
-      renameFrom = join(srcPrefix, `${beforeProductName}-${beforeVersion}-darwin-x64.dmg`)
+      renameFrom = join(srcPrefix, `${beforeProductName}-${beforeVersion}-darwin-x86_64.dmg`)
       renameTo = join(bundlePrefix, filename)
       break
     default:

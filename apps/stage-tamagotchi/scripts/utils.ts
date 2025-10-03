@@ -87,7 +87,7 @@ export async function getFilename(target: string, options: { release: boolean, a
         // eslint-disable-next-line no-template-curly-in-string
         .replace('${arch}', 'x64')
         // eslint-disable-next-line no-template-curly-in-string
-        .replace('${ext}', 'AppImage') ?? `${electronBuilder.productName}-${version}-linux-amd64.AppImage`
+        .replace('${ext}', 'AppImage') ?? `${electronBuilder.productName}-${version}-linux-x64.AppImage`
       break
     case 'aarch64-unknown-linux-gnu':
       return electronBuilder.linux?.artifactName
