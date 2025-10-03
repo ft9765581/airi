@@ -3,7 +3,7 @@ import { storeToRefs } from 'pinia'
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 
-import WindowRouterLink from '../../Tauri/WindowRouterLink.vue'
+import WindowRouterLink from '../../WindowRouterLink.vue'
 import LoadingComponent from './LoadingComponent.vue'
 
 import { useResourcesStore } from '../../../stores/resources'
