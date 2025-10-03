@@ -1,50 +1,14 @@
 <script setup lang="ts">
 import { IconItem } from '@proj-airi/stage-ui/components'
 import { useSettings } from '@proj-airi/stage-ui/stores/settings'
-import { computed, nextTick, ref } from 'vue'
+import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 
-import IconAnimation from '../../components/IconAnimation.vue'
-
 const router = useRouter()
-const iconAnimationStarted = ref(false)
-const iconAnimation = ref<InstanceType<typeof IconAnimation>>()
 const resolveAnimation = ref<() => void>()
 const { t } = useI18n()
-
-const animationIcon = ref('')
-const animationPosition = ref('')
-const showAnimationComponent = ref(false)
 const settingsStore = useSettings()
-
-function handleAnimationEnded() {
-  resolveAnimation.value?.()
-}
-
-async function handleIconItemClick(event: MouseEvent, setting: typeof settings.value[0]) {
-  const target = event.currentTarget as HTMLElement
-  const iconElement = target.querySelector('.menu-icon-item-icon') as HTMLElement
-  if (!iconElement)
-    return
-
-  // get the position of the icon element
-  const rect = iconElement.getBoundingClientRect()
-  const position = `${rect.left}px, ${rect.top}px`
-
-  // set the icon and position
-  animationIcon.value = setting.icon
-  animationPosition.value = position
-
-  // show the animation component
-  showAnimationComponent.value = true
-
-  // wait for the DOM to update
-  await nextTick()
-
-  // start the animation
-  iconAnimationStarted.value = true
-}
 
 const removeBeforeEach = router.beforeEach(async (_, __, next) => {
   if (!settingsStore.usePageSpecificTransitions || settingsStore.disableTransitions) {
@@ -123,22 +87,9 @@ const settings = computed(() => [
         :description="setting.description"
         :icon="setting.icon"
         :to="setting.to"
-        @click="(e: MouseEvent) => handleIconItemClick(e, setting)"
       />
     </div>
-    <IconAnimation
-      v-if="showAnimationComponent && !settingsStore.disableTransitions && settingsStore.usePageSpecificTransitions"
-      ref="iconAnimation"
-      :icon="animationIcon"
-      :icon-size="6 * 1.2"
-      :position="animationPosition"
-      :duration="1000"
-      text-color="text-neutral-400/50 dark:text-neutral-600/20"
-      :started="iconAnimationStarted"
-      @animation-ended.once="handleAnimationEnded"
-    />
     <div
-      v-else
       v-motion
       text="neutral-200/50 dark:neutral-600/20" pointer-events-none
       fixed top="[calc(100dvh-12rem)]" bottom-0 right--10 z--1

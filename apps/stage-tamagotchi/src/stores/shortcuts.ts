@@ -71,7 +71,7 @@ export const useShortcutsStore = defineStore('shortcuts', () => {
 
   const shortcuts = ref([
     {
-      name: 'tamagotchi.settings.pages.themes.window-shortcuts.toggle-move.label',
+      name: 'tamagotchi.settings.pages.system.window-shortcuts.toggle-move.label',
       shortcut: useVersionedLocalStorage('shortcuts/window/move', 'Shift+Alt+N', { defaultVersion: '1.0.2', satisfiesVersionBy: v => v === '1.0.2', onVersionMismatch: () => ({ action: 'reset' }) }), // Shift + Alt + N
       group: 'window',
       type: 'move',
@@ -80,7 +80,7 @@ export const useShortcutsStore = defineStore('shortcuts', () => {
       },
     },
     {
-      name: 'tamagotchi.settings.pages.themes.window-shortcuts.toggle-resize.label',
+      name: 'tamagotchi.settings.pages.system.window-shortcuts.toggle-resize.label',
       shortcut: useVersionedLocalStorage('shortcuts/window/resize', 'Shift+Alt+A', { defaultVersion: '1.0.2', satisfiesVersionBy: v => v === '1.0.2', onVersionMismatch: () => ({ action: 'reset' }) }), // Shift + Alt + A
       group: 'window',
       type: 'resize',
@@ -89,7 +89,7 @@ export const useShortcutsStore = defineStore('shortcuts', () => {
       },
     },
     {
-      name: 'tamagotchi.settings.pages.themes.window-shortcuts.toggle-ignore-mouse-event.label',
+      name: 'tamagotchi.settings.pages.system.window-shortcuts.toggle-ignore-mouse-event.label',
       shortcut: useVersionedLocalStorage('shortcuts/window/debug', 'Shift+Alt+I', { defaultVersion: '1.0.2', satisfiesVersionBy: v => v === '1.0.2', onVersionMismatch: () => ({ action: 'reset' }) }), // Shift + Alt + I
       group: 'window',
       type: 'ignore-mouse-event',

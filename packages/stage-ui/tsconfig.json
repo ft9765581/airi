@@ -12,7 +12,8 @@
     "types": [
       "vitest",
       "vite/client",
-      "unplugin-info/client"
+      "unplugin-info/client",
+      "@types/audioworklet"
     ],
     "allowJs": true,
     "strict": true,

@@ -109,7 +109,7 @@ const { t } = useI18n()
 
   <Section
     v-motion
-    mb-2 :title="t('settings.pages.themes.sections.section.theme-presets.title')"
+    mb-2 :title="t('settings.pages.system.sections.section.theme-presets.title')"
     icon="i-solar:magic-stick-2-bold-duotone"
     :initial="{ opacity: 0, y: 10 }"
     :enter="{ opacity: 1, y: 0 }"
