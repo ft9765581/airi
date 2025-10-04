@@ -255,6 +255,7 @@ app.on('before-quit', async () => {
     catch (error) {
       console.error('Error closing WebSocket server:', error)
     }
+  }
 
   if (appTray) {
     appTray.destroy()
