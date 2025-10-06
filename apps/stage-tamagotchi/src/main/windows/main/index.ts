@@ -1,22 +1,42 @@
+import type { BrowserWindowConstructorOptions, Rectangle } from 'electron'
+
 import { dirname, join } from 'node:path'
 import { env } from 'node:process'
 import { fileURLToPath } from 'node:url'
 
 import { is } from '@electron-toolkit/utils'
+import { defu } from 'defu'
 import { BrowserWindow, shell } from 'electron'
 import { isMacOS } from 'std-env'
 
 import icon from '../../../../resources/icon.png?asset'
 
 import { transparentWindowConfig } from '../shared'
+import { createConfig } from '../shared/persistence'
 import { setupAppInvokeHandlers } from './eventa/index.electron'
 import { setupWebInvokes } from './eventa/index.web'
 
+interface AppConfig {
+  windows?: Array<Pick<BrowserWindowConstructorOptions, 'title' | 'x' | 'y' | 'width' | 'height'> & { tag: string }>
+}
+
 export function setup() {
+  const {
+    setup: setupConfig,
+    get: getConfig,
+    update: updateConfig,
+  } = createConfig<AppConfig>('app', 'config.json', { default: { windows: [] } })
+
+  setupConfig()
+
+  const mainWindowConfig = getConfig()?.windows?.find(w => w.title === 'AIRI' && w.tag === 'main')
+
   const window = new BrowserWindow({
     title: 'AIRI',
-    width: 450.0,
-    height: 600.0,
+    width: mainWindowConfig?.width ?? 450.0,
+    height: mainWindowConfig?.height ?? 600.0,
+    x: mainWindowConfig?.x,
+    y: mainWindowConfig?.y,
     show: false,
     icon,
     webPreferences: {
@@ -25,6 +45,41 @@ export function setup() {
     },
     ...transparentWindowConfig(),
   })
+
+  function handleNewBounds(newBounds: Rectangle) {
+    const config = getConfig()!
+    if (!config.windows || !Array.isArray(config.windows)) {
+      config.windows = []
+    }
+
+    const existingConfigIndex = config.windows.findIndex(w => w.title === 'AIRI' && w.tag === 'main')
+
+    if (existingConfigIndex === -1) {
+      config.windows.push({
+        title: 'AIRI',
+        tag: 'main',
+        x: newBounds.x,
+        y: newBounds.y,
+        width: newBounds.width,
+        height: newBounds.height,
+      })
+    }
+    else {
+      const mainWindowConfig = defu(config.windows[existingConfigIndex], { title: 'AIRI', tag: 'main' })
+
+      mainWindowConfig.x = newBounds.x
+      mainWindowConfig.y = newBounds.y
+      mainWindowConfig.width = newBounds.width
+      mainWindowConfig.height = newBounds.height
+
+      config.windows[existingConfigIndex] = mainWindowConfig
+    }
+
+    updateConfig(config)
+  }
+
+  window.on('resize', () => handleNewBounds(window.getBounds()))
+  window.on('move', () => handleNewBounds(window.getBounds()))
 
   window.setAlwaysOnTop(true)
   if (isMacOS) {
