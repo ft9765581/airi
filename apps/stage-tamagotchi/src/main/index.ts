@@ -6,7 +6,7 @@ import { platform } from 'node:process'
 
 import { electronApp, optimizer } from '@electron-toolkit/utils'
 import { Format, LogLevel, setGlobalFormat, setGlobalLogLevel, useLogg } from '@guiiai/logg'
-import { injecta } from '@proj-airi/injecta'
+import { createLoggLogger, injecta } from '@proj-airi/injecta'
 import { app, Menu, nativeImage, Tray } from 'electron'
 import { noop, once } from 'es-toolkit'
 import { isMacOS } from 'std-env'
@@ -89,6 +89,7 @@ async function setupProjectAIRIServerRuntime() {
 app.whenReady().then(async () => {
   await setupProjectAIRIServerRuntime()
 
+  injecta.setLogger(createLoggLogger())
   injecta.provide('mainWindow', async () => await setupMainWindow())
   injecta.provide<{ mainWindow: BrowserWindow }>('tray', { dependsOn: { mainWindow: 'mainWindow' }, build: async ({ dependsOn }) => setupTray({ mainWindow: dependsOn.mainWindow }) })
   injecta.invoke({ dependsOn: { mainWindow: 'mainWindow', tray: 'tray' }, callback: noop })
