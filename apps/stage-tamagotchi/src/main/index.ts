@@ -1,12 +1,11 @@
 import type http from 'node:http'
 
 import type { BrowserWindow } from 'electron'
-import type { Listener } from 'listhen'
 
 import { platform } from 'node:process'
 
 import { electronApp, optimizer } from '@electron-toolkit/utils'
-import { Format, LogLevel, setGlobalFormat, setGlobalLogLevel } from '@guiiai/logg'
+import { Format, LogLevel, setGlobalFormat, setGlobalLogLevel, useLogg } from '@guiiai/logg'
 import { app, Menu, nativeImage, Tray } from 'electron'
 import { isMacOS } from 'std-env'
 
@@ -14,7 +13,7 @@ import icon from '../../resources/icon.png?asset'
 import macOSTrayIcon from '../../resources/tray-icon-macos.png?asset'
 
 import { openDebugger, setupDebugger } from './app/debugger'
-import { emitAppBeforeQuit, emitAppReady, emitAppWindowAllClosed } from './libs/bootkit/lifecycle'
+import { emitAppBeforeQuit, emitAppReady, emitAppWindowAllClosed, onAppBeforeQuit } from './libs/bootkit/lifecycle'
 import { setup } from './windows/main'
 import { useWebInvokes } from './windows/main/eventa/index.web'
 import { toggleWindowShow } from './windows/shared/window'
@@ -23,14 +22,15 @@ setGlobalFormat(Format.Pretty)
 setGlobalLogLevel(LogLevel.Log)
 setupDebugger()
 
+const log = useLogg('main')
+
 app.dock?.setIcon(icon)
 electronApp.setAppUserModelId('ai.moeru.airi')
 
-let serverInstance: Listener | null = null
 let mainWindow: BrowserWindow | null = null
 let appTray: Tray | null = null
 
-function createTray(): void {
+function setupTray(): void {
   if (appTray) {
     return
   }
@@ -61,7 +61,7 @@ function createTray(): void {
   }
 }
 
-app.whenReady().then(async () => {
+async function setupProjectAIRIServerRuntime() {
   // Start the server-runtime server with WebSocket support
   try {
     // Dynamically import the server-runtime and listhen
@@ -70,24 +70,36 @@ app.whenReady().then(async () => {
       import('listhen'),
     ])
 
-    // The server-runtime exports the h3 app as a named export
-    const serverRuntimeApp = serverRuntimeModule.app
-
-    serverInstance = await listen(serverRuntimeApp as unknown as http.RequestListener, {
+    const serverInstance = await listen(serverRuntimeModule.app as unknown as http.RequestListener, {
       port: 6121,
       hostname: 'localhost',
-      // Enable WebSocket support as used in the server-runtime package
       ws: true,
     })
 
-    console.info('WebSocket server started on ws://localhost:6121')
+    log.log('@proj-airi/server-runtime started on ws://localhost:6121')
+
+    onAppBeforeQuit(async () => {
+      if (serverInstance && typeof serverInstance.close === 'function') {
+        try {
+          await serverInstance.close()
+          log.log('WebSocket server closed')
+        }
+        catch (error) {
+          log.withError(error).error('Error closing WebSocket server')
+        }
+      }
+    })
   }
   catch (error) {
-    console.error('Failed to start WebSocket server:', error)
+    log.withError(error).error('failed to start WebSocket server')
   }
+}
+
+app.whenReady().then(async () => {
+  await setupProjectAIRIServerRuntime()
 
   mainWindow = setup()
-  createTray()
+  setupTray()
 
   // Lifecycle
   emitAppReady()
@@ -100,7 +112,7 @@ app.whenReady().then(async () => {
   // see https://github.com/alex8088/electron-toolkit/tree/master/packages/utils
   app.on('browser-window-created', (_, window) => optimizer.watchWindowShortcuts(window))
 }).catch((err) => {
-  console.error('Error during app initialization:', err)
+  log.withError(err).error('Error during app initialization')
 })
 
 // Quit when all windows are closed, except on macOS. There, it's common
@@ -117,17 +129,6 @@ app.on('window-all-closed', () => {
 // Clean up server and intervals when app quits
 app.on('before-quit', async () => {
   emitAppBeforeQuit()
-
-  // Close the server if it's running
-  if (serverInstance && typeof serverInstance.close === 'function') {
-    try {
-      await serverInstance.close()
-      console.info('WebSocket server closed')
-    }
-    catch (error) {
-      console.error('Error closing WebSocket server:', error)
-    }
-  }
 
   if (appTray) {
     appTray.destroy()
