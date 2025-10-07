@@ -1,13 +1,13 @@
-import { dirname, join } from 'node:path'
-import { env } from 'node:process'
+import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { is } from '@electron-toolkit/utils'
 import { BrowserWindow, shell } from 'electron'
 
 import icon from '../../../../resources/icon.png?asset'
 
-import { setupWebInvokes } from './rpc/index.web'
+import { baseUrl, load, withHashRoute } from '../../libs/electron/location'
+
+const __dirname = dirname(fileURLToPath(import.meta.url))
 
 export async function setupSettingsWindow() {
   const window = new BrowserWindow({
@@ -28,15 +28,7 @@ export async function setupSettingsWindow() {
     return { action: 'deny' }
   })
 
-  if (is.dev && env.ELECTRON_RENDERER_URL) {
-    await window.loadURL(`${env.ELECTRON_RENDERER_URL}/#/settings`)
-  }
-  else {
-    await window.loadFile(join(__dirname, '../renderer/index.html/#/settings'))
-  }
-
-  // Setup
-  setupWebInvokes(window)
+  await load(window, withHashRoute(baseUrl(resolve(__dirname, '..', '..', 'renderer')), '/settings'))
 
   return window
 }

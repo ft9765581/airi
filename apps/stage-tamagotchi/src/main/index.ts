@@ -91,7 +91,7 @@ async function setupProjectAIRIServerRuntime() {
 app.whenReady().then(async () => {
   await setupProjectAIRIServerRuntime()
 
-  mainWindow = setupMainWindow()
+  mainWindow = await setupMainWindow()
   setupTray()
 
   // Lifecycle

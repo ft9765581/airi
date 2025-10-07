@@ -1,25 +1,26 @@
 import type { BrowserWindowConstructorOptions, Rectangle } from 'electron'
 
-import { dirname, join } from 'node:path'
-import { env } from 'node:process'
+import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { is } from '@electron-toolkit/utils'
 import { defu } from 'defu'
 import { BrowserWindow, shell } from 'electron'
 import { isMacOS } from 'std-env'
 
 import icon from '../../../../resources/icon.png?asset'
 
+import { baseUrl, load } from '../../libs/electron/location'
 import { transparentWindowConfig } from '../shared'
 import { createConfig } from '../shared/persistence'
 import { setupAppInvokeHandlers } from './rpc/index.electron'
+
+const __dirname = dirname(fileURLToPath(import.meta.url))
 
 interface AppConfig {
   windows?: Array<Pick<BrowserWindowConstructorOptions, 'title' | 'x' | 'y' | 'width' | 'height'> & { tag: string }>
 }
 
-export function setupMainWindow() {
+export async function setupMainWindow() {
   const {
     setup: setupConfig,
     get: getConfig,
@@ -91,14 +92,7 @@ export function setupMainWindow() {
     return { action: 'deny' }
   })
 
-  // HMR for renderer base on electron-vite cli.
-  // Load the remote URL for development or the local html file for production.
-  if (is.dev && env.ELECTRON_RENDERER_URL) {
-    window.loadURL(env.ELECTRON_RENDERER_URL)
-  }
-  else {
-    window.loadFile(join(__dirname, '../renderer/index.html'))
-  }
+  await load(window, baseUrl(resolve(__dirname, '..', '..', 'renderer')))
 
   setupAppInvokeHandlers(window)
 
