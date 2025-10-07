@@ -23,5 +23,8 @@
   "scripts": {
     "typecheck": "tsc --noEmit",
     "build": "tsdown"
+  },
+  "dependencies": {
+    "@guiiai/logg": "catalog:"
   }
 }

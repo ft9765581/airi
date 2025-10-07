@@ -1,4 +1,7 @@
 import type { LifecycleTriggerable } from './builtin'
+import type { Logger, LoggerOptions } from './logger'
+
+import { createDefaultLogger, createNoopLogger } from './logger'
 
 export type DependencyMap = Record<string, any>
 
@@ -8,6 +11,7 @@ export interface Container {
   lifecycleHooks: Map<string, LifecycleTriggerable>
   dependencyGraph: Map<string, string[]>
   invocations: InvokeOptionObject<any>[]
+  logger: Logger
 }
 
 export type BuildContext<D extends DependencyMap | undefined = undefined> = {
@@ -23,13 +27,18 @@ export type InvokeOptionObject<D extends DependencyMap | undefined = undefined> 
 export type InvokeOptionFunc<D extends DependencyMap | undefined = undefined> = (dependencies: D) => void | Promise<void>
 export type InvokeOption<D extends DependencyMap | undefined = undefined> = InvokeOptionObject<D> | InvokeOptionFunc<D>
 
-export function createContainer(): Container {
+export function createContainer(options?: LoggerOptions): Container {
+  const logger = options?.enabled === false
+    ? createNoopLogger()
+    : (options?.logger ?? createDefaultLogger())
+
   return {
     providers: new Map(),
     instances: new Map(),
     lifecycleHooks: new Map(),
     dependencyGraph: new Map(),
     invocations: [],
+    logger,
   }
 }
 
@@ -46,16 +55,20 @@ export function provide<D extends DependencyMap | undefined, T = any>(
 
   // Track dependencies for lifecycle ordering
   const dependencies = providerObject.dependsOn ? Object.values(providerObject.dependsOn) : []
+
+  container.logger.provide(name, dependencies)
   container.dependencyGraph.set(name, dependencies)
 }
 
 export function invoke<D extends DependencyMap>(container: Container, option: InvokeOption<D>): void {
-  if (typeof option === 'function') {
-    container.invocations.push({ callback: option } as InvokeOptionObject<any>)
-  }
-  else {
-    container.invocations.push(option as InvokeOptionObject<any>)
-  }
+  const invocationObject = typeof option === 'function'
+    ? { callback: option } as InvokeOptionObject<any>
+    : option as InvokeOptionObject<any>
+
+  const dependencies = invocationObject.dependsOn ? Object.values(invocationObject.dependsOn) : []
+
+  container.logger.invoke(dependencies)
+  container.invocations.push(invocationObject)
 }
 
 async function resolveInstance<T>(container: Container, name: string): Promise<T> {
@@ -93,7 +106,14 @@ async function resolveInstance<T>(container: Container, name: string): Promise<T
     name,
   }
 
+  container.logger.beforeRun(name)
+
+  const startTime = performance.now()
   const instance = await provider.build(context)
+  const duration = performance.now() - startTime
+
+  container.logger.run(name, duration)
+
   container.instances.set(name, instance)
 
   return instance as T
@@ -137,7 +157,13 @@ export async function startLifecycleHooks(container: Container): Promise<void> {
   for (const serviceName of sortedServices) {
     const lifecycle = container.lifecycleHooks.get(serviceName)
     if (lifecycle?.emitOnStart) {
+      container.logger.hookOnStart(serviceName)
+
+      const startTime = performance.now()
       await lifecycle.emitOnStart()
+      const duration = performance.now() - startTime
+
+      container.logger.hookOnStartComplete(serviceName, duration)
     }
   }
 }
@@ -149,7 +175,13 @@ export async function stopLifecycleHooks(container: Container): Promise<void> {
   for (const serviceName of sortedServices.reverse()) {
     const lifecycle = container.lifecycleHooks.get(serviceName)
     if (lifecycle?.emitOnStop) {
+      container.logger.hookOnStop(serviceName)
+
+      const startTime = performance.now()
       await lifecycle.emitOnStop()
+      const duration = performance.now() - startTime
+
+      container.logger.hookOnStopComplete(serviceName, duration)
     }
   }
 }
@@ -168,6 +200,8 @@ export async function start(container: Container): Promise<void> {
 
     await invocation.callback(resolvedDependencies)
   }
+
+  container.logger.running()
 }
 
 export async function stop(container: Container): Promise<void> {
