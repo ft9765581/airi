@@ -15,6 +15,6 @@
     "directory": "packages/injecta"
   },
   "scripts": {
-    "typecheck": "vue-tsc --noEmit"
+    "typecheck": "tsc --noEmit"
   }
 }
