@@ -14,15 +14,15 @@ import macOSTrayIcon from '../../resources/tray-icon-macos.png?asset'
 
 import { openDebugger, setupDebugger } from './app/debugger'
 import { emitAppBeforeQuit, emitAppReady, emitAppWindowAllClosed, onAppBeforeQuit } from './libs/bootkit/lifecycle'
-import { setup } from './windows/main'
-import { useWebInvokes } from './windows/main/eventa/index.web'
+import { setupMainWindow } from './windows/main'
+import { setupSettingsWindow } from './windows/settings'
 import { toggleWindowShow } from './windows/shared/window'
 
 setGlobalFormat(Format.Pretty)
 setGlobalLogLevel(LogLevel.Log)
 setupDebugger()
 
-const log = useLogg('main')
+const log = useLogg('main').useGlobalConfig()
 
 app.dock?.setIcon(icon)
 electronApp.setAppUserModelId('ai.moeru.airi')
@@ -40,14 +40,7 @@ function setupTray(): void {
   const contextMenu = Menu.buildFromTemplate([
     { label: 'Show Window', click: () => toggleWindowShow(mainWindow) },
     { type: 'separator' },
-    {
-      label: 'Settings',
-      click: () => {
-        toggleWindowShow(mainWindow)
-        const web = useWebInvokes()
-        web.openSettings()
-      },
-    },
+    { label: 'Settings', click: () => setupSettingsWindow() },
     { type: 'separator' },
     { label: 'Quit', click: () => app.quit() },
   ])
@@ -98,7 +91,7 @@ async function setupProjectAIRIServerRuntime() {
 app.whenReady().then(async () => {
   await setupProjectAIRIServerRuntime()
 
-  mainWindow = setup()
+  mainWindow = setupMainWindow()
   setupTray()
 
   // Lifecycle

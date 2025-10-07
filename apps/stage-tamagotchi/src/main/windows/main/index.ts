@@ -13,14 +13,13 @@ import icon from '../../../../resources/icon.png?asset'
 
 import { transparentWindowConfig } from '../shared'
 import { createConfig } from '../shared/persistence'
-import { setupAppInvokeHandlers } from './eventa/index.electron'
-import { setupWebInvokes } from './eventa/index.web'
+import { setupAppInvokeHandlers } from './rpc/index.electron'
 
 interface AppConfig {
   windows?: Array<Pick<BrowserWindowConstructorOptions, 'title' | 'x' | 'y' | 'width' | 'height'> & { tag: string }>
 }
 
-export function setup() {
+export function setupMainWindow() {
   const {
     setup: setupConfig,
     get: getConfig,
@@ -102,7 +101,6 @@ export function setup() {
   }
 
   setupAppInvokeHandlers(window)
-  setupWebInvokes(window)
 
   return window
 }
