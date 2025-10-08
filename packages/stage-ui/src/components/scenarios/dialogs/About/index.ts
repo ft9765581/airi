@@ -1,1 +1,1 @@
-export { default as AboutDialog } from './Dialog.vue'
+export { default as AboutDialog } from './about-dialog.vue'

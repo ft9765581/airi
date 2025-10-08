@@ -1,2 +1,2 @@
-export * from './About'
-export * from './Onboarding'
+export * from './about'
+export * from './onboarding'
