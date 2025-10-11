@@ -19,7 +19,7 @@ import { emitAppBeforeQuit, emitAppReady, emitAppWindowAllClosed, onAppBeforeQui
 import { setElectronMainDirname } from './libs/electron/location'
 import { setupInlayWindow } from './windows/inlay'
 import { setupMainWindow } from './windows/main'
-import { setupSettingsWindow } from './windows/settings'
+import { setupSettingsWindowReusableFunc } from './windows/settings'
 import { toggleWindowShow } from './windows/shared/window'
 
 setElectronMainDirname(__dirname)
@@ -32,7 +32,10 @@ const log = useLogg('main').useGlobalConfig()
 app.dock?.setIcon(icon)
 electronApp.setAppUserModelId('ai.moeru.airi')
 
-function setupTray(params: { mainWindow: BrowserWindow }): void {
+function setupTray(params: {
+  mainWindow: BrowserWindow
+  settingsWindow: () => Promise<BrowserWindow>
+}): void {
   once(() => {
     const appTray = new Tray(nativeImage.createFromPath(macOSTrayIcon).resize({ width: 16 }))
     onAppBeforeQuit(() => appTray.destroy())
@@ -41,7 +44,7 @@ function setupTray(params: { mainWindow: BrowserWindow }): void {
       { label: 'Show', click: () => toggleWindowShow(params.mainWindow) },
       { label: 'Inlay', click: () => setupInlayWindow() },
       { type: 'separator' },
-      { label: 'Settings', click: () => setupSettingsWindow() },
+      { label: 'Settings', click: () => params.settingsWindow().then(window => toggleWindowShow(window)) },
       { type: 'separator' },
       { label: 'Quit', click: () => app.quit() },
     ])
@@ -92,9 +95,10 @@ app.whenReady().then(async () => {
   await setupProjectAIRIServerRuntime()
 
   injecta.setLogger(createLoggLogger())
-  injecta.provide('mainWindow', async () => await setupMainWindow())
-  injecta.provide<{ mainWindow: BrowserWindow }>('tray', { dependsOn: { mainWindow: 'mainWindow' }, build: async ({ dependsOn }) => setupTray({ mainWindow: dependsOn.mainWindow }) })
-  injecta.invoke({ dependsOn: { mainWindow: 'mainWindow', tray: 'tray' }, callback: noop })
+  injecta.provide('windows:settings', () => setupSettingsWindowReusableFunc())
+  injecta.provide<{ settingsWindow: () => Promise<BrowserWindow> }>('windows:main', { dependsOn: { settingsWindow: 'windows:settings' }, build: async ({ dependsOn }) => setupMainWindow(dependsOn) })
+  injecta.provide<{ mainWindow: BrowserWindow, settingsWindow: () => Promise<BrowserWindow> }>('tray', { dependsOn: { mainWindow: 'windows:main', settingsWindow: 'windows:settings' }, build: async ({ dependsOn }) => setupTray(dependsOn) })
+  injecta.invoke({ dependsOn: { mainWindow: 'windows:main', tray: 'tray' }, callback: noop })
   injecta.start()
 
   // Lifecycle
