@@ -24,6 +24,7 @@
     "@pixiv/three-vrm": "^3.4.2",
     "@pixiv/three-vrm-animation": "^3.4.2",
     "@pixiv/three-vrm-core": "^3.4.2",
+    "@proj-airi/stage-shared": "workspace:*",
     "@proj-airi/tresjs": "workspace:*",
     "@tresjs/cientos": "^5.1.0",
     "@tresjs/core": "^5.1.0",
