@@ -9,7 +9,7 @@ import { Format, LogLevel, setGlobalFormat, setGlobalLogLevel, useLogg } from '@
 import { createLoggLogger, injecta } from '@proj-airi/injecta'
 import { app, Menu, nativeImage, Tray } from 'electron'
 import { noop, once } from 'es-toolkit'
-import { isMacOS } from 'std-env'
+import { isLinux, isMacOS } from 'std-env'
 
 import icon from '../../resources/icon.png?asset'
 import macOSTrayIcon from '../../resources/tray-icon-macos.png?asset'
@@ -28,6 +28,20 @@ setGlobalLogLevel(LogLevel.Log)
 setupDebugger()
 
 const log = useLogg('main').useGlobalConfig()
+
+// Thanks to [@blurymind](https://github.com/blurymind),
+//
+// When running Electron on Linux, navigator.gpu.requestAdapter() fails.
+// In order to enable WebGPU and process the shaders fast enough, we need the following
+// command line switches to be set.
+//
+// https://github.com/electron/electron/issues/41763#issuecomment-2051725363
+// https://github.com/electron/electron/issues/41763#issuecomment-3143338995
+if (isLinux) {
+  app.commandLine.appendSwitch('enable-features', 'SharedArrayBuffer')
+  app.commandLine.appendSwitch('enable-unsafe-webgpu')
+  app.commandLine.appendSwitch('enable-features', 'Vulkan')
+}
 
 app.dock?.setIcon(icon)
 electronApp.setAppUserModelId('ai.moeru.airi')
