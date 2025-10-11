@@ -50,7 +50,7 @@ export async function setupMainWindow(params: {
   // NOTICE: in development mode, open devtools by default
   if (is.dev) {
     try {
-      window.webContents.openDevTools()
+      window.webContents.openDevTools({ mode: 'detach' })
     }
     catch (err) {
       console.error('failed to open devtools:', err)
