@@ -1,6 +1,7 @@
 import type { BrowserWindowConstructorOptions, Rectangle } from 'electron'
 
 import { dirname, join, resolve } from 'node:path'
+import { env } from 'node:process'
 import { fileURLToPath } from 'node:url'
 
 import { is } from '@electron-toolkit/utils'
@@ -48,7 +49,7 @@ export async function setupMainWindow(params: {
   })
 
   // NOTICE: in development mode, open devtools by default
-  if (is.dev) {
+  if (is.dev || env.MAIN_APP_DEBUG || env.APP_DEBUG) {
     try {
       window.webContents.openDevTools({ mode: 'detach' })
     }
