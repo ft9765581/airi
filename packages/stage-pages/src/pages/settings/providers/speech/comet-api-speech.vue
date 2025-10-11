@@ -1,27 +1,21 @@
 <script setup lang="ts">
-import type { RemovableRef } from '@vueuse/core'
 import type { SpeechProvider } from '@xsai-ext/shared-providers'
 
 import {
-  Alert,
-  ProviderAdvancedSettings,
-  ProviderApiKeyInput,
-  ProviderBaseUrlInput,
-  ProviderBasicSettings,
-  ProviderSettingsContainer,
-  ProviderSettingsLayout,
-  SpeechPlaygroundOpenAICompatible,
+  SpeechPlayground,
+  SpeechProviderSettings,
 } from '@proj-airi/stage-ui/components'
-import { useProviderValidation } from '@proj-airi/stage-ui/composables/use-provider-validation'
 import { useSpeechStore } from '@proj-airi/stage-ui/stores/modules/speech'
 import { useProvidersStore } from '@proj-airi/stage-ui/stores/providers'
 import { FieldRange } from '@proj-airi/ui'
 import { storeToRefs } from 'pinia'
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 
 const speechStore = useSpeechStore()
 const providersStore = useProvidersStore()
-const { providers } = storeToRefs(providersStore) as { providers: RemovableRef<Record<string, any>> }
+const { providers } = storeToRefs(providersStore)
+const { t } = useI18n()
 
 const defaultVoiceSettings = {
   speed: 1.0,
@@ -29,138 +23,76 @@ const defaultVoiceSettings = {
 
 // Get provider metadata
 const providerId = 'comet-api-speech'
-
-// Settings refs
-const apiKey = computed({
-  get: () => providers.value[providerId]?.apiKey || '',
-  set: (value) => {
-    if (providers.value[providerId])
-      providers.value[providerId].apiKey = value
-  },
-})
-
-const baseUrl = computed({
-  get: () => providers.value[providerId]?.baseUrl || '',
-  set: (value) => {
-    if (providers.value[providerId])
-      providers.value[providerId].baseUrl = value
-  },
-})
-
-const model = computed({
-  get: () => providers.value[providerId]?.model || 'tts-1',
-  set: (value) => {
-    if (providers.value[providerId])
-      providers.value[providerId].model = value
-  },
-})
-
-const voice = computed({
-  get: () => providers.value[providerId]?.voice || 'alloy',
-  set: (value) => {
-    if (providers.value[providerId])
-      providers.value[providerId].voice = value
-  },
-})
+const defaultModel = 'gpt-4o-mini-tts'
 
 const speed = ref<number>(1.0)
 
 // Check if API key is configured
 const apiKeyConfigured = computed(() => !!providers.value[providerId]?.apiKey)
 
-// Generate speech with specific parameters
-async function handleGenerateSpeech(input: string, voiceId: string, _useSSML: boolean, modelId?: string) {
-  const provider = await providersStore.getProviderInstance<SpeechProvider<string>>(providerId)
-  if (!provider)
-    throw new Error('Failed to initialize speech provider')
+const availableVoices = computed(() => {
+  return speechStore.availableVoices[providerId] || []
+})
 
+// Generate speech with ElevenLabs-specific parameters
+async function handleGenerateSpeech(input: string, voiceId: string, _useSSML: boolean) {
+  const provider = await providersStore.getProviderInstance<SpeechProvider<string>>(providerId)
+  if (!provider) {
+    throw new Error('Failed to initialize speech provider')
+  }
+
+  // Get provider configuration
   const providerConfig = providersStore.getProviderConfig(providerId)
 
+  // Get model from configuration or use default
+  const model = providerConfig.model as string | undefined || defaultModel
+
+  // ElevenLabs doesn't need SSML conversion, but if SSML is provided, use it directly
   return await speechStore.speech(
     provider,
-    modelId || model.value,
+    model,
     input,
-    voiceId || voice.value,
+    voiceId,
     {
       ...providerConfig,
       ...defaultVoiceSettings,
-      speed: speed.value,
     },
   )
 }
 
-// Use the composable to get validation logic and state
-const {
-  t,
-  router,
-  providerMetadata,
-  isValidating,
-  isValid,
-  validationMessage,
-  handleResetSettings,
-} = useProviderValidation(providerId)
+watch(speed, async () => {
+  const providerConfig = providersStore.getProviderConfig(providerId)
+  providerConfig.speed = speed.value
+})
 </script>
 
 <template>
-  <ProviderSettingsLayout
-    :provider-name="providerMetadata?.localizedName"
-    :provider-icon-color="providerMetadata?.iconColor"
-    :on-back="() => router.back()"
+  <SpeechProviderSettings
+    :provider-id="providerId"
+    :default-model="defaultModel"
+    :additional-settings="defaultVoiceSettings"
   >
-    <ProviderSettingsContainer>
-      <ProviderBasicSettings
-        :title="t('settings.pages.providers.common.section.basic.title')"
-        :description="t('settings.pages.providers.common.section.basic.description')"
-        :on-reset="handleResetSettings"
-      >
-        <ProviderApiKeyInput
-          v-model="apiKey"
-          :required="false"
-          :provider-name="providerMetadata?.localizedName"
-          placeholder="sk-..."
-        />
-      </ProviderBasicSettings>
+    <!-- Voice settings specific to ElevenLabs -->
+    <template #voice-settings>
+      <!-- Speed control - common to most providers -->
+      <FieldRange
+        v-model="speed"
+        :label="t('settings.pages.providers.provider.common.fields.field.speed.label')"
+        :description="t('settings.pages.providers.provider.common.fields.field.speed.description')"
+        :min="0.5"
+        :max="2.0" :step="0.01"
+      />
+    </template>
 
-      <ProviderAdvancedSettings :title="t('settings.pages.providers.common.section.advanced.title')">
-        <ProviderBaseUrlInput
-          v-model="baseUrl"
-          :placeholder="providerMetadata?.defaultOptions?.().baseUrl as string || 'https://api.cometapi.com/v1/'"
-        />
-        <FieldRange
-          v-model="speed"
-          :label="t('settings.pages.providers.provider.common.fields.field.speed.label')"
-          :description="t('settings.pages.providers.provider.common.fields.field.speed.description')"
-          :min="0.5"
-          :max="2.0" :step="0.01"
-        />
-      </ProviderAdvancedSettings>
-
-      <!-- Validation Status -->
-      <Alert v-if="!isValid && isValidating === 0 && validationMessage" type="error">
-        <template #title>
-          {{ t('settings.dialogs.onboarding.validationFailed') }}
-        </template>
-        <template v-if="validationMessage" #content>
-          <div class="whitespace-pre-wrap break-all">
-            {{ validationMessage }}
-          </div>
-        </template>
-      </Alert>
-      <Alert v-if="isValid && isValidating === 0" type="success">
-        <template #title>
-          {{ t('settings.dialogs.onboarding.validationSuccess') }}
-        </template>
-      </Alert>
-    </ProviderSettingsContainer>
-
-    <SpeechPlaygroundOpenAICompatible
-      v-model:model-value="model"
-      v-model:voice="voice"
-      :generate-speech="handleGenerateSpeech"
-      :api-key-configured="apiKeyConfigured"
-      default-text="Hello! This is a test of the Comet API Speech."
-    />
-  </ProviderSettingsLayout>
+    <template #playground>
+      <SpeechPlayground
+        :available-voices="availableVoices"
+        :generate-speech="handleGenerateSpeech"
+        :api-key-configured="apiKeyConfigured"
+        default-text="Hello! This is a test of the OpenAI Speech."
+      />
+    </template>
+  </SpeechProviderSettings>
 </template>
 
 <route lang="yaml">
