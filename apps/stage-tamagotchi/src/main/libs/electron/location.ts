@@ -5,6 +5,16 @@ import { env } from 'node:process'
 
 import { is } from '@electron-toolkit/utils'
 
+let electronMainDirname: string = ''
+
+export function setElectronMainDirname(dirname: string) {
+  electronMainDirname = dirname
+}
+
+export function getElectronMainDirname() {
+  return electronMainDirname
+}
+
 export function baseUrl(parentOfIndexHtml: string) {
   if (is.dev && env.ELECTRON_RENDERER_URL) {
     return { url: env.ELECTRON_RENDERER_URL }

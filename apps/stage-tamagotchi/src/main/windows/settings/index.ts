@@ -1,15 +1,12 @@
-import { dirname, join, resolve } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { join, resolve } from 'node:path'
 
 import { BrowserWindow, shell } from 'electron'
 
 import icon from '../../../../resources/icon.png?asset'
 
-import { baseUrl, load, withHashRoute } from '../../libs/electron/location'
+import { baseUrl, getElectronMainDirname, load, withHashRoute } from '../../libs/electron/location'
 
-const __dirname = dirname(fileURLToPath(import.meta.url))
-
-export async function setupSettingsWindow() {
+export function setupSettingsWindowReusableFunc() {
   const window = new BrowserWindow({
     title: 'Settings',
     width: 600.0,
@@ -28,7 +25,7 @@ export async function setupSettingsWindow() {
     return { action: 'deny' }
   })
 
-  await load(window, withHashRoute(baseUrl(resolve(__dirname, '..', '..', '..', 'renderer')), '/settings'))
+  await load(window, withHashRoute(baseUrl(resolve(getElectronMainDirname(), '..', 'renderer')), '/settings'))
 
   return window
 }

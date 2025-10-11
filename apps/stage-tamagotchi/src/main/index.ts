@@ -16,11 +16,13 @@ import macOSTrayIcon from '../../resources/tray-icon-macos.png?asset'
 
 import { openDebugger, setupDebugger } from './app/debugger'
 import { emitAppBeforeQuit, emitAppReady, emitAppWindowAllClosed, onAppBeforeQuit } from './libs/bootkit/lifecycle'
+import { setElectronMainDirname } from './libs/electron/location'
 import { setupInlayWindow } from './windows/inlay'
 import { setupMainWindow } from './windows/main'
 import { setupSettingsWindow } from './windows/settings'
 import { toggleWindowShow } from './windows/shared/window'
 
+setElectronMainDirname(__dirname)
 setGlobalFormat(Format.Pretty)
 setGlobalLogLevel(LogLevel.Log)
 setupDebugger()
