@@ -28,7 +28,7 @@ export async function setupSettingsWindow() {
     return { action: 'deny' }
   })
 
-  await load(window, withHashRoute(baseUrl(resolve(__dirname, '..', '..', 'renderer')), '/settings'))
+  await load(window, withHashRoute(baseUrl(resolve(__dirname, '..', '..', '..', 'renderer')), '/settings'))
 
   return window
 }

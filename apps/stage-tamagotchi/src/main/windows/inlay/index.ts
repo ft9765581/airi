@@ -63,7 +63,7 @@ export async function setupInlayWindow() {
     return { action: 'deny' }
   })
 
-  await load(window, withHashRoute(baseUrl(resolve(__dirname, '..', '..', 'renderer')), '/inlay'))
+  await load(window, withHashRoute(baseUrl(resolve(__dirname, '..', '..', '..', 'renderer')), '/inlay'))
 
   return window
 }

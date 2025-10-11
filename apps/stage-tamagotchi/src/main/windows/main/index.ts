@@ -14,8 +14,6 @@ import { transparentWindowConfig } from '../shared'
 import { createConfig } from '../shared/persistence'
 import { setupAppInvokeHandlers } from './rpc/index.electron'
 
-const __dirname = dirname(fileURLToPath(import.meta.url))
-
 interface AppConfig {
   windows?: Array<Pick<BrowserWindowConstructorOptions, 'title' | 'x' | 'y' | 'width' | 'height'> & { tag: string }>
 }
@@ -92,7 +90,7 @@ export async function setupMainWindow() {
     return { action: 'deny' }
   })
 
-  await load(window, baseUrl(resolve(__dirname, '..', '..', 'renderer')))
+  await load(window, baseUrl(resolve(import.meta.dirname, '..', '..', '..', 'renderer')))
 
   setupAppInvokeHandlers(window)
 
