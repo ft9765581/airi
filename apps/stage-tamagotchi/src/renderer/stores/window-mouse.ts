@@ -1,24 +1,24 @@
 import { defineInvoke } from '@unbird/eventa'
 import { createContext } from '@unbird/eventa/adapters/electron/renderer'
+import { useMouse } from '@vueuse/core'
 import { ref } from 'vue'
 
 import { electronCursorPoint, electronStartTrackingCursorPoint } from '../../shared/eventa'
 
 export function useWindowMouse(options?: { x: number, y: number }) {
-  const context = ref(createContext(window.electron.ipcRenderer).context)
-  const centerPosition = ref<{ x: number, y: number }>({ x: 0, y: 0 })
-  const positionX = ref(options?.x ?? 0)
-  const positionY = ref(options?.y ?? 0)
+  const eventTarget = useElectronMouseEventTarget()
+  return useMouse({ target: eventTarget, type: 'screen', initialValue: options })
+}
 
-  context.value!.on(electronCursorPoint, (event) => {
-    positionX.value = event.body?.x ?? centerPosition.value.x
-    positionY.value = event.body?.y ?? centerPosition.value.y
+export function useElectronMouseEventTarget() {
+  const context = ref(createContext(window.electron.ipcRenderer).context)
+  const eventTarget = ref(new EventTarget())
+
+  context.value.on(electronCursorPoint, (event) => {
+    const e = new MouseEvent('mousemove', { screenX: event.body?.x, screenY: event.body?.y })
+    eventTarget.value.dispatchEvent(e)
   })
 
   defineInvoke(context.value!, electronStartTrackingCursorPoint)()
-
-  return {
-    x: positionX,
-    y: positionY,
-  }
+  return eventTarget
 }
