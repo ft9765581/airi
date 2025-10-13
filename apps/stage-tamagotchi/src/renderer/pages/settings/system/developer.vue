@@ -18,6 +18,12 @@ const menu = computed(() => [
     icon: 'i-solar:sledgehammer-bold-duotone',
     to: '/devtools/use-magic-keys',
   },
+  {
+    title: t('tamagotchi.settings.pages.system.developer.sections.section.use-window-mouse.title'),
+    description: t('tamagotchi.settings.pages.system.developer.sections.section.use-window-mouse.description'),
+    icon: 'i-solar:sledgehammer-bold-duotone',
+    to: '/devtools/use-window-mouse',
+  },
 ])
 
 const { context } = createContext(window.electron.ipcRenderer)
