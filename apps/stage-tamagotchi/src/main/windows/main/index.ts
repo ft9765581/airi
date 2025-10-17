@@ -1,16 +1,21 @@
 import type { BrowserWindowConstructorOptions, Rectangle } from 'electron'
 
 import { dirname, join, resolve } from 'node:path'
-import { env } from 'node:process'
+import { env, platform } from 'node:process'
 import { fileURLToPath } from 'node:url'
 
+import clickDragPlugin from 'electron-click-drag-plugin'
+
 import { is } from '@electron-toolkit/utils'
+import { defineInvokeHandler } from '@unbird/eventa'
+import { createContext } from '@unbird/eventa/adapters/electron/main'
 import { defu } from 'defu'
-import { BrowserWindow, shell } from 'electron'
+import { BrowserWindow, ipcMain, shell } from 'electron'
 import { isMacOS } from 'std-env'
 
 import icon from '../../../../resources/icon.png?asset'
 
+import { electronStartDraggingWindow } from '../../../shared/eventa'
 import { baseUrl, getElectronMainDirname, load } from '../../libs/electron/location'
 import { transparentWindowConfig } from '../shared'
 import { createConfig } from '../shared/persistence'
@@ -107,6 +112,33 @@ export async function setupMainWindow(params: {
   await load(window, baseUrl(resolve(getElectronMainDirname(), '..', 'renderer')))
 
   setupMainWindowElectronInvokes({ window, settingsWindow: params.settingsWindow })
+
+  /**
+   * This is a know issue (or expected behavior maybe) to Electron.
+   *
+   * Discussion: https://github.com/electron/electron/issues/37789
+   * Workaround: https://github.com/noobfromph/electron-click-drag-plugin
+   */
+  function handleStartDraggingWindow() {
+    try {
+      const hwndBuffer = window.getNativeWindowHandle()
+      // Linux: extract X11 Window ID from the buffer (first 4 bytes, little-endian)
+      // macOS/Windows: pass Buffer directly
+      const windowId = platform === 'linux' ? hwndBuffer.readUInt32LE(0) : hwndBuffer
+
+      clickDragPlugin.startDrag(windowId)
+    }
+    catch (error) {
+      console.error(error)
+    }
+  }
+
+  const { context } = createContext(ipcMain, window)
+  const cleanUpWindowDraggingInvokeHandler = defineInvokeHandler(context, electronStartDraggingWindow, () => handleStartDraggingWindow())
+
+  window.on('closed', () => {
+    cleanUpWindowDraggingInvokeHandler()
+  })
 
   return window
 }
