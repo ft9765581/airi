@@ -124,7 +124,7 @@ export function buildOpenAICompatibleProvider(
               'tts',
               // bypass gemini pro quota
               // TODO: more elegant solution
-              'gemini-2.5-pro',
+              'models/gemini-2.5-pro',
             ].every(str => !model.id.includes(str)),
           ))
 
