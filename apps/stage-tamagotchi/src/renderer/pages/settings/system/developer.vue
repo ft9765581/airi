@@ -28,7 +28,13 @@ const menu = computed(() => [
     title: 'Displays',
     description: 'Visualize connected displays and cursor position',
     icon: 'i-solar:sledgehammer-bold-duotone',
-    to: '/devtools/electron-display',
+    to: '/devtools/use-electron-all-displays',
+  },
+  {
+    title: 'Relative Mouse',
+    description: 'Get mouse position relative to the window',
+    icon: 'i-solar:sledgehammer-bold-duotone',
+    to: '/devtools/use-electron-relative-mouse',
   },
 ])
 
@@ -80,7 +86,7 @@ const openDevTools = defineInvoke(context, electronOpenMainDevtools)
     transition="all ease-in-out duration-250"
   />
 
-  <div flex="~ col gap-4" pb-12>
+  <div flex="~ col gap-4" mt-2 pb-12>
     <IconItem
       v-for="(item, index) in menu"
       :key="item.to"

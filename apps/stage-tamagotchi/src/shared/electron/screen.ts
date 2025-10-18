@@ -1,6 +1,9 @@
-import type { Display, screen as electronScreen } from 'electron'
+import type { Display, screen as electronScreen, Point } from 'electron'
 
-import { defineInvokeEventa } from '@unbird/eventa'
+import { defineEventa, defineInvokeEventa } from '@unbird/eventa'
+
+export const cursorScreenPoint = defineEventa<Point>('eventa:event:electron:screen:cursor-screen-point')
+export const startLoopGetCursorScreenPoint = defineInvokeEventa('eventa:event:electron:screen:start-loop-get-cursor-screen-point')
 
 const getAllDisplays = defineInvokeEventa<Display[]>('eventa:invoke:electron:screen:get-all-displays')
 const getPrimaryDisplay = defineInvokeEventa<Display>('eventa:invoke:electron:screen:get-primary-display')

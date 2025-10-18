@@ -1,29 +1,15 @@
 <script setup lang="ts">
-import { defineInvoke } from '@unbird/eventa'
-import { createContext } from '@unbird/eventa/adapters/electron/renderer'
-import { computedAsync, useIntervalFn, useWindowSize } from '@vueuse/core'
+import { useWindowSize } from '@vueuse/core'
 import { computed, ref } from 'vue'
 
-import { electron } from '../../../shared/electron'
+import { useElectronAllDisplays, useElectronMouse } from '../../stores/window'
 
-const { context: ctx } = createContext(window.electron.ipcRenderer)
-const getAllDisplays = defineInvoke(ctx, electron.screen.getAllDisplays)
-const getCursorScreenPoint = defineInvoke(ctx, electron.screen.getCursorScreenPoint)
+const allDisplays = useElectronAllDisplays()
+const { x: cursorX, y: cursorY } = useElectronMouse()
 
-const allDisplays = computedAsync(async () => getAllDisplays(), [])
-const cursorPoint = ref({ x: 0, y: 0 })
-
-// Update cursor position periodically
-useIntervalFn(async () => {
-  const newPoint = await getCursorScreenPoint()
-  cursorPoint.value = newPoint
-}, 1000 / 60)
-
-// Get container element and its bounds
 const containerRef = ref<HTMLElement>()
 const windowSize = useWindowSize()
 
-// Calculate bounds for all displays
 const displayBounds = computed(() => {
   if (!allDisplays.value.length)
     return { minX: 0, minY: 0, maxX: 0, maxY: 0, width: 0, height: 0 }
@@ -85,8 +71,8 @@ function transformDisplay(display: any) {
 const transformedCursor = computed(() => {
   const { minX, minY } = displayBounds.value
   return {
-    x: (cursorPoint.value.x - minX) * scale.value,
-    y: (cursorPoint.value.y - minY) * scale.value,
+    x: (cursorX.value - minX) * scale.value,
+    y: (cursorY.value - minY) * scale.value,
   }
 })
 
@@ -148,7 +134,7 @@ const containerDimensions = computed(() => {
         }"
       >
         <div class="absolute left-3 whitespace-nowrap text-[11px] text-primary-400 font-bold -top-1.25">
-          {{ cursorPoint.x }}, {{ cursorPoint.y }}
+          {{ cursorX }}, {{ cursorY }}
         </div>
       </div>
     </div>
