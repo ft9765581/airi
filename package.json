@@ -99,6 +99,7 @@
       "@parcel/watcher",
       "bufferutil",
       "electron",
+      "electron-click-drag-plugin",
       "es5-ext",
       "esbuild",
       "ffmpeg-static",
