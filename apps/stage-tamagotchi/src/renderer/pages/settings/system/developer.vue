@@ -24,6 +24,12 @@ const menu = computed(() => [
     icon: 'i-solar:sledgehammer-bold-duotone',
     to: '/devtools/use-window-mouse',
   },
+  {
+    title: 'Displays',
+    description: 'Visualize connected displays and cursor position',
+    icon: 'i-solar:sledgehammer-bold-duotone',
+    to: '/devtools/electron-display',
+  },
 ])
 
 const { context } = createContext(window.electron.ipcRenderer)
