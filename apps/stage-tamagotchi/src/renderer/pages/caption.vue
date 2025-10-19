@@ -3,12 +3,12 @@ import { defineInvoke } from '@unbird/eventa'
 import { createContext } from '@unbird/eventa/adapters/electron/renderer'
 import { onMounted, ref } from 'vue'
 
-import { captionAttachedChanged, captionGetAttached } from '../../shared/caption'
+import { captionGetIsFollowingWindow, captionIsFollowingWindowChanged } from '../../shared/eventa'
 
 const attached = ref(true)
 
 const { context } = createContext(window.electron.ipcRenderer)
-const getAttached = defineInvoke(context, captionGetAttached)
+const getAttached = defineInvoke(context, captionGetIsFollowingWindow)
 
 onMounted(async () => {
   try {
@@ -18,7 +18,7 @@ onMounted(async () => {
   catch {}
 
   try {
-    context.on(captionAttachedChanged, (event) => {
+    context.on(captionIsFollowingWindowChanged, (event) => {
       attached.value = Boolean(event?.body)
     })
   }
