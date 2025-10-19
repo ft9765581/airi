@@ -21,7 +21,7 @@ import { TooltipContent, TooltipProvider, TooltipRoot, TooltipTrigger } from 're
             'text-xs',
           ]"
           side="left"
-          :side-offset="1"
+          :side-offset="4"
         >
           <slot name="tooltip" />
         </TooltipContent>

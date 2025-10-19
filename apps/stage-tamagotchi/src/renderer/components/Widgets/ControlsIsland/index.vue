@@ -69,7 +69,9 @@ const startDraggingWindow = !isLinux ? defineInvoke(context, electronStartDraggi
       </ControlButtonTooltip>
 
       <ControlButtonTooltip>
-        <ControlButton @click="toggleDark">
+        <!-- Recommended to use `toggleDark()` instead of `toggleDark` -->
+        <!-- See: https://vueuse.org/shared/useToggle/#usage -->
+        <ControlButton @click="toggleDark()">
           <Transition name="fade" mode="out-in">
             <div v-if="isDark" i-solar:moon-outline size-5 text="neutral-800 dark:neutral-300" />
             <div v-else i-solar:sun-2-outline size-5 text="neutral-800 dark:neutral-300" />
