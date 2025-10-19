@@ -12,7 +12,7 @@ import { isMacOS } from 'std-env'
 
 import icon from '../../../../resources/icon.png?asset'
 
-import { captionAttachedChanged, captionGetAttached } from '../../../shared/eventa'
+import { captionGetIsFollowingWindow, captionIsFollowingWindowChanged } from '../../../shared/eventa'
 import { baseUrl, getElectronMainDirname, load, withHashRoute } from '../../libs/electron/location'
 import { createReusableWindow } from '../../libs/electron/window-manager'
 import { mapForBreakpoints, resolutionBreakpoints, widthFrom } from '../shared/display'
@@ -25,7 +25,7 @@ interface CaptionMatrixConfig {
 }
 
 interface CaptionConfig {
-  attached: boolean
+  isFollowing: boolean
   matrices: Record<string, CaptionMatrixConfig>
 }
 
@@ -140,17 +140,17 @@ export function setupCaptionWindowManager(params: { mainWindow: BrowserWindow })
     setup: setupConfig,
     get: getConfig,
     update: updateConfig,
-  } = createConfig<CaptionConfig>('windows-caption', 'config.json', { default: { attached: true, matrices: {} } })
+  } = createConfig<CaptionConfig>('windows-caption', 'config.json', { default: { isFollowing: true, matrices: {} } })
 
   setupConfig()
 
-  let isAttached = getConfig()?.attached ?? true
+  let isFollowing = getConfig()?.isFollowing ?? true
   let lastProgrammaticMoveAt = 0
 
   // Keep references to listeners so we can detach when toggling
   let detachMainMoveListener: (() => void) | undefined
 
-  // Note: when attaching, we compute and persist the current relative offset
+  // Note: when following window, we compute and persist the current relative offset
   // and start following without docking, so no immediate reposition is needed here.
 
   function computeRelativeOffset(win: BrowserWindow): { dx: number, dy: number } {
@@ -159,16 +159,16 @@ export function setupCaptionWindowManager(params: { mainWindow: BrowserWindow })
     return { dx: caption.x - main.x, dy: caption.y - main.y }
   }
 
-  function attachToMain(win: BrowserWindow) {
-    const cfg = getConfig() ?? { attached: isAttached, matrices: {} }
+  function followMainWindow(win: BrowserWindow) {
+    const cfg = getConfig() ?? { isFollowing, matrices: {} }
     const initialOffset = cfg?.matrices?.[matrixHash]?.relativeToMain ?? computeRelativeOffset(win)
 
     // Store relative offset for this matrix
-    const cfgToSave = getConfig() ?? { attached: isAttached, matrices: {} }
-    cfgToSave.matrices[matrixHash] = { ...(cfgToSave.matrices[matrixHash] ?? {}), relativeToMain: initialOffset }
+    const cfgToSave = getConfig() ?? { isFollowing, matrices: {} }
+    cfgToSave.matrices[matrixHash] = { ...cfgToSave.matrices[matrixHash], relativeToMain: initialOffset }
     updateConfig(cfgToSave)
 
-    let anim: ReturnType<typeof animate> | null = null
+    let animation: ReturnType<typeof animate> | null = null
     const state = { x: 0, y: 0 }
 
     const settleTo = (toX: number, toY: number) => {
@@ -177,8 +177,8 @@ export function setupCaptionWindowManager(params: { mainWindow: BrowserWindow })
       const b = win.getBounds()
       state.x = b.x
       state.y = b.y
-      anim?.pause()
-      anim = animate(state, {
+      animation?.pause()
+      animation = animate(state, {
         x: toX,
         y: toY,
         duration: 160,
@@ -197,6 +197,7 @@ export function setupCaptionWindowManager(params: { mainWindow: BrowserWindow })
     let lastTy = 0
     let lastAppliedTx = Number.NaN
     let lastAppliedTy = Number.NaN
+
     const moveThrottled = throttle(() => {
       const stored = getConfig()?.matrices[matrixHash]?.relativeToMain ?? initialOffset
       const main = params.mainWindow.getBounds()
@@ -222,16 +223,18 @@ export function setupCaptionWindowManager(params: { mainWindow: BrowserWindow })
       settleTo(lastTx, lastTy)
     }, 200)
 
-    const onMainChange = () => { moveThrottled(); settleDebounced() }
+    const onMainChange = () => {
+      moveThrottled()
+      settleDebounced()
+    }
+    onMainChange()
     params.mainWindow.on('move', onMainChange)
     params.mainWindow.on('resize', onMainChange)
-    // Initialize target once
-    onMainChange()
     detachMainMoveListener = () => {
       params.mainWindow.removeListener('move', onMainChange)
       params.mainWindow.removeListener('resize', onMainChange)
-      anim?.pause()
-      anim = null
+      animation?.pause()
+      animation = null
     }
   }
 
@@ -261,13 +264,13 @@ export function setupCaptionWindowManager(params: { mainWindow: BrowserWindow })
     }
 
     const persistBounds = () => {
-      const config = getConfig() ?? { attached: isAttached, matrices: {} }
+      const config = getConfig() ?? { isFollowing, matrices: {} }
       const b = window.getBounds()
-      config.matrices[matrixHash] = { ...(config.matrices[matrixHash] ?? {}), bounds: b }
-      config.attached = isAttached
-      if (isAttached && Date.now() - lastProgrammaticMoveAt > 100) {
+      config.matrices[matrixHash] = { ...config.matrices[matrixHash], bounds: b }
+      config.isFollowing = isFollowing
+      if (isFollowing && Date.now() - lastProgrammaticMoveAt > 100) {
         const rel = computeRelativeOffset(window)
-        config.matrices[matrixHash] = { ...(config.matrices[matrixHash] ?? {}), bounds: b, relativeToMain: rel }
+        config.matrices[matrixHash] = { ...config.matrices[matrixHash], bounds: b, relativeToMain: rel }
       }
       updateConfig(config)
     }
@@ -276,18 +279,25 @@ export function setupCaptionWindowManager(params: { mainWindow: BrowserWindow })
 
     await load(window, withHashRoute(baseUrl(resolve(getElectronMainDirname(), '..', 'renderer')), '/caption'))
 
-    const cleanupGetAttached = defineInvokeHandler(context, captionGetAttached, async () => isAttached)
-    try { context.emit(captionAttachedChanged, isAttached) }
-    catch {}
+    const cleanupGetAttached = defineInvokeHandler(context, captionGetIsFollowingWindow, async () => isFollowing)
+    try {
+      context.emit(captionIsFollowingWindowChanged, isFollowing)
+    }
+    catch {
 
-    if (isAttached) {
-      attachToMain(window)
+    }
+
+    if (isFollowing) {
+      followMainWindow(window)
     }
 
     window.on('closed', () => {
       detachFromMain()
-      try { cleanupGetAttached() }
-      catch {}
+      try {
+        cleanupGetAttached()
+      }
+      catch {
+      }
 
       eventaContext = undefined
     })
@@ -295,41 +305,49 @@ export function setupCaptionWindowManager(params: { mainWindow: BrowserWindow })
     return window
   })
 
-  async function getWindow(): Promise<BrowserWindow> { return reusable.getWindow() }
+  async function getWindow(): Promise<BrowserWindow> {
+    return reusable.getWindow()
+  }
 
-  async function setFollowWindow(attached: boolean) {
-    isAttached = attached
+  async function setFollowWindow(isFollowingWindow: boolean) {
+    isFollowing = isFollowingWindow
     const window = await reusable.getWindow()
-    if (isAttached) {
+    if (isFollowing) {
       // Compute and persist current relative offset based on existing positions
       const rel = computeRelativeOffset(window)
-      const cfg = getConfig() ?? { attached: isAttached, matrices: {} }
-      cfg.matrices[matrixHash] = { ...(cfg.matrices[matrixHash] ?? {}), relativeToMain: rel }
+      const cfg = getConfig() ?? { isFollowing, matrices: {} }
+      cfg.matrices[matrixHash] = { ...cfg.matrices[matrixHash], relativeToMain: rel }
       updateConfig(cfg)
       // Start following main without re-docking; keep current position
-      attachToMain(window)
+      followMainWindow(window)
     }
     else {
       detachFromMain()
     }
 
-    const config = getConfig() ?? { attached: isAttached, matrices: {} }
-    config.attached = isAttached
+    const config = getConfig() ?? { isFollowing, matrices: {} }
+    config.isFollowing = isFollowing
     updateConfig(config)
 
     // Keep window visible after toggle
     window.show()
 
     // Notify renderer for UI state (handle visibility)
-    try { eventaContext?.emit(captionAttachedChanged, isAttached) }
-    catch {}
+    try {
+      eventaContext?.emit(captionIsFollowingWindowChanged, isFollowing)
+    }
+    catch {
+
+    }
   }
 
   async function toggleFollowWindow() {
-    await setFollowWindow(!isAttached)
+    await setFollowWindow(!isFollowing)
   }
 
-  function getIsFollowingWindow(): boolean { return isAttached }
+  function getIsFollowingWindow(): boolean {
+    return isFollowing
+  }
 
   async function resetToSide() {
     const window = await reusable.getWindow()
@@ -340,12 +358,12 @@ export function setupCaptionWindowManager(params: { mainWindow: BrowserWindow })
     window.setBounds(initialBounds)
 
     // Persist new bounds and a clean relative offset so follow uses it
-    const config = getConfig() ?? { attached: isAttached, matrices: {} }
+    const config = getConfig() ?? { isFollowing, matrices: {} }
     const b = window.getBounds()
 
     const rel = computeRelativeOffset(window)
-    config.matrices[matrixHash] = { ...(config.matrices[matrixHash] ?? {}), bounds: b, relativeToMain: rel }
-    config.attached = isAttached
+    config.matrices[matrixHash] = { ...config.matrices[matrixHash], bounds: b, relativeToMain: rel }
+    config.isFollowing = isFollowing
 
     updateConfig(config)
   }
