@@ -17,6 +17,7 @@ import macOSTrayIcon from '../../resources/tray-icon-macos.png?asset'
 import { openDebugger, setupDebugger } from './app/debugger'
 import { emitAppBeforeQuit, emitAppReady, emitAppWindowAllClosed, onAppBeforeQuit } from './libs/bootkit/lifecycle'
 import { setElectronMainDirname } from './libs/electron/location'
+import { setupCaptionWindowManager } from './windows/caption'
 import { setupInlayWindow } from './windows/inlay'
 import { setupMainWindow } from './windows/main'
 import { setupSettingsWindowReusableFunc } from './windows/settings'
@@ -49,6 +50,7 @@ electronApp.setAppUserModelId('ai.moeru.airi')
 function setupTray(params: {
   mainWindow: BrowserWindow
   settingsWindow: () => Promise<BrowserWindow>
+  captionWindow: ReturnType<typeof setupCaptionWindowManager>
 }): void {
   once(() => {
     const appTray = new Tray(nativeImage.createFromPath(macOSTrayIcon).resize({ width: 16 }))
@@ -56,9 +58,19 @@ function setupTray(params: {
 
     const contextMenu = Menu.buildFromTemplate([
       { label: 'Show', click: () => toggleWindowShow(params.mainWindow) },
-      { label: 'Inlay', click: () => setupInlayWindow() },
       { type: 'separator' },
-      { label: 'Settings', click: () => params.settingsWindow().then(window => toggleWindowShow(window)) },
+      { label: 'Settings...', click: () => params.settingsWindow().then(window => toggleWindowShow(window)) },
+      { type: 'separator' },
+      { label: 'Open Inlay...', click: () => setupInlayWindow() },
+      { label: 'Open Caption...', click: () => params.captionWindow.getWindow().then(window => toggleWindowShow(window)) },
+      {
+        type: 'submenu',
+        label: 'Caption Overlay',
+        submenu: Menu.buildFromTemplate([
+          { type: 'checkbox', label: 'Follow window', checked: params.captionWindow.getIsFollowingWindow(), click: async menuItem => await params.captionWindow.setFollowWindow(Boolean(menuItem.checked)) },
+          { label: 'Reset position', click: async () => await params.captionWindow.resetToSide() },
+        ]),
+      },
       { type: 'separator' },
       { label: 'Quit', click: () => app.quit() },
     ])
@@ -117,9 +129,13 @@ app.whenReady().then(async () => {
     dependsOn: { settingsWindow },
     build: async ({ dependsOn }) => setupMainWindow(dependsOn),
   })
+  const captionWindow = injecta.provide('windows:caption', {
+    dependsOn: { mainWindow },
+    build: async ({ dependsOn }) => setupCaptionWindowManager({ mainWindow: dependsOn.mainWindow }),
+  })
   const tray = injecta.provide('app:tray', {
-    dependsOn: { mainWindow, settingsWindow },
-    build: async ({ dependsOn }) => setupTray(dependsOn),
+    dependsOn: { mainWindow, settingsWindow, captionWindow },
+    build: async ({ dependsOn }) => setupTray(dependsOn as any),
   })
   injecta.invoke({
     dependsOn: { mainWindow, tray },

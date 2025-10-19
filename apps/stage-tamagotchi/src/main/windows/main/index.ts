@@ -50,6 +50,11 @@ export async function setupMainWindow(params: {
       preload: join(dirname(fileURLToPath(import.meta.url)), '../preload/index.mjs'),
       sandbox: false,
     },
+    // Thanks to [@HeartArmy](https://github.com/HeartArmy) for the tip implementation.
+    //
+    // https://github.com/electron/electron/issues/10078#issuecomment-3410164802
+    // https://stackoverflow.com/questions/39835282/set-browserwindow-always-on-top-even-other-app-is-in-fullscreen-electron-mac
+    type: 'panel',
     ...transparentWindowConfig(),
   })
 
@@ -98,7 +103,13 @@ export async function setupMainWindow(params: {
   window.on('resize', () => handleNewBounds(window.getBounds()))
   window.on('move', () => handleNewBounds(window.getBounds()))
 
-  window.setAlwaysOnTop(true)
+  // Thanks to [@HeartArmy](https://github.com/HeartArmy) for the tip implementation.
+  //
+  // https://github.com/electron/electron/issues/10078#issuecomment-3410164802
+  // https://stackoverflow.com/questions/39835282/set-browserwindow-always-on-top-even-other-app-is-in-fullscreen-electron-mac
+  window.setAlwaysOnTop(true, 'screen-saver', 1)
+  window.setFullScreenable(false)
+  window.setVisibleOnAllWorkspaces(true)
   if (isMacOS) {
     window.setWindowButtonVisibility(false)
   }
