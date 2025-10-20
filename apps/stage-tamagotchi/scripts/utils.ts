@@ -93,11 +93,17 @@ function mapArchFor(
       if (ext === 'rpm') {
         return 'aarch64'
       }
+      if (ext === 'deb') {
+        return 'arm64'
+      }
 
       return 'arm64'
     case target === 'x86_64-unknown-linux-gnu':
       if (ext === 'rpm') {
         return 'x86_64'
+      }
+      if (ext === 'deb') {
+        return 'amd64'
       }
 
       return 'x64'
