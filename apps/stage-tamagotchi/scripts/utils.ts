@@ -92,7 +92,7 @@ export async function getFilenames(target: string, options: { release: boolean, 
     throw new Error('<Target> is required')
   }
 
-  const beforeVersion = version
+  const beforeVersion = packageJSON.version
   const productName = electronBuilder.productName!
 
   switch (target) {
