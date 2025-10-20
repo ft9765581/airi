@@ -112,19 +112,22 @@ jobs:
 
       - name: Get Artifacts Envs (Nightly + Windows Only)
         if: ${{ github.event_name == 'schedule' && matrix.os == 'windows-latest' }}
+        working-directory: ./apps/stage-tamagotchi
         run: |
-          echo "BUNDLE_NAME=$(pnpm -F @proj-airi/stage-tamagotchi artifacts-metadata ${{ matrix.target }} --get-bundle-name)" >> $env:GITHUB_ENV
-          echo "VERSION=$(pnpm -F @proj-airi/stage-tamagotchi artifacts-metadata ${{ matrix.target }} --get-version)" >> $env:GITHUB_ENV
+          echo "BUNDLE_NAME=$(pnpm exec tsx scripts/artifacts-metadata.ts ${{ matrix.target }} --get-bundle-name)" >> $env:GITHUB_ENV
+          echo "VERSION=$(pnpm exec tsx scripts/artifacts-metadata.ts ${{ matrix.target }} --get-version)" >> $env:GITHUB_ENV
 
       - name: Get Artifacts Envs (Nightly + Non-Windows)
         if: ${{ github.event_name == 'schedule' && matrix.os != 'windows-latest' }}
+        working-directory: ./apps/stage-tamagotchi
         run: |
-          echo "VERSION=$(pnpm -F @proj-airi/stage-tamagotchi artifacts-metadata ${{ matrix.target }} --get-version)" >> $GITHUB_ENV
+          echo "VERSION=$(pnpm exec tsx scripts/artifacts-metadata.ts ${{ matrix.target }} --get-version)" >> $env:GITHUB_ENV
 
       - name: Get Artifacts Envs (Nightly + macOS Only)
         if: ${{ github.event_name == 'schedule' && (matrix.os == 'macos-latest' || matrix.os == 'macos-13') }}
+        working-directory: ./apps/stage-tamagotchi
         run: |
-          echo "BUNDLE_NAME=$(pnpm -F @proj-airi/stage-tamagotchi artifacts-metadata ${{ matrix.target }} --get-bundle-name)" >> $GITHUB_ENV
+          echo "BUNDLE_NAME=$(pnpm exec tsx scripts/artifacts-metadata.ts ${{ matrix.target }} --get-bundle-name)" >> $env:GITHUB_ENV
 
       - name: Rename Artifacts (Nightly)
         if: ${{ github.event_name == 'schedule' }}
@@ -158,19 +161,22 @@ jobs:
 
       - name: Get Artifacts Envs (Manual + Windows Only)
         if: ${{ github.event_name == 'workflow_dispatch' && matrix.os == 'windows-latest' }}
+        working-directory: ./apps/stage-tamagotchi
         run: |
-          echo "BUNDLE_NAME=$(pnpm -F @proj-airi/stage-tamagotchi artifacts-metadata ${{ matrix.target }} --get-bundle-name --release ${{ !inputs.build_only && !inputs.artifacts_only }} --tag ${{ inputs.tag }} --auto-tag ${{ !inputs.build_only }})" >> $env:GITHUB_ENV
-          echo "VERSION=$(pnpm -F @proj-airi/stage-tamagotchi artifacts-metadata ${{ matrix.target }} --get-version --release ${{ !inputs.build_only && !inputs.artifacts_only }} --tag ${{ inputs.tag }} --auto-tag ${{ !inputs.build_only }})" >> $env:GITHUB_ENV
+          echo "BUNDLE_NAME=$(pnpm exec tsx scripts/artifacts-metadata.ts ${{ matrix.target }} --get-bundle-name --release ${{ !inputs.build_only && !inputs.artifacts_only }} --tag ${{ inputs.tag }} --auto-tag ${{ !inputs.build_only }})" >> $env:GITHUB_ENV
+          echo "VERSION=$(pnpm exec tsx scripts/artifacts-metadata.ts ${{ matrix.target }} --get-version --release ${{ !inputs.build_only && !inputs.artifacts_only }} --tag ${{ inputs.tag }} --auto-tag ${{ !inputs.build_only }})" >> $env:GITHUB_ENV
 
       - name: Get Artifacts Envs (Manual + Non-Windows)
         if: ${{ github.event_name == 'workflow_dispatch' && matrix.os != 'windows-latest' }}
+        working-directory: ./apps/stage-tamagotchi
         run: |
-          echo "VERSION=$(pnpm -F @proj-airi/stage-tamagotchi artifacts-metadata ${{ matrix.target }} --get-version --release ${{ !inputs.build_only && !inputs.artifacts_only }} --tag ${{ inputs.tag }} --auto-tag ${{ !inputs.build_only }})" >> $GITHUB_ENV
+          echo "VERSION=$(pnpm exec tsx scripts/artifacts-metadata.ts ${{ matrix.target }} --get-version --release ${{ !inputs.build_only && !inputs.artifacts_only }} --tag ${{ inputs.tag }} --auto-tag ${{ !inputs.build_only }})" > $GITHUB_ENV
 
       - name: Get Artifacts Envs (Manual + macOS Only)
         if: ${{ github.event_name == 'workflow_dispatch' && (matrix.os == 'macos-latest' || matrix.os == 'macos-13') }}
+        working-directory: ./apps/stage-tamagotchi
         run: |
-          echo "BUNDLE_NAME=$(pnpm -F @proj-airi/stage-tamagotchi artifacts-metadata ${{ matrix.target }} --get-bundle-name --release ${{ !inputs.build_only && !inputs.artifacts_only }} --tag ${{ inputs.tag }} --auto-tag ${{ !inputs.build_only }})" >> $GITHUB_ENV
+          echo "BUNDLE_NAME=$(pnpm exec tsx scripts/artifacts-metadata.ts ${{ matrix.target }} --get-bundle-name --release ${{ !inputs.build_only && !inputs.artifacts_only }} --tag ${{ inputs.tag }} --auto-tag ${{ !inputs.build_only }})" > $GITHUB_ENV
 
       - name: Rename Artifacts (Manual)
         if: ${{ github.event_name == 'workflow_dispatch' }}
