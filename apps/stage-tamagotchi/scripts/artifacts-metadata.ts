@@ -12,6 +12,11 @@ async function main() {
       { default: false },
     )
     .option(
+      '--get-filename <ext>',
+      'Get the release artifact filename for a specific extension (e.g., deb, rpm, dmg, exe)',
+      { default: '', type: [String] },
+    )
+    .option(
       '--auto-tag',
       'Automatically tag the release with the latest git ref',
       { default: false },
@@ -46,12 +51,23 @@ async function main() {
     getBundleName: boolean
     getProductName: boolean
     getVersion: boolean
+    getFilename: string[]
   }
 
   const target = args.args[0]
   if (argOptions.getBundleName) {
     const filenames = await getFilenames(target, argOptions)
     console.info(filenames[0].releaseArtifactFilename)
+  }
+  if (argOptions.getFilename && argOptions.getFilename[0]) {
+    const ext = String(argOptions.getFilename[0]).trim()
+    const filenames = await getFilenames(target, argOptions)
+    const match = filenames.find(f => f.extension === ext)
+    if (!match) {
+      console.error(`No artifact found for extension: ${ext}`)
+      process.exit(1)
+    }
+    console.info(match.releaseArtifactFilename)
   }
   if (argOptions.getProductName) {
     const electronBuilderConfig = await getElectronBuilderConfig()

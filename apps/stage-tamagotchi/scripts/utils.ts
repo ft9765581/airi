@@ -84,6 +84,34 @@ interface FilenameOutputEntry {
   version: string
 }
 
+function mapArchFor(
+  target: string,
+  ext: string,
+): string {
+  switch (true) {
+    case target === 'aarch64-unknown-linux-gnu':
+      if (ext === 'rpm') {
+        return 'aarch64'
+      }
+
+      return 'arm64'
+    case target === 'x86_64-unknown-linux-gnu':
+      if (ext === 'rpm') {
+        return 'x86_64'
+      }
+
+      return 'x64'
+    case target === 'aarch64-apple-darwin':
+      return 'arm64'
+    case target === 'x86_64-apple-darwin':
+      return 'x64'
+    case target === 'x86_64-pc-windows-msvc':
+      return 'x64'
+    default:
+      return 'x64'
+  }
+}
+
 export async function getFilenames(target: string, options: { release: boolean, autoTag: boolean, tag: string[] }): Promise<FilenameOutputEntry[]> {
   const electronBuilder = await getElectronBuilderConfig()
   const version = await getVersion(options)
@@ -102,8 +130,20 @@ export async function getFilenames(target: string, options: { release: boolean, 
         {
           target: 'x86_64-pc-windows-msvc',
           extension: 'exe',
-          outputFilename: applyTemplateOfArtifactName(electronBuilder.nsis?.artifactName!, productName, beforeVersion, 'x64', 'exe'),
-          releaseArtifactFilename: applyTemplateOfArtifactName(electronBuilder.nsis?.artifactName!, productName, version, 'x64', 'exe'),
+          outputFilename: applyTemplateOfArtifactName(
+            electronBuilder.nsis?.artifactName!,
+            productName,
+            beforeVersion,
+            mapArchFor(target, 'exe'),
+            'exe',
+          ),
+          releaseArtifactFilename: applyTemplateOfArtifactName(
+            electronBuilder.nsis?.artifactName!,
+            productName,
+            version,
+            mapArchFor(target, 'exe'),
+            'exe',
+          ),
           productName,
           version,
         },
@@ -120,8 +160,20 @@ export async function getFilenames(target: string, options: { release: boolean, 
             {
               target: 'x86_64-unknown-linux-gnu',
               extension: 'deb',
-              outputFilename: applyTemplateOfArtifactName(electronBuilder.linux.artifactName!, productName, beforeVersion, 'x64', 'deb'),
-              releaseArtifactFilename: applyTemplateOfArtifactName(electronBuilder.linux.artifactName!, productName, version, 'x64', 'deb'),
+              outputFilename: applyTemplateOfArtifactName(
+                electronBuilder.linux.artifactName!,
+                productName,
+                beforeVersion,
+                mapArchFor(target, 'deb'),
+                'deb',
+              ),
+              releaseArtifactFilename: applyTemplateOfArtifactName(
+                electronBuilder.linux.artifactName!,
+                productName,
+                version,
+                mapArchFor(target, 'deb'),
+                'deb',
+              ),
               productName,
               version,
             },
@@ -136,8 +188,20 @@ export async function getFilenames(target: string, options: { release: boolean, 
             {
               target: 'x86_64-unknown-linux-gnu',
               extension: 'rpm',
-              outputFilename: applyTemplateOfArtifactName(electronBuilder.linux.artifactName!, productName, beforeVersion, 'x64', 'rpm'),
-              releaseArtifactFilename: applyTemplateOfArtifactName(electronBuilder.linux.artifactName!, productName, version, 'x64', 'rpm'),
+              outputFilename: applyTemplateOfArtifactName(
+                electronBuilder.linux.artifactName!,
+                productName,
+                beforeVersion,
+                mapArchFor(target, 'rpm'),
+                'rpm',
+              ),
+              releaseArtifactFilename: applyTemplateOfArtifactName(
+                electronBuilder.linux.artifactName!,
+                productName,
+                version,
+                mapArchFor(target, 'rpm'),
+                'rpm',
+              ),
               productName,
               version,
             },
@@ -159,8 +223,20 @@ export async function getFilenames(target: string, options: { release: boolean, 
             {
               target: 'aarch64-unknown-linux-gnu',
               extension: 'deb',
-              outputFilename: applyTemplateOfArtifactName(electronBuilder.linux.artifactName!, productName, beforeVersion, 'arm64', 'deb'),
-              releaseArtifactFilename: applyTemplateOfArtifactName(electronBuilder.linux.artifactName!, productName, version, 'arm64', 'deb'),
+              outputFilename: applyTemplateOfArtifactName(
+                electronBuilder.linux.artifactName!,
+                productName,
+                beforeVersion,
+                mapArchFor(target, 'deb'),
+                'deb',
+              ),
+              releaseArtifactFilename: applyTemplateOfArtifactName(
+                electronBuilder.linux.artifactName!,
+                productName,
+                version,
+                mapArchFor(target, 'deb'),
+                'deb',
+              ),
               productName,
               version,
             },
@@ -175,8 +251,20 @@ export async function getFilenames(target: string, options: { release: boolean, 
             {
               target: 'aarch64-unknown-linux-gnu',
               extension: 'rpm',
-              outputFilename: applyTemplateOfArtifactName(electronBuilder.linux.artifactName!, productName, beforeVersion, 'arm64', 'rpm'),
-              releaseArtifactFilename: applyTemplateOfArtifactName(electronBuilder.linux.artifactName!, productName, version, 'arm64', 'rpm'),
+              outputFilename: applyTemplateOfArtifactName(
+                electronBuilder.linux.artifactName!,
+                productName,
+                beforeVersion,
+                mapArchFor(target, 'rpm'),
+                'rpm',
+              ),
+              releaseArtifactFilename: applyTemplateOfArtifactName(
+                electronBuilder.linux.artifactName!,
+                productName,
+                version,
+                mapArchFor(target, 'rpm'),
+                'rpm',
+              ),
               productName,
               version,
             },
@@ -191,8 +279,20 @@ export async function getFilenames(target: string, options: { release: boolean, 
         {
           target: 'aarch64-apple-darwin',
           extension: 'dmg',
-          outputFilename: applyTemplateOfArtifactName(electronBuilder.dmg?.artifactName!, productName, beforeVersion, 'arm64', 'dmg'),
-          releaseArtifactFilename: applyTemplateOfArtifactName(electronBuilder.dmg?.artifactName!, productName, version, 'arm64', 'dmg'),
+          outputFilename: applyTemplateOfArtifactName(
+            electronBuilder.dmg?.artifactName!,
+            productName,
+            beforeVersion,
+            mapArchFor(target, 'dmg'),
+            'dmg',
+          ),
+          releaseArtifactFilename: applyTemplateOfArtifactName(
+            electronBuilder.dmg?.artifactName!,
+            productName,
+            version,
+            mapArchFor(target, 'dmg'),
+            'dmg',
+          ),
           productName,
           version,
         },
@@ -202,8 +302,20 @@ export async function getFilenames(target: string, options: { release: boolean, 
         {
           target: 'x86_64-apple-darwin',
           extension: 'dmg',
-          outputFilename: applyTemplateOfArtifactName(electronBuilder.dmg?.artifactName!, productName, beforeVersion, 'x64', 'dmg'),
-          releaseArtifactFilename: applyTemplateOfArtifactName(electronBuilder.dmg?.artifactName!, productName, version, 'x64', 'dmg'),
+          outputFilename: applyTemplateOfArtifactName(
+            electronBuilder.dmg?.artifactName!,
+            productName,
+            beforeVersion,
+            mapArchFor(target, 'dmg'),
+            'dmg',
+          ),
+          releaseArtifactFilename: applyTemplateOfArtifactName(
+            electronBuilder.dmg?.artifactName!,
+            productName,
+            version,
+            mapArchFor(target, 'dmg'),
+            'dmg',
+          ),
           productName,
           version,
         },
