@@ -81,6 +81,32 @@ jobs:
         uses: jlumbroso/free-disk-space@main
 
       - uses: actions/checkout@v5
+
+      # https://docs.github.com/en/actions/how-tos/deploy/deploy-to-third-party-platforms/sign-xcode-applications
+      - name: Install the Apple certificate (macOS Only)
+        if: matrix.os == 'macos-13' || matrix.os == 'macos-latest'
+        env:
+          BUILD_CERTIFICATE_BASE64: ${{ secrets.BUILD_CERTIFICATE_BASE64 }}
+          P12_PASSWORD: ${{ secrets.P12_PASSWORD }}
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+        run: |
+          # create variables
+          CERTIFICATE_PATH=$RUNNER_TEMP/build_certificate.p12
+          KEYCHAIN_PATH=$RUNNER_TEMP/app-signing.keychain-db
+
+          # import certificate from secrets
+          echo -n "$BUILD_CERTIFICATE_BASE64" | base64 --decode -o $CERTIFICATE_PATH
+
+          # create temporary keychain
+          security create-keychain -p "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
+          security set-keychain-settings -lut 21600 $KEYCHAIN_PATH
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
+
+          # import certificate to keychain
+          security import $CERTIFICATE_PATH -P "$P12_PASSWORD" -A -t cert -f pkcs12 -k $KEYCHAIN_PATH
+          security set-key-partition-list -S apple-tool:,apple: -k "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
+          security list-keychain -d user -s $KEYCHAIN_PATH
+
       - uses: pnpm/action-setup@v4
         with:
           run_install: false
@@ -243,3 +269,8 @@ jobs:
         with:
           files: apps/stage-tamagotchi/bundle/${{ env.PRODUCT_NAME }}_*
           append_body: true
+
+      - name: Clean up keychain and provisioning profile (macOS Only)
+        if: ${{ always() && (matrix.os == 'macos-13' || matrix.os == 'macos-latest') }}
+        run: |
+          security delete-keychain $RUNNER_TEMP/app-signing.keychain-db
