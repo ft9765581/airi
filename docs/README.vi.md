@@ -99,8 +99,6 @@ Khác với các dự án VTuber AI mã nguồn mở khác, **アイリ** đư�
 
 ## Tiến Độ Hiện Tại
 
-<img src="./content/public/readme-image-pc-preview.avif">
-
 Khả năng:
 
 - [x] Bộ não

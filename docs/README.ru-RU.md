@@ -100,8 +100,6 @@
 
 ## Текущий прогресс
 
-<img src="./content/public/readme-image-pc-preview.avif">
-
 Способен на
 
 - [x] Мозг

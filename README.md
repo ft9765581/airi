@@ -101,8 +101,6 @@ This means that **アイリ is capable of running on modern browsers and devices
 
 ## Current Progress
 
-<img src="./docs/content/public/readme-image-pc-preview.avif">
-
 Capable of
 
 - [x] Brain
