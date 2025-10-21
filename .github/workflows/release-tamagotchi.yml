@@ -123,25 +123,18 @@ jobs:
         if: ${{ github.event_name == 'schedule' && matrix.os != 'windows-latest' }}
         working-directory: ./apps/stage-tamagotchi
         run: |
-          echo "VERSION=$(pnpm exec tsx scripts/artifacts-metadata.ts ${{ matrix.target }} --get-version)" >> $env:GITHUB_ENV
+          echo "VERSION=$(pnpm exec tsx scripts/artifacts-metadata.ts ${{ matrix.target }} --get-version)" >> $GITHUB_ENV
 
       - name: Get Artifacts Envs (Nightly + macOS Only)
         if: ${{ github.event_name == 'schedule' && (matrix.os == 'macos-latest' || matrix.os == 'macos-13') }}
         working-directory: ./apps/stage-tamagotchi
         run: |
-          echo "BUNDLE_NAME=$(pnpm exec tsx scripts/artifacts-metadata.ts ${{ matrix.target }} --get-bundle-name)" >> $env:GITHUB_ENV
+          echo "BUNDLE_NAME=$(pnpm exec tsx scripts/artifacts-metadata.ts ${{ matrix.target }} --get-bundle-name)" >> $GITHUB_ENV
 
-      - name: Rename Artifacts (Nightly)
-        if: ${{ github.event_name == 'schedule' }}
-        run:
-          pnpm run -F @proj-airi/stage-tamagotchi rename-artifacts ${{ matrix.target }}
-
-      - name: Upload Artifacts (Nightly + Non-Linux)
-        if: ${{ github.event_name == 'schedule' && (matrix.os != 'ubuntu-latest' && matrix.os != 'ubuntu-24.04-arm') }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ env.BUNDLE_NAME }}
-          path: apps/stage-tamagotchi/bundle/${{ env.BUNDLE_NAME }}
+          - name: Rename Artifacts (Nightly)
+          if: ${{ github.event_name == 'schedule' }}
+          run:
+            pnpm run -F @proj-airi/stage-tamagotchi rename-artifacts ${{ matrix.target }}
 
       - name: Get Linux Artifact Names (Nightly + Linux Only)
         if: ${{ github.event_name == 'schedule' && (matrix.os == 'ubuntu-latest' || matrix.os == 'ubuntu-24.04-arm') }}
@@ -149,6 +142,13 @@ jobs:
         run: |
           echo "DEB_BUNDLE_NAME=$(pnpm exec tsx scripts/artifacts-metadata.ts ${{ matrix.target }} --get-filename deb)" >> $GITHUB_ENV
           echo "RPM_BUNDLE_NAME=$(pnpm exec tsx scripts/artifacts-metadata.ts ${{ matrix.target }} --get-filename rpm)" >> $GITHUB_ENV
+
+      - name: Upload Artifacts (Nightly + Non-Linux)
+        if: ${{ github.event_name == 'schedule' && (matrix.os != 'ubuntu-latest' && matrix.os != 'ubuntu-24.04-arm') }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.BUNDLE_NAME }}
+          path: apps/stage-tamagotchi/bundle/${{ env.BUNDLE_NAME }}
 
       - name: Upload Artifacts (Nightly + Linux deb)
         if: ${{ github.event_name == 'schedule' && (matrix.os == 'ubuntu-latest' || matrix.os == 'ubuntu-24.04-arm') }}
