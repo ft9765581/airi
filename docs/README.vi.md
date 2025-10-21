@@ -56,10 +56,10 @@ Do đó, dự án AIRI mang đến một lựa chọn khác: **cho phép bạn s
 
 ## DevLogs Đã Đăng & Cập Nhật Gần Đây
 
+- [DevLog @ 2025.08.05](https://airi.moeru.ai/docs/blog/DevLog-2025.08.05/) ngày 5 tháng 8, 2025
+- [DevLog @ 2025.08.01](https://airi.moeru.ai/docs/blog/DevLog-2025.08.01/) ngày 1 tháng 8, 2025
 - [DevLog @ 2025.07.18](https://airi.moeru.ai/docs/blog/DevLog-2025.07.18/) ngày 18 tháng 7, 2025
 - [DreamLog 0x1](https://airi.moeru.ai/docs/blog/dreamlog-0x1/) ngày 16 tháng 6, 2025
-- [DevLog @ 2025.06.08](https://airi.moeru.ai/docs/blog/DevLog-2025.06.08/) ngày 8 tháng 6, 2025
-- [DevLog @ 2025.05.16](https://airi.moeru.ai/docs/blog/DevLog-2025.05.16/) ngày 16 tháng 5, 2025
 - ...xem thêm tại [docs page](https://airi.moeru.ai/docs)
 
 ## Dự Án Này Có Gì Đặc Biệt?
