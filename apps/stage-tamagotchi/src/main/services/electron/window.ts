@@ -24,4 +24,5 @@ export function createWindowService(params: { context: ReturnType<typeof createC
   defineInvokeHandler(params.context, startLoopGetBounds, () => start())
 
   defineInvokeHandler(params.context, electron.window.getBounds, () => params.window.getBounds())
+  defineInvokeHandler(params.context, electron.window.setIgnoreMouseEvents, invokeOpts => params.window.setIgnoreMouseEvents(invokeOpts[0], invokeOpts[1]))
 }

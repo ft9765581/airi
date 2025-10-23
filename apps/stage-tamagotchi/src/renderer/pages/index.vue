@@ -2,17 +2,21 @@
 import { WidgetStage } from '@proj-airi/stage-ui/components/scenes'
 import { useCanvasPixelIsTransparentAtPoint } from '@proj-airi/stage-ui/composables/canvas-alpha'
 import { useLive2d } from '@proj-airi/stage-ui/stores/live2d'
+import { debouncedRef, watchPausable } from '@vueuse/core'
 import { storeToRefs } from 'pinia'
 import { computed, ref, toRef, watch } from 'vue'
 
 import ControlsIsland from '../components/Widgets/ControlsIsland/index.vue'
 import ResourceStatusIsland from '../components/Widgets/ResourceStatusIsland/index.vue'
 
-import { useElectronRelativeMouse, useWindowStore } from '../stores/window'
+import { electron } from '../../shared/electron'
+import { useElectronEventaInvoke, useElectronMouseInElement, useElectronRelativeMouse } from '../composables/electron-vueuse'
+import { useWindowStore } from '../stores/window'
 import { useWindowControlStore } from '../stores/window-controls'
 import { WindowControlMode } from '../types/window-controls'
 
 const resourceStatusIslandRef = ref<InstanceType<typeof ResourceStatusIsland>>()
+const controlsIslandRef = ref<InstanceType<typeof ControlsIsland>>()
 const widgetStageRef = ref<{ canvasElement: () => HTMLCanvasElement }>()
 const stageCanvas = toRef(() => widgetStageRef.value?.canvasElement())
 const isClickThrough = ref(false)
@@ -23,6 +27,9 @@ const componentStateStage = ref<'pending' | 'loading' | 'mounted'>('pending')
 const windowControlStore = useWindowControlStore()
 const { x: relativeMouseX, y: relativeMouseY } = useElectronRelativeMouse()
 const isTransparent = useCanvasPixelIsTransparentAtPoint(stageCanvas, relativeMouseX, relativeMouseY)
+const setIgnoreMouseEvents = useElectronEventaInvoke(electron.window.setIgnoreMouseEvents)
+const { isOutside } = useElectronMouseInElement(controlsIslandRef)
+const isOutsideFor250Ms = debouncedRef(isOutside, 250)
 
 const { scale, positionInPercentageString } = storeToRefs(useLive2d())
 const { live2dLookAtX, live2dLookAtY } = storeToRefs(useWindowStore())
@@ -41,10 +48,34 @@ const modeIndicatorClass = computed(() => {
 })
 
 watch(componentStateStage, () => isLoading.value = componentStateStage.value !== 'mounted', { immediate: true })
-watch(isTransparent, (transparent) => {
+const { pause, resume } = watchPausable(isTransparent, (transparent) => {
   isClickThrough.value = transparent
-  isPassingThrough.value = transparent
+  isPassingThrough.value = !transparent
   windowControlStore.isIgnoringMouseEvent = !transparent
+
+  if (windowControlStore.isIgnoringMouseEvent) {
+    setIgnoreMouseEvents([true, { forward: true }])
+  }
+  else {
+    setIgnoreMouseEvents([false, { forward: true }])
+  }
+})
+
+watch(isOutsideFor250Ms, () => {
+  if (!isOutsideFor250Ms.value) {
+    isClickThrough.value = false
+    isPassingThrough.value = false
+    windowControlStore.isIgnoringMouseEvent = false
+    setIgnoreMouseEvents([false, { forward: true }])
+    pause()
+  }
+  else {
+    isClickThrough.value = true
+    isPassingThrough.value = true
+    windowControlStore.isIgnoringMouseEvent = true
+    setIgnoreMouseEvents([true, { forward: true }])
+    resume()
+  }
 })
 </script>
 
@@ -84,7 +115,7 @@ watch(isTransparent, (transparent) => {
           :y-offset="positionInPercentageString.y"
           mb="<md:18"
         />
-        <ControlsIsland />
+        <ControlsIsland ref="controlsIslandRef" />
       </div>
     </div>
     <div v-show="isLoading" h-full w-full>
