@@ -11,7 +11,7 @@ import { startClickThrough, stopClickThrough } from '../utils/windows'
 export const useWindowControlStore = defineStore('windowControl', () => {
   const controlMode = ref<WindowControlMode>(WindowControlMode.NONE)
   const isControlActive = ref(false)
-  const isIgnoringMouseEvent = ref(true)
+  const isIgnoringMouseEvent = ref(false)
 
   function toggleMode(mode: WindowControlMode) {
     controlMode.value = mode

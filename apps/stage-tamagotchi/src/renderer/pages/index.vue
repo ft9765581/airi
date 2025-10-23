@@ -1,34 +1,31 @@
 <script setup lang="ts">
 import { WidgetStage } from '@proj-airi/stage-ui/components/scenes'
+import { useCanvasPixelIsTransparentAtPoint } from '@proj-airi/stage-ui/composables/canvas-alpha'
 import { useLive2d } from '@proj-airi/stage-ui/stores/live2d'
 import { storeToRefs } from 'pinia'
-import { computed, ref, watch } from 'vue'
+import { computed, ref, toRef, watch } from 'vue'
 
 import ControlsIsland from '../components/Widgets/ControlsIsland/index.vue'
 import ResourceStatusIsland from '../components/Widgets/ResourceStatusIsland/index.vue'
 
-import { useWindowStore } from '../stores/window'
+import { useElectronRelativeMouse, useWindowStore } from '../stores/window'
 import { useWindowControlStore } from '../stores/window-controls'
 import { WindowControlMode } from '../types/window-controls'
 
-export interface Point {
-  x: number
-  y: number
-}
-
-const windowControlStore = useWindowControlStore()
-const { scale, positionInPercentageString } = storeToRefs(useLive2d())
-
-const { live2dLookAtX, live2dLookAtY } = storeToRefs(useWindowStore())
-const widgetStageRef = ref<{ canvasElement: () => HTMLCanvasElement }>()
 const resourceStatusIslandRef = ref<InstanceType<typeof ResourceStatusIsland>>()
-
+const widgetStageRef = ref<{ canvasElement: () => HTMLCanvasElement }>()
+const stageCanvas = toRef(() => widgetStageRef.value?.canvasElement())
 const isClickThrough = ref(false)
-const isFirstTime = ref(true)
+const isPassingThrough = ref(false)
 const isLoading = ref(true)
 const componentStateStage = ref<'pending' | 'loading' | 'mounted'>('pending')
 
-watch(componentStateStage, () => isLoading.value = componentStateStage.value !== 'mounted', { immediate: true })
+const windowControlStore = useWindowControlStore()
+const { x: relativeMouseX, y: relativeMouseY } = useElectronRelativeMouse()
+const isTransparent = useCanvasPixelIsTransparentAtPoint(stageCanvas, relativeMouseX, relativeMouseY)
+
+const { scale, positionInPercentageString } = storeToRefs(useLive2d())
+const { live2dLookAtX, live2dLookAtY } = storeToRefs(useWindowStore())
 
 const modeIndicatorClass = computed(() => {
   switch (windowControlStore.controlMode) {
@@ -42,33 +39,53 @@ const modeIndicatorClass = computed(() => {
       return ''
   }
 })
+
+watch(componentStateStage, () => isLoading.value = componentStateStage.value !== 'mounted', { immediate: true })
+watch(isTransparent, (transparent) => {
+  isClickThrough.value = transparent
+  isPassingThrough.value = transparent
+  windowControlStore.isIgnoringMouseEvent = !transparent
+})
 </script>
 
 <template>
   <div
-    :class="[modeIndicatorClass, {
-      'op-0': windowControlStore.isIgnoringMouseEvent && !isClickThrough && !isFirstTime,
-    }]"
+    :class="[modeIndicatorClass]"
     max-h="[100vh]"
     max-w="[100vw]"
     flex="~ col"
     relative z-2 h-full overflow-hidden rounded-xl
     transition="opacity duration-500 ease-in-out"
   >
-    <div v-show="!isLoading" relative h-full w-full items-end gap-2 class="view">
-      <ResourceStatusIsland ref="resourceStatusIslandRef" />
-      <WidgetStage
-        ref="widgetStageRef"
-        v-model:state="componentStateStage"
-        h-full w-full
-        flex-1
-        :focus-at="{ x: live2dLookAtX, y: live2dLookAtY }"
-        :scale="scale"
-        :x-offset="positionInPercentageString.x"
-        :y-offset="positionInPercentageString.y"
-        mb="<md:18"
-      />
-      <ControlsIsland />
+    <div
+      v-show="!isLoading"
+      :class="[
+        'relative h-full w-full items-end gap-2',
+        'transition-opacity duration-250 ease-in-out',
+      ]"
+    >
+      <div
+        :class="[
+          windowControlStore.isIgnoringMouseEvent && !isClickThrough ? 'op-0' : 'op-100',
+          'absolute',
+          'top-0 left-0 w-full h-full',
+          'transition-opacity duration-250 ease-in-out',
+        ]"
+      >
+        <ResourceStatusIsland ref="resourceStatusIslandRef" />
+        <WidgetStage
+          ref="widgetStageRef"
+          v-model:state="componentStateStage"
+          h-full w-full
+          flex-1
+          :focus-at="{ x: live2dLookAtX, y: live2dLookAtY }"
+          :scale="scale"
+          :x-offset="positionInPercentageString.x"
+          :y-offset="positionInPercentageString.y"
+          mb="<md:18"
+        />
+        <ControlsIsland />
+      </div>
     </div>
     <div v-show="isLoading" h-full w-full>
       <div class="absolute left-0 top-0 z-99 h-full w-full flex cursor-grab items-center justify-center overflow-hidden">
@@ -138,14 +155,6 @@ const modeIndicatorClass = computed(() => {
 </template>
 
 <style scoped>
-.view {
-  transition: opacity 0.5s ease-in-out;
-
-  .show-on-hover {
-    opacity: 1;
-  }
-}
-
 @keyframes wall-move {
   0% {
     transform: translateX(calc(var(--wall-width) * -2));
