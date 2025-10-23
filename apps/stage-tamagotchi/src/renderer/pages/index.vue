@@ -4,7 +4,7 @@ import { useCanvasPixelIsTransparentAtPoint } from '@proj-airi/stage-ui/composab
 import { useLive2d } from '@proj-airi/stage-ui/stores/live2d'
 import { debouncedRef, watchPausable } from '@vueuse/core'
 import { storeToRefs } from 'pinia'
-import { computed, ref, toRef, watch } from 'vue'
+import { ref, toRef, watch } from 'vue'
 
 import ControlsIsland from '../components/Widgets/ControlsIsland/index.vue'
 import ResourceStatusIsland from '../components/Widgets/ResourceStatusIsland/index.vue'
@@ -12,8 +12,6 @@ import ResourceStatusIsland from '../components/Widgets/ResourceStatusIsland/ind
 import { electron } from '../../shared/electron'
 import { useElectronEventaInvoke, useElectronMouseInElement, useElectronRelativeMouse } from '../composables/electron-vueuse'
 import { useWindowStore } from '../stores/window'
-import { useWindowControlStore } from '../stores/window-controls'
-import { WindowControlMode } from '../types/window-controls'
 
 const resourceStatusIslandRef = ref<InstanceType<typeof ResourceStatusIsland>>()
 const controlsIslandRef = ref<InstanceType<typeof ControlsIsland>>()
@@ -24,7 +22,6 @@ const isPassingThrough = ref(false)
 const isLoading = ref(true)
 const componentStateStage = ref<'pending' | 'loading' | 'mounted'>('pending')
 
-const windowControlStore = useWindowControlStore()
 const { x: relativeMouseX, y: relativeMouseY } = useElectronRelativeMouse()
 const isTransparent = useCanvasPixelIsTransparentAtPoint(stageCanvas, relativeMouseX, relativeMouseY)
 const setIgnoreMouseEvents = useElectronEventaInvoke(electron.window.setIgnoreMouseEvents)
@@ -34,26 +31,12 @@ const isOutsideFor250Ms = debouncedRef(isOutside, 250)
 const { scale, positionInPercentageString } = storeToRefs(useLive2d())
 const { live2dLookAtX, live2dLookAtY } = storeToRefs(useWindowStore())
 
-const modeIndicatorClass = computed(() => {
-  switch (windowControlStore.controlMode) {
-    case WindowControlMode.MOVE:
-      return 'cursor-move'
-    case WindowControlMode.RESIZE:
-      return 'cursor-se-resize'
-    case WindowControlMode.DEBUG:
-      return 'debug-mode'
-    default:
-      return ''
-  }
-})
-
 watch(componentStateStage, () => isLoading.value = componentStateStage.value !== 'mounted', { immediate: true })
 const { pause, resume } = watchPausable(isTransparent, (transparent) => {
   isClickThrough.value = transparent
   isPassingThrough.value = !transparent
-  windowControlStore.isIgnoringMouseEvent = !transparent
 
-  if (windowControlStore.isIgnoringMouseEvent) {
+  if (isPassingThrough.value) {
     setIgnoreMouseEvents([true, { forward: true }])
   }
   else {
@@ -65,14 +48,12 @@ watch(isOutsideFor250Ms, () => {
   if (!isOutsideFor250Ms.value) {
     isClickThrough.value = false
     isPassingThrough.value = false
-    windowControlStore.isIgnoringMouseEvent = false
     setIgnoreMouseEvents([false, { forward: true }])
     pause()
   }
   else {
     isClickThrough.value = true
     isPassingThrough.value = true
-    windowControlStore.isIgnoringMouseEvent = true
     setIgnoreMouseEvents([true, { forward: true }])
     resume()
   }
@@ -81,7 +62,6 @@ watch(isOutsideFor250Ms, () => {
 
 <template>
   <div
-    :class="[modeIndicatorClass]"
     max-h="[100vh]"
     max-w="[100vw]"
     flex="~ col"
@@ -97,7 +77,7 @@ watch(isOutsideFor250Ms, () => {
     >
       <div
         :class="[
-          windowControlStore.isIgnoringMouseEvent && !isClickThrough ? 'op-0' : 'op-100',
+          isPassingThrough && !isClickThrough ? 'op-0' : 'op-100',
           'absolute',
           'top-0 left-0 w-full h-full',
           'transition-opacity duration-250 ease-in-out',
@@ -153,7 +133,7 @@ watch(isOutsideFor250Ms, () => {
     leave-to-class="opacity-0"
   >
     <div
-      v-if="windowControlStore.controlMode === WindowControlMode.MOVE"
+      v-if="false"
       class="absolute left-0 top-0 z-99 h-full w-full flex cursor-grab items-center justify-center overflow-hidden drag-region"
     >
       <div
@@ -177,7 +157,7 @@ watch(isOutsideFor250Ms, () => {
     leave-to-class="opacity-50"
   >
     <div
-      v-if="windowControlStore.controlMode === WindowControlMode.RESIZE"
+      v-if="false"
       class="absolute left-0 top-0 z-999 h-full w-full"
     >
       <div h-full w-full animate-flash animate-duration-2.5s animate-count-infinite b-4 b-primary rounded-2xl />
