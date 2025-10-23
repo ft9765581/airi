@@ -3,5 +3,6 @@ export { useElectronEventaContext, useElectronEventaInvoke } from './use-electro
 export { useElectronMouse, useElectronMouseEventTarget } from './use-electron-mouse'
 export type { UseMouseInElementReturn } from './use-electron-mouse-in-element'
 export { useElectronMouseInElement } from './use-electron-mouse-in-element'
+export { useElectronMouseInWindow } from './use-electron-mouse-in-window'
 export { useElectronRelativeMouse } from './use-electron-relative-mouse'
 export { useElectronWindowBounds } from './use-electron-window-bounds'

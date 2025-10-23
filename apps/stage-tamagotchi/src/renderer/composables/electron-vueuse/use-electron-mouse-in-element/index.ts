@@ -1,33 +1,9 @@
-import type { MaybeElementRef, UseMouseOptions } from '@vueuse/core'
+import type { MaybeElementRef, MouseInElementOptions } from '@vueuse/core'
 
 import { defaultWindow, tryOnMounted, unrefElement, useEventListener, useMutationObserver, useResizeObserver } from '@vueuse/core'
 import { shallowRef, watch } from 'vue'
 
 import { useElectronRelativeMouse } from '../use-electron-relative-mouse'
-
-export interface MouseInElementOptions extends UseMouseOptions {
-  /**
-   * Whether to handle mouse events when the cursor is outside the target element.
-   * When enabled, mouse position will continue to be tracked even when outside the element bounds.
-   *
-   * @default true
-   */
-  handleOutside?: boolean
-
-  /**
-   * Listen to window resize event
-   *
-   * @default true
-   */
-  windowScroll?: boolean
-
-  /**
-   * Listen to window scroll event
-   *
-   * @default true
-   */
-  windowResize?: boolean
-}
 
 /**
  * Reactive mouse position related to an element.

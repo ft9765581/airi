@@ -10,50 +10,55 @@ import ControlsIsland from '../components/Widgets/ControlsIsland/index.vue'
 import ResourceStatusIsland from '../components/Widgets/ResourceStatusIsland/index.vue'
 
 import { electron } from '../../shared/electron'
-import { useElectronEventaInvoke, useElectronMouseInElement, useElectronRelativeMouse } from '../composables/electron-vueuse'
+import {
+  useElectronEventaInvoke,
+  useElectronMouseInElement,
+  useElectronMouseInWindow,
+  useElectronRelativeMouse,
+} from '../composables/electron-vueuse'
 import { useWindowStore } from '../stores/window'
 
 const resourceStatusIslandRef = ref<InstanceType<typeof ResourceStatusIsland>>()
 const controlsIslandRef = ref<InstanceType<typeof ControlsIsland>>()
 const widgetStageRef = ref<{ canvasElement: () => HTMLCanvasElement }>()
 const stageCanvas = toRef(() => widgetStageRef.value?.canvasElement())
-const isClickThrough = ref(false)
-const isPassingThrough = ref(false)
-const isLoading = ref(true)
 const componentStateStage = ref<'pending' | 'loading' | 'mounted'>('pending')
 
-const { x: relativeMouseX, y: relativeMouseY } = useElectronRelativeMouse()
-const isTransparent = useCanvasPixelIsTransparentAtPoint(stageCanvas, relativeMouseX, relativeMouseY)
-const setIgnoreMouseEvents = useElectronEventaInvoke(electron.window.setIgnoreMouseEvents)
+const isLoading = ref(true)
+
+const isIgnoringMouseEvents = ref(false)
+const shouldFadeOnCursorWithin = ref(false)
+
+const { isOutside: isOutsideWindow } = useElectronMouseInWindow()
 const { isOutside } = useElectronMouseInElement(controlsIslandRef)
 const isOutsideFor250Ms = debouncedRef(isOutside, 250)
+const { x: relativeMouseX, y: relativeMouseY } = useElectronRelativeMouse()
+const isTransparent = useCanvasPixelIsTransparentAtPoint(stageCanvas, relativeMouseX, relativeMouseY)
+
+const setIgnoreMouseEvents = useElectronEventaInvoke(electron.window.setIgnoreMouseEvents)
 
 const { scale, positionInPercentageString } = storeToRefs(useLive2d())
 const { live2dLookAtX, live2dLookAtY } = storeToRefs(useWindowStore())
 
 watch(componentStateStage, () => isLoading.value = componentStateStage.value !== 'mounted', { immediate: true })
+
 const { pause, resume } = watchPausable(isTransparent, (transparent) => {
-  isClickThrough.value = transparent
-  isPassingThrough.value = !transparent
+  shouldFadeOnCursorWithin.value = !transparent
+}, { immediate: true })
 
-  if (isPassingThrough.value) {
-    setIgnoreMouseEvents([true, { forward: true }])
-  }
-  else {
-    setIgnoreMouseEvents([false, { forward: true }])
-  }
-})
-
-watch(isOutsideFor250Ms, () => {
+watch([isOutsideFor250Ms, isOutsideWindow], () => {
   if (!isOutsideFor250Ms.value) {
-    isClickThrough.value = false
-    isPassingThrough.value = false
+    isIgnoringMouseEvents.value = false
+    shouldFadeOnCursorWithin.value = false
     setIgnoreMouseEvents([false, { forward: true }])
     pause()
   }
   else {
-    isClickThrough.value = true
-    isPassingThrough.value = true
+    isIgnoringMouseEvents.value = true
+    if (!isOutsideWindow.value && !isTransparent.value) {
+      shouldFadeOnCursorWithin.value = true
+    }
+
     setIgnoreMouseEvents([true, { forward: true }])
     resume()
   }
@@ -77,7 +82,7 @@ watch(isOutsideFor250Ms, () => {
     >
       <div
         :class="[
-          isPassingThrough && !isClickThrough ? 'op-0' : 'op-100',
+          shouldFadeOnCursorWithin ? 'op-0' : 'op-100',
           'absolute',
           'top-0 left-0 w-full h-full',
           'transition-opacity duration-250 ease-in-out',
