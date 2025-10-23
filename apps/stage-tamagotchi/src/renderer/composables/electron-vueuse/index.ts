@@ -1,3 +1,4 @@
+export { useElectronAllDisplays } from './use-electorn-all-displays'
 export { useElectronEventaContext, useElectronEventaInvoke } from './use-electron-eventa-context'
 export { useElectronMouse, useElectronMouseEventTarget } from './use-electron-mouse'
 export type { UseMouseInElementReturn } from './use-electron-mouse-in-element'

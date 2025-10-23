@@ -1,24 +1,9 @@
-import { defineInvoke } from '@unbird/eventa'
-import { useAsyncState, useIntervalFn, useWindowSize } from '@vueuse/core'
+import { useWindowSize } from '@vueuse/core'
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 
-import { electron } from '../../shared/eventa'
 import { useElectronRelativeMouse } from '../composables/electron-vueuse'
-import { useElectronEventaContext } from '../composables/electron-vueuse/use-electron-eventa-context'
 import { useWindowControlStore } from './window-controls'
-
-export function useElectronAllDisplays() {
-  const context = useElectronEventaContext()
-  const getAllDisplays = defineInvoke(context.value, electron.screen.getAllDisplays)
-  const { state: allDisplays, execute } = useAsyncState(() => getAllDisplays(), [])
-
-  useIntervalFn(() => {
-    execute()
-  }, 5000)
-
-  return allDisplays
-}
 
 export const useWindowStore = defineStore('tamagotchi-window', () => {
   const windowControlStore = useWindowControlStore()
