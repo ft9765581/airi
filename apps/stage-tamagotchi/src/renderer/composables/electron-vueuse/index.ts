@@ -1,6 +1,7 @@
 export { useElectronAllDisplays } from './use-electorn-all-displays'
 export { useElectronEventaContext, useElectronEventaInvoke } from './use-electron-eventa-context'
 export { useElectronMouse, useElectronMouseEventTarget } from './use-electron-mouse'
+export { useElectronMouseAroundWindowBorder } from './use-electron-mouse-around-window-border'
 export type { UseMouseInElementReturn } from './use-electron-mouse-in-element'
 export { useElectronMouseInElement } from './use-electron-mouse-in-element'
 export { useElectronMouseInWindow } from './use-electron-mouse-in-window'

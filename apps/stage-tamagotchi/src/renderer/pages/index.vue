@@ -12,6 +12,7 @@ import ResourceStatusIsland from '../components/Widgets/ResourceStatusIsland/ind
 import { electron } from '../../shared/electron'
 import {
   useElectronEventaInvoke,
+  useElectronMouseAroundWindowBorder,
   useElectronMouseInElement,
   useElectronMouseInWindow,
   useElectronRelativeMouse,
@@ -34,6 +35,8 @@ const { isOutside } = useElectronMouseInElement(controlsIslandRef)
 const isOutsideFor250Ms = debouncedRef(isOutside, 250)
 const { x: relativeMouseX, y: relativeMouseY } = useElectronRelativeMouse()
 const isTransparent = useCanvasPixelIsTransparentAtPoint(stageCanvas, relativeMouseX, relativeMouseY)
+const { isNearAnyBorder: isAroundWindowBorder } = useElectronMouseAroundWindowBorder({ threshold: 30 })
+const isAroundWindowBorderFor250Ms = debouncedRef(isAroundWindowBorder, 250)
 
 const setIgnoreMouseEvents = useElectronEventaInvoke(electron.window.setIgnoreMouseEvents)
 
@@ -46,19 +49,23 @@ const { pause, resume } = watchPausable(isTransparent, (transparent) => {
   shouldFadeOnCursorWithin.value = !transparent
 }, { immediate: true })
 
-watch([isOutsideFor250Ms, isOutsideWindow], () => {
-  if (!isOutsideFor250Ms.value) {
+watch([isOutsideFor250Ms, isAroundWindowBorderFor250Ms, isOutsideWindow, isTransparent], () => {
+  const insideControls = !isOutsideFor250Ms.value
+  const nearBorder = isAroundWindowBorderFor250Ms.value
+
+  if (insideControls || nearBorder) {
+    // Inside interactive controls or near resize border: do NOT ignore events
     isIgnoringMouseEvents.value = false
     shouldFadeOnCursorWithin.value = false
     setIgnoreMouseEvents([false, { forward: true }])
     pause()
   }
   else {
+    // Otherwise allow click-through while we fade UI based on transparency
     isIgnoringMouseEvents.value = true
     if (!isOutsideWindow.value && !isTransparent.value) {
       shouldFadeOnCursorWithin.value = true
     }
-
     setIgnoreMouseEvents([true, { forward: true }])
     resume()
   }
@@ -85,6 +92,8 @@ watch([isOutsideFor250Ms, isOutsideWindow], () => {
           shouldFadeOnCursorWithin ? 'op-0' : 'op-100',
           'absolute',
           'top-0 left-0 w-full h-full',
+          'overflow-hidden',
+          'rounded-2xl',
           'transition-opacity duration-250 ease-in-out',
         ]"
       >
@@ -161,11 +170,13 @@ watch([isOutsideFor250Ms, isOutsideWindow], () => {
     leave-from-class="opacity-100"
     leave-to-class="opacity-50"
   >
-    <div
-      v-if="false"
-      class="absolute left-0 top-0 z-999 h-full w-full"
-    >
-      <div h-full w-full animate-flash animate-duration-2.5s animate-count-infinite b-4 b-primary rounded-2xl />
+    <div v-if="isAroundWindowBorderFor250Ms && !isLoading" class="pointer-events-none absolute left-0 top-0 z-999 h-full w-full">
+      <div
+        :class="[
+          'b-primary/50',
+          'h-full w-full animate-flash animate-duration-3s animate-count-infinite b-4 rounded-2xl',
+        ]"
+      />
     </div>
   </Transition>
 </template>
