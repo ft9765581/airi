@@ -10,6 +10,7 @@ import { ref } from 'vue'
 import HearingPermissionStatus from '../../../components/HearingPermissionStatus.vue'
 import ControlButton from './ControlButton.vue'
 import ControlButtonTooltip from './ControlButtonTooltip.vue'
+import IndicatorMicVolume from './IndicatorMicVolume.vue'
 
 import { electronOpenSettings, electronStartDraggingWindow } from '../../../../shared/eventa'
 import { isLinux } from '../../../utils/platform'
@@ -51,12 +52,14 @@ defineExpose({ hearingDialogOpen })
 
       <ControlButtonTooltip>
         <HearingConfigDialog v-model:show="hearingDialogOpen">
-          <ControlButton>
-            <Transition name="fade" mode="out-in">
-              <div v-if="isAudioEnabled" i-ph:microphone size-5 text="neutral-800 dark:neutral-300" />
-              <div v-else i-ph:microphone-slash size-5 text="neutral-800 dark:neutral-300" />
-            </Transition>
-          </ControlButton>
+          <div class="relative">
+            <ControlButton>
+              <Transition name="fade" mode="out-in">
+                <IndicatorMicVolume v-if="isAudioEnabled" size-5 />
+                <div v-else i-ph:microphone-slash size-5 text="neutral-800 dark:neutral-300" />
+              </Transition>
+            </ControlButton>
+          </div>
           <template #extra>
             <HearingPermissionStatus />
           </template>

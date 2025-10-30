@@ -13,7 +13,7 @@ import { useConsciousnessStore } from '@proj-airi/stage-ui/stores/modules/consci
 import { useHearingSpeechInputPipeline } from '@proj-airi/stage-ui/stores/modules/hearing'
 import { useProvidersStore } from '@proj-airi/stage-ui/stores/providers'
 import { useSettingsAudioDevice } from '@proj-airi/stage-ui/stores/settings'
-import { debouncedRef, watchPausable } from '@vueuse/core'
+import { debouncedRef, useBroadcastChannel, watchPausable } from '@vueuse/core'
 import { storeToRefs } from 'pinia'
 import { computed, onUnmounted, ref, toRef, watch } from 'vue'
 
@@ -115,6 +115,12 @@ const {
 
 let stopOnStopRecord: (() => void) | undefined
 
+// Caption overlay broadcast channel
+type CaptionChannelEvent
+  = | { type: 'caption-speaker', text: string }
+    | { type: 'caption-assistant', text: string }
+const { post: postCaption } = useBroadcastChannel<CaptionChannelEvent, CaptionChannelEvent>({ name: 'airi-caption-overlay' })
+
 async function startAudioInteraction() {
   try {
     await initVAD()
@@ -126,6 +132,9 @@ async function startAudioInteraction() {
       const text = await transcribeForRecording(recording)
       if (!text || !text.trim())
         return
+
+      // Update caption overlay speaker text via BroadcastChannel
+      postCaption({ type: 'caption-speaker', text })
 
       try {
         const provider = await providersStore.getProviderInstance(activeChatProvider.value)
@@ -176,6 +185,8 @@ watch([stream, () => vadLoaded.value], async ([s, loaded]) => {
     }
   }
 })
+
+// Assistant caption is broadcast from Stage.vue via the same channel
 </script>
 
 <template>
