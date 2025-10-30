@@ -5,7 +5,9 @@ import { defineInvoke } from '@unbird/eventa'
 import { createContext } from '@unbird/eventa/adapters/electron/renderer'
 import { useDark, useToggle } from '@vueuse/core'
 import { storeToRefs } from 'pinia'
+import { ref } from 'vue'
 
+import HearingPermissionStatus from '../../../components/HearingPermissionStatus.vue'
 import ControlButton from './ControlButton.vue'
 import ControlButtonTooltip from './ControlButtonTooltip.vue'
 
@@ -28,6 +30,10 @@ const openSettings = defineInvoke(context, electronOpenSettings)
  * See `apps/stage-tamagotchi/src/main/windows/main/index.ts` for handler definition
  */
 const startDraggingWindow = !isLinux ? defineInvoke(context, electronStartDraggingWindow) : undefined
+
+// Expose whether hearing dialog is open so parent can disable click-through
+const hearingDialogOpen = ref(false)
+defineExpose({ hearingDialogOpen })
 </script>
 
 <template>
@@ -44,13 +50,16 @@ const startDraggingWindow = !isLinux ? defineInvoke(context, electronStartDraggi
       </ControlButtonTooltip>
 
       <ControlButtonTooltip>
-        <HearingConfigDialog>
+        <HearingConfigDialog v-model:show="hearingDialogOpen">
           <ControlButton>
             <Transition name="fade" mode="out-in">
               <div v-if="isAudioEnabled" i-ph:microphone size-5 text="neutral-800 dark:neutral-300" />
               <div v-else i-ph:microphone-slash size-5 text="neutral-800 dark:neutral-300" />
             </Transition>
           </ControlButton>
+          <template #extra>
+            <HearingPermissionStatus />
+          </template>
         </HearingConfigDialog>
 
         <template #tooltip>
