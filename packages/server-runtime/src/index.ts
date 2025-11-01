@@ -26,7 +26,7 @@ function send(peer: Peer, event: WebSocketEvent<Record<string, unknown>> | strin
   peer.send(typeof event === 'string' ? event : JSON.stringify(event))
 }
 
-function main() {
+function main(): H3 {
   const appLogger = useLogg('App').useGlobalConfig()
   const websocketLogger = useLogg('WebSocket').useGlobalConfig()
 
@@ -189,4 +189,4 @@ function main() {
   return app
 }
 
-export const app = main()
+export const app: H3 = main()
