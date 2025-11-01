@@ -2,7 +2,6 @@
 import { HearingConfigDialog } from '@proj-airi/stage-ui/components'
 import { useSettingsAudioDevice } from '@proj-airi/stage-ui/stores/settings'
 import { defineInvoke } from '@unbird/eventa'
-import { createContext } from '@unbird/eventa/adapters/electron/renderer'
 import { useDark, useToggle } from '@vueuse/core'
 import { storeToRefs } from 'pinia'
 import { ref } from 'vue'
@@ -12,17 +11,18 @@ import ControlButton from './ControlButton.vue'
 import ControlButtonTooltip from './ControlButtonTooltip.vue'
 import IndicatorMicVolume from './IndicatorMicVolume.vue'
 
-import { electronOpenSettings, electronStartDraggingWindow } from '../../../../shared/eventa'
+import { electronOpenChat, electronOpenSettings, electronStartDraggingWindow } from '../../../../shared/eventa'
+import { useElectronEventaContext, useElectronEventaInvoke } from '../../../composables/electron-vueuse/use-electron-eventa-context'
 import { isLinux } from '../../../utils/platform'
 
 const isDark = useDark({ disableTransition: false })
 const toggleDark = useToggle(isDark)
 
 const settingsAudioDeviceStore = useSettingsAudioDevice()
+const context = useElectronEventaContext()
 const { enabled: isAudioEnabled } = storeToRefs(settingsAudioDeviceStore)
-
-const { context } = createContext(window.electron.ipcRenderer)
-const openSettings = defineInvoke(context, electronOpenSettings)
+const openSettings = useElectronEventaInvoke(electronOpenSettings)
+const openChat = useElectronEventaInvoke(electronOpenChat)
 
 /**
  * This is a know issue (or expected behavior maybe) to Electron.
@@ -30,7 +30,7 @@ const openSettings = defineInvoke(context, electronOpenSettings)
  *
  * See `apps/stage-tamagotchi/src/main/windows/main/index.ts` for handler definition
  */
-const startDraggingWindow = !isLinux ? defineInvoke(context, electronStartDraggingWindow) : undefined
+const startDraggingWindow = !isLinux ? defineInvoke(context.value, electronStartDraggingWindow) : undefined
 
 // Expose whether hearing dialog is open so parent can disable click-through
 const hearingDialogOpen = ref(false)
@@ -47,6 +47,16 @@ defineExpose({ hearingDialogOpen })
 
         <template #tooltip>
           Open settings
+        </template>
+      </ControlButtonTooltip>
+
+      <ControlButtonTooltip>
+        <ControlButton @click="openChat">
+          <div i-solar:chat-line-line-duotone size-5 text="neutral-800 dark:neutral-300" />
+        </ControlButton>
+
+        <template #tooltip>
+          Open Chat
         </template>
       </ControlButtonTooltip>
 

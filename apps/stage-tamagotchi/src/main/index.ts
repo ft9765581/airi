@@ -18,6 +18,7 @@ import { openDebugger, setupDebugger } from './app/debugger'
 import { emitAppBeforeQuit, emitAppReady, emitAppWindowAllClosed, onAppBeforeQuit } from './libs/bootkit/lifecycle'
 import { setElectronMainDirname } from './libs/electron/location'
 import { setupCaptionWindowManager } from './windows/caption'
+import { setupChatWindowReusableFunc } from './windows/chat'
 import { setupInlayWindow } from './windows/inlay'
 import { setupMainWindow } from './windows/main'
 import { setupSettingsWindowReusableFunc } from './windows/settings'
@@ -130,17 +131,20 @@ app.whenReady().then(async () => {
   const settingsWindow = injecta.provide('windows:settings', {
     build: () => setupSettingsWindowReusableFunc(),
   })
+  const chatWindow = injecta.provide('windows:chat', {
+    build: () => setupChatWindowReusableFunc(),
+  })
   const mainWindow = injecta.provide('windows:main', {
-    dependsOn: { settingsWindow },
+    dependsOn: { settingsWindow, chatWindow },
     build: async ({ dependsOn }) => setupMainWindow(dependsOn),
   })
   const captionWindow = injecta.provide('windows:caption', {
     dependsOn: { mainWindow },
-    build: async ({ dependsOn }) => setupCaptionWindowManager({ mainWindow: dependsOn.mainWindow }),
+    build: async ({ dependsOn }) => setupCaptionWindowManager(dependsOn),
   })
   const tray = injecta.provide('app:tray', {
     dependsOn: { mainWindow, settingsWindow, captionWindow },
-    build: async ({ dependsOn }) => setupTray(dependsOn as any),
+    build: async ({ dependsOn }) => setupTray(dependsOn),
   })
   injecta.invoke({
     dependsOn: { mainWindow, tray },
