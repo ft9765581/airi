@@ -33,6 +33,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@moeru/eventa": "^1.0.0-alpha.10",
     "@moeru/std": "catalog:",
     "clustr": "^1.0.2"
   },
