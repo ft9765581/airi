@@ -174,7 +174,7 @@ Concise but detailed reference for contributors working across the `moeru-ai/air
 
 ## PR / Workflow Tips
 
-- Rebase pulls; branch naming `username/feat/short-name`; clear commit messages (gitmoji is required).
+- Rebase pulls; branch naming `username/feat/short-name`; clear commit messages (gitmoji is prohibited).
 - Summarize changes, how tested (commands), and follow-ups.
 - Improve legacy you touch; avoid one-off patterns.
 - Keep changes scoped; use workspace filters (`pnpm -F <package> <script>`).
