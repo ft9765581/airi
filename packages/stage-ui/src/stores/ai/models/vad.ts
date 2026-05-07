@@ -1,5 +1,6 @@
-import type { BaseVADConfig } from '../../../libs/audio/vad'
 import type { MaybeRefOrGetter } from 'vue'
+
+import type { BaseVADConfig } from '../../../libs/audio/vad'
 
 import { merge } from '@moeru/std'
 import { ref, toRef, watch } from 'vue'
