@@ -29,9 +29,24 @@ import { PgInstrumentation } from '@opentelemetry/instrumentation-pg'
 // Source: node_modules/.pnpm/@opentelemetry+instrumentation-http@0.215.0/.../build/src/http.js L25-72
 // MUST run before `new HttpInstrumentation(...)` below — its constructor reads
 // the env var once and caches the result.
+//
+// Use a truthy check (not `??=`): `process.env.X` is `''` when the platform
+// (e.g. Railway) registers the var without a value, and `??=` does NOT override
+// empty strings — that would silently fall back to OLD semconv with no signal
+// in logs. Truthy check covers both `undefined` and `''`.
 // Removal condition: ops sets OTEL_SEMCONV_STABILITY_OPT_IN explicitly in the
-// deployment platform (Railway env), then this preload default can be deleted.
-env.OTEL_SEMCONV_STABILITY_OPT_IN ??= 'http'
+// deployment platform with a non-empty value, then this preload default can be
+// deleted.
+if (!env.OTEL_SEMCONV_STABILITY_OPT_IN) {
+  env.OTEL_SEMCONV_STABILITY_OPT_IN = 'http'
+}
+
+// Surface the resolved value in stdout BEFORE any instrumentation constructor
+// runs. Lets ops grep Railway logs for `[otel-preload]` to confirm the preload
+// actually executed and what semconv mode is active. Without this, a misloaded
+// preload (wrong `--import` path, missing flag, build cache) is invisible
+// until you query Prometheus and notice STABLE-name series are missing.
+console.info(`[otel-preload] OTEL_SEMCONV_STABILITY_OPT_IN=${env.OTEL_SEMCONV_STABILITY_OPT_IN}`)
 
 registerInstrumentations({
   instrumentations: [

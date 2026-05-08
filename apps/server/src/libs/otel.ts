@@ -1,4 +1,4 @@
-import type { Counter, Histogram, UpDownCounter } from '@opentelemetry/api'
+import type { Counter, Histogram, ObservableGauge, UpDownCounter } from '@opentelemetry/api'
 
 import type { Env } from './env'
 
@@ -77,7 +77,24 @@ export interface EngagementMetrics {
   characterCreated: Counter
   characterDeleted: Counter
   characterEngagement: Counter
-  wsConnectionsActive: UpDownCounter
+  /**
+   * Pull-based gauge for active WebSocket connections.
+   *
+   * Use when:
+   * - Querying current concurrent WS connections in Grafana / alerts.
+   *
+   * Why ObservableGauge instead of UpDownCounter:
+   * - UpDownCounter is delta-based (+1 / -1) and drifts when disconnect
+   *   handlers miss (process crash, SIGKILL, TCP RST, network blackhole).
+   * - ObservableGauge runs a callback at every export interval and reports
+   *   the live registry size, so a missed -1 self-corrects on the next
+   *   scrape instead of leaking forever.
+   *
+   * Expects:
+   * - Caller (`createChatWsHandlers`) registers exactly one callback via
+   *   `addCallback`. Multiple callbacks would double-count.
+   */
+  wsConnectionsActive: ObservableGauge
   wsMessagesSent: Counter
   wsMessagesReceived: Counter
 }
@@ -258,8 +275,15 @@ export function initOtel(env: Env): OtelInstance | undefined {
     characterEngagement: meter.createCounter(METRIC_CHARACTER_ENGAGEMENT, {
       description: 'Number of character engagement actions (like/bookmark)',
     }),
-    wsConnectionsActive: meter.createUpDownCounter(METRIC_WS_CONNECTIONS_ACTIVE, {
-      description: 'Active WebSocket connections',
+    // NOTICE:
+    // ObservableGauge — caller (chat-ws factory) registers a callback that
+    // reads the live connection registry on each export interval. UpDownCounter
+    // was previously used but drifted: missed `-1` on process crash / SIGKILL /
+    // TCP RST left the counter stuck high until Prom staleness expired the
+    // dead instance's series (~5 min). The pull-based gauge self-corrects on
+    // the next scrape because there is no delta state to leak.
+    wsConnectionsActive: meter.createObservableGauge(METRIC_WS_CONNECTIONS_ACTIVE, {
+      description: 'Active WebSocket connections (live registry size, scraped per export interval)',
     }),
     wsMessagesSent: meter.createCounter(METRIC_WS_MESSAGES_SENT, {
       description: 'Messages sent via WebSocket',
