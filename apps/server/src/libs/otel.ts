@@ -19,6 +19,16 @@ import { BatchSpanProcessor, ParentBasedSampler, TraceIdRatioBasedSampler } from
 import { ATTR_SERVICE_NAME, ATTR_SERVICE_VERSION } from '@opentelemetry/semantic-conventions'
 
 import {
+  METRIC_AIRI_EMAIL_DURATION,
+  METRIC_AIRI_EMAIL_FAILURES,
+  METRIC_AIRI_EMAIL_SEND,
+  METRIC_AIRI_FLUX_CREDITED,
+  METRIC_AIRI_FLUX_UNBILLED,
+  METRIC_AIRI_GEN_AI_STREAM_INTERRUPTED,
+  METRIC_AIRI_RATE_LIMIT_BLOCKED,
+  METRIC_AIRI_STRIPE_REVENUE,
+  METRIC_AIRI_TTS_CHARS,
+  METRIC_AIRI_TTS_PREFLIGHT_REJECTIONS,
   METRIC_AUTH_ATTEMPTS,
   METRIC_AUTH_FAILURES,
   METRIC_CHARACTER_CREATED,
@@ -27,6 +37,7 @@ import {
   METRIC_CHAT_MESSAGES,
   METRIC_FLUX_CONSUMED,
   METRIC_FLUX_INSUFFICIENT_BALANCE,
+  METRIC_GEN_AI_CLIENT_FIRST_TOKEN_DURATION,
   METRIC_GEN_AI_CLIENT_OPERATION_COUNT,
   METRIC_GEN_AI_CLIENT_OPERATION_DURATION,
   METRIC_GEN_AI_CLIENT_TOKEN_USAGE_INPUT,
@@ -77,7 +88,12 @@ export interface RevenueMetrics {
   stripePaymentFailed: Counter
   stripeSubscriptionEvent: Counter
   stripeEvents: Counter
+  stripeRevenue: Counter
   fluxInsufficientBalance: Counter
+  fluxCredited: Counter
+  fluxUnbilled: Counter
+  ttsChars: Counter
+  ttsPreflightRejections: Counter
 }
 
 export interface GenAiMetrics {
@@ -86,6 +102,18 @@ export interface GenAiMetrics {
   tokenUsageInput: Counter
   tokenUsageOutput: Counter
   fluxConsumed: Counter
+  firstTokenDuration: Histogram
+  streamInterrupted: Counter
+}
+
+export interface EmailMetrics {
+  send: Counter
+  failures: Counter
+  duration: Histogram
+}
+
+export interface RateLimitMetrics {
+  blocked: Counter
 }
 
 // NOTICE: Database metrics (db.client.operation.duration, redis.client.command.duration) were
@@ -100,6 +128,8 @@ export interface OtelInstance {
   engagement: EngagementMetrics
   revenue: RevenueMetrics
   genAi: GenAiMetrics
+  email: EmailMetrics
+  rateLimit: RateLimitMetrics
   shutdown: () => Promise<void>
 }
 
@@ -256,8 +286,24 @@ export function initOtel(env: Env): OtelInstance | undefined {
     stripeEvents: meter.createCounter(METRIC_STRIPE_EVENTS, {
       description: 'Number of Stripe webhook events processed',
     }),
+    stripeRevenue: meter.createCounter(METRIC_AIRI_STRIPE_REVENUE, {
+      description: 'Stripe revenue in smallest currency unit (e.g. cents)',
+      unit: 'minor_unit',
+    }),
     fluxInsufficientBalance: meter.createCounter(METRIC_FLUX_INSUFFICIENT_BALANCE, {
       description: 'Number of insufficient flux balance errors',
+    }),
+    fluxCredited: meter.createCounter(METRIC_AIRI_FLUX_CREDITED, {
+      description: 'Total flux credited to user balances, by source',
+    }),
+    fluxUnbilled: meter.createCounter(METRIC_AIRI_FLUX_UNBILLED, {
+      description: 'Flux that should have been debited but was not (revenue leak)',
+    }),
+    ttsChars: meter.createCounter(METRIC_AIRI_TTS_CHARS, {
+      description: 'TTS input characters processed (billing base unit)',
+    }),
+    ttsPreflightRejections: meter.createCounter(METRIC_AIRI_TTS_PREFLIGHT_REJECTIONS, {
+      description: 'Pre-flight rejections from flux-meter assertCanAfford',
     }),
   }
 
@@ -279,7 +325,75 @@ export function initOtel(env: Env): OtelInstance | undefined {
     fluxConsumed: meter.createCounter(METRIC_FLUX_CONSUMED, {
       description: 'Total flux consumed',
     }),
+    firstTokenDuration: meter.createHistogram(METRIC_GEN_AI_CLIENT_FIRST_TOKEN_DURATION, {
+      description: 'Time from request start to first streamed token (TTFB for streaming)',
+      unit: 's',
+    }),
+    streamInterrupted: meter.createCounter(METRIC_AIRI_GEN_AI_STREAM_INTERRUPTED, {
+      description: 'Streaming responses interrupted before completion',
+    }),
   }
+
+  const email: EmailMetrics = {
+    send: meter.createCounter(METRIC_AIRI_EMAIL_SEND, {
+      description: 'Transactional emails accepted by Resend',
+    }),
+    failures: meter.createCounter(METRIC_AIRI_EMAIL_FAILURES, {
+      description: 'Transactional email send failures',
+    }),
+    duration: meter.createHistogram(METRIC_AIRI_EMAIL_DURATION, {
+      description: 'Email provider call duration',
+      unit: 's',
+    }),
+  }
+
+  const rateLimit: RateLimitMetrics = {
+    blocked: meter.createCounter(METRIC_AIRI_RATE_LIMIT_BLOCKED, {
+      description: 'Requests blocked by rate limiter',
+    }),
+  }
+
+  // NOTICE:
+  // OTel SDK only emits a Counter time series after .add() runs the first time.
+  // Without this priming step, low-traffic counters (auth_failures_total,
+  // stripe_*_total, payment_failed, ...) never appear in Prometheus / Grafana
+  // until an event happens — making panels look broken on fresh deploys and
+  // making absence-based alerts impossible to author. add(0) registers the
+  // series with a baseline of 0 without distorting any rates.
+  // Removal condition: OTel SDK changes default to register Counters at create
+  // time (https://github.com/open-telemetry/opentelemetry-specification/issues/2298).
+  function primeCounter(counter: Counter): void {
+    counter.add(0)
+  }
+  primeCounter(auth.attempts)
+  primeCounter(auth.failures)
+  primeCounter(auth.userRegistered)
+  primeCounter(auth.userLogin)
+  primeCounter(engagement.chatMessages)
+  primeCounter(engagement.characterCreated)
+  primeCounter(engagement.characterDeleted)
+  primeCounter(engagement.characterEngagement)
+  primeCounter(engagement.wsMessagesSent)
+  primeCounter(engagement.wsMessagesReceived)
+  primeCounter(revenue.stripeCheckoutCreated)
+  primeCounter(revenue.stripeCheckoutCompleted)
+  primeCounter(revenue.stripePaymentFailed)
+  primeCounter(revenue.stripeSubscriptionEvent)
+  primeCounter(revenue.stripeEvents)
+  primeCounter(revenue.stripeRevenue)
+  primeCounter(revenue.fluxInsufficientBalance)
+  primeCounter(revenue.fluxCredited)
+  primeCounter(revenue.fluxUnbilled)
+  primeCounter(revenue.ttsChars)
+  primeCounter(revenue.ttsPreflightRejections)
+  primeCounter(genAi.operationCount)
+  primeCounter(genAi.tokenUsageInput)
+  primeCounter(genAi.tokenUsageOutput)
+  primeCounter(genAi.fluxConsumed)
+  primeCounter(genAi.streamInterrupted)
+  primeCounter(email.send)
+  primeCounter(email.failures)
+  primeCounter(rateLimit.blocked)
 
   // Graceful shutdown
   const shutdown = async () => {
@@ -299,6 +413,8 @@ export function initOtel(env: Env): OtelInstance | undefined {
     engagement,
     revenue,
     genAi,
+    email,
+    rateLimit,
     shutdown,
   }
 }
