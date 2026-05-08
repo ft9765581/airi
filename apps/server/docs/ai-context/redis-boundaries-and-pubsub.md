@@ -130,7 +130,7 @@ const data = JSON.parse(message) as BroadcastMessage
 
 ## Chat WS 当前约束
 
-`src/routes/chat-ws.ts` 当前采用：
+`src/routes/chat-ws/index.ts` 当前采用：
 
 - 同实例内存连接表
 - 跨实例 Redis Pub/Sub
@@ -143,9 +143,9 @@ const data = JSON.parse(message) as BroadcastMessage
 
 因此后续如果改聊天同步：
 
-- 需要“可重放”时，不要继续堆在 Pub/Sub 上
-- 需要“跨实例即时通知”时，可以继续用 Pub/Sub
-- 需要“持久事件消费”时，应优先考虑 Streams
+- 需要”可重放”时，不要继续堆在 Pub/Sub 上
+- 需要”跨实例即时通知”时，可以继续用 Pub/Sub
+- 需要”持久事件消费”时，先回到 NOTICE 评估是否真的需要异步副作用，再考虑引入 Streams 这类抽象
 
 ## 修改 Redis 代码时的检查清单
 
@@ -159,12 +159,16 @@ const data = JSON.parse(message) as BroadcastMessage
 
 ## 当前代码可直接参考的位置
 
-- key helper
+- key helper 集中点
+  - `src/utils/redis-keys.ts`
+- 余额读 cache-aside
   - `src/services/flux.ts`
-- Streams 边界封装
-  - `src/libs/mq/stream.ts`
+- Sub-Flux 计量债务账本
+  - `src/services/billing/flux-meter.ts`
+- TTS voices 上游响应缓存
+  - `src/routes/openai/v1/index.ts::handleListVoices`
 - Pub/Sub 聊天广播
-  - `src/routes/chat-ws.ts`
+  - `src/routes/chat-ws/index.ts`
 - 命名规范和待迁移事项
   - `config-and-naming-conventions.md`
 

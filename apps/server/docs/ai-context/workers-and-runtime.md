@@ -72,7 +72,7 @@
 
 ## 聊天 WebSocket 运行时
 
-`src/routes/chat-ws.ts` 是另一种独立运行时：
+`src/routes/chat-ws/index.ts` 是另一种独立运行时：
 
 - 同实例连接保存在进程内 `Map`
 - 跨实例 fan-out 通过 Redis Pub/Sub

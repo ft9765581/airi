@@ -14,15 +14,17 @@
 - `transport-and-routes.md`
   - HTTP / WebSocket 接口面、路由到服务映射、鉴权与中间件
 - `data-model-and-state.md`
-  - 主要表、状态归属、缓存与事件模型
+  - 主要表、状态归属、缓存边界（事件队列层已拆掉）
 - `workers-and-runtime.md`
-  - 单 `api` role、进程内后台 loop、advisory lock 协调、运行时约束
+  - 单 `api` role、无后台 loop、运行时约束（admin grant / Stripe webhook 等都同步在请求线程）
 - `redis-boundaries-and-pubsub.md`
   - Redis key / channel 收口、Pub/Sub 边界、运行时校验约束
 - `config-and-naming-conventions.md`
   - `configKV` 默认值来源、Redis key 命名、HTTP route 命名、后续收敛 TODO
 - `billing-architecture.md`
   - 计费链路专项说明，重点看 Flux ledger / Stripe 幂等
+- `stripe-pricing.md`
+  - Flux 充值定价以 Stripe Product/Price 为单一真相源，多币种 / 缓存 / 运营操作
 - `flux-meter.md`
   - Sub-Flux 计量服务（TTS/STT 等）的债务账本机制与复用指南
 - `observability-conventions.md`
@@ -39,6 +41,8 @@
   - 邮箱注册 / 忘记密码 / OIDC 桥接登录 三条用户路径的真实实测证据
 - `verifications/account-deletion.md`
   - 账号注销端到端验证：what's verified（schema/typecheck/units）和 what's pending（live DB + Resend + Stripe trace）
+- `verifications/admin-flux-grants.md`
+  - Admin 同步发 FLUX 路径：同步 grant / dry-run / adminGuard 拒绝（架构刚从 batch 切换到同步，待重新实测）
 
 ## 快速结论
 
@@ -54,10 +58,14 @@
 - 改 API 入口或新增依赖：先看 `architecture-overview.md`
 - 改某个接口行为：先看 `transport-and-routes.md`
 - 改表结构、缓存或幂等：先看 `data-model-and-state.md`
-- 改后台 loop、部署形态：先看 `workers-and-runtime.md`
+- 想加任何"异步副作用 / 后台 loop"：先看 `workers-and-runtime.md` 的"运行时修改建议"
 - 改 Redis key、Pub/Sub 边界：先看 `redis-boundaries-and-pubsub.md`
 - 改配置默认值、Redis key 命名、HTTP route 命名：先看 `config-and-naming-conventions.md`
 - 改扣费、充值、Stripe：先看 `billing-architecture.md`
+- 改 Flux 充值价格 / 多币种 / Stripe Product/Price：先看 `stripe-pricing.md`
 - 改 trace / metric attributes、OTel 命名：先看 `observability-conventions.md`
 - 改认证、OIDC、登录流程：先看 `auth-and-oidc.md`
 - 改邮件 service / Better Auth 邮件 callback：先看 `email-auth-resend.md`
+- 改账号注销 / 业务 service 的 `deleteAllForUser`：先看 `account-deletion.md`
+- 改 admin 发 FLUX 路径：先看 `admin-flux-grants.md`
+- 改 TTS / STT / embedding 等 sub-Flux 计量：先看 `flux-meter.md`

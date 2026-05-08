@@ -7,7 +7,7 @@
 - 路由层负责参数校验、鉴权、错误映射
 - 服务层负责业务逻辑和数据库事务
 - `Postgres` 负责持久化与账本真相
-- `Redis` 负责缓存、配置 KV、Pub/Sub、Streams
+- `Redis` 负责缓存、配置 KV、Pub/Sub（不再使用 Streams）
 - `injeca` 负责把这些依赖组装成一个可启动应用
 
 ## 入口与装配
@@ -51,6 +51,10 @@ CLI 入口在 `src/bin/run.ts`，只有一种角色：
   - `fluxService`
   - `requestLogService`
   - `billingService`
+  - `adminFluxGrantsService`
+  - `ttsMeter`
+  - `userDeletionService`
+  - `emailService`
 
 这个装配顺序说明了几个事实：
 
@@ -148,12 +152,12 @@ Redis 在这里同时承担：
 - Flux 余额缓存
 - 运行时配置 KV
 - WebSocket 跨实例广播 Pub/Sub
-- 计费事件 Streams
+- Sub-Flux 计量债务账本（TTS 字符等，TTL 抹零，详见 `flux-meter.md`）
+- TTS voices 上游响应缓存
 
-但余额真相仍然在 Postgres。
+但余额真相仍然在 Postgres。Redis Streams 已全部移除，详见 `redis-boundaries-and-pubsub.md` 的 NOTICE。
 
 ## 当前值得注意的实现信号
 
-- `src/services/request-log.ts` 和 `src/services/llm-request-log.ts` 职责重复，当前实际注入的是前者。
-- `src/schemas/accounts.ts` 和 `src/schemas/auth.ts` 内容重复，`createAuth()` 使用的是 `accounts.ts`。
-- `src/routes/openai/v1/index.ts` 已实现 `handleTTS` / `handleTranscription`，但路由仍被注释掉，当前只开放 chat completions。
+- `/api/v1/openai` 当前开放：`POST /chat/completions`、`POST /chat/completion`、`POST /audio/speech`、`GET /audio/voices`。`handleTranscription` 路由尚未挂载。
+- `flux_grant_batch` schema / service / route 已被简化版 `admin-flux-grants` 取代，但旧的 `src/schemas/flux-grant-batch.ts`、`src/services/admin-flux-grant-batch/`、`src/routes/admin/flux-grant-batches/` 仍以 dead code 形态残留在仓库里，没有在 `app.ts` 装配。改这块前直接删旧文件，不要继续往里面加东西。
