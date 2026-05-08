@@ -10,6 +10,7 @@ import { logs, SeverityNumber } from '@opentelemetry/api-logs'
 import { OTLPLogExporter } from '@opentelemetry/exporter-logs-otlp-proto'
 import { OTLPMetricExporter } from '@opentelemetry/exporter-metrics-otlp-proto'
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-proto'
+import { HttpInstrumentation } from '@opentelemetry/instrumentation-http'
 import { RuntimeNodeInstrumentation } from '@opentelemetry/instrumentation-runtime-node'
 import { resourceFromAttributes } from '@opentelemetry/resources'
 import { BatchLogRecordProcessor } from '@opentelemetry/sdk-logs'
@@ -214,11 +215,36 @@ export function initOtel(env: Env): OtelInstance | undefined {
       exportTimeoutMillis: 10_000,
     })],
     logRecordProcessors: [new BatchLogRecordProcessor(logExporter)],
-    // NOTICE: HttpInstrumentation, PgInstrumentation, and IORedisInstrumentation
-    // are registered in instrumentation.cjs (loaded via --require) so that
-    // require-in-the-middle can patch the CJS modules before tsx's ESM loader
-    // imports them. Only non-patching instrumentations belong here.
+    // NOTICE: PgInstrumentation and IORedisInstrumentation are registered in
+    // instrumentation.mjs (loaded via --import) so require-in-the-middle can
+    // patch their CJS modules before tsx's ESM loader caches them. They only
+    // emit spans (not metrics), and the trace API has a proxy that upgrades
+    // a noop tracer to the real one when the SDK starts — so registering
+    // early is safe for them.
+    //
+    // HttpInstrumentation MUST be here (NodeSDK config) and NOT in the
+    // preload, because:
+    // - It records `http.server.request.duration` to a Histogram instrument
+    //   created against `this.meter`.
+    // - The OTel metrics API does NOT have a proxy mechanism (see comment
+    //   below at sdk.start()). A meter obtained before the real
+    //   MeterProvider is installed becomes a permanent NoopMeter, and the
+    //   histogram inside it silently swallows every record() call.
+    // - NodeSDK calls setMeterProvider on its config-passed instrumentations
+    //   AT start time, after the real provider is installed. That path
+    //   re-runs `_updateMetricInstruments()` and gives the instrumentation
+    //   a real histogram.
+    // - The patch HttpInstrumentation installs is `Server.prototype.emit`
+    //   (incoming) — prototype-level, race-immune. Patching at SDK-start
+    //   time instead of preload time still catches every Server instance
+    //   created later.
+    // Source: node_modules/.../@opentelemetry+api/.../api/metrics.js
+    // (`getMeterProvider()` returns NoopMeterProvider until setGlobalMeterProvider
+    // is called; cached meters are not retroactively upgraded.)
     instrumentations: [
+      new HttpInstrumentation({
+        ignoreIncomingRequestHook: req => req.url === '/health',
+      }),
       new RuntimeNodeInstrumentation(),
     ],
   })
