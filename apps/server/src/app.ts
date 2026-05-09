@@ -256,16 +256,14 @@ export async function createApp() {
     emitOtelLog(log.level, log.context, log.message, log.fields as Record<string, string | number | boolean>)
   })
 
+  // NOTICE: OTel SDK lifecycle (start/shutdown) is owned entirely by
+  // instrumentation.mjs (preload). This factory only consumes the global
+  // MeterProvider that the preload set up, builds metric handles, and primes
+  // counters. No `lifecycle.onStop(shutdown)` here — preload registers SIGTERM
+  // / SIGINT to flush exporters on its own.
   const otel = injeca.provide('libs:otel', {
-    dependsOn: { env: parsedEnv, lifecycle },
-    build: ({ dependsOn }) => {
-      const o = initOtel(dependsOn.env)
-      if (!o)
-        return null
-
-      dependsOn.lifecycle.appHooks.onStop(() => o.shutdown())
-      return o
-    },
+    dependsOn: { env: parsedEnv },
+    build: ({ dependsOn }) => initOtel(dependsOn.env),
   })
 
   const db = injeca.provide('datastore:db', {
