@@ -62,7 +62,7 @@ jobs:
 
       - uses: cloudflare/wrangler-action@v3.14.1
         with:
-          apiToken: ${{ secrets.AUTH_CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ secrets.AUTH_CLOUDFLARE_ACCOUNT_ID }}
+          apiToken: ${{ secrets.MOERU_CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.MOERU_CLOUDFLARE_ACCOUNT_ID }}
           command: pages deploy ./apps/ui-server-auth/dist --project-name=moeru-ai-airi-auth --branch=main
           gitHubToken: ${{ secrets.GITHUB_TOKEN }}
