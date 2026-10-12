@@ -496,26 +496,31 @@ pages:
         placeholder: 产品手册
       base-url:
         label: 服务地址
-        description: 知识库服务的地址。
-        placeholder: https://example.com/v1
+        description: 检索接口的地址。
+        placeholder: https://kb.example.com/api/dify/retrieval
       api-key:
         label: API Key
         description: 用于校验身份的密钥。
         placeholder: 请输入 API Key
       knowledge-base-id:
         label: 知识库 ID
-        description: 要使用的知识库标识。
+        description: 检索接口要求的 knowledge_id。
         placeholder: 请输入知识库 ID
       save: 添加
       test: 测试连接
       cancel: 取消
+      needs-knowledge-id: 测试连接需要同时填写服务地址和知识库 ID。
     result:
       untested: 未测试
       testing: 测试中
       connected: 已连接
       failed: 连接失败
       http-detail: 'HTTP {status} · {latency} 毫秒'
-      unauthorized-hint: 请检查 API Key。
+      record-count: '命中 {count} 条'
+      service-error: '服务返回错误 {code}：{message}'
+      authorization-format-hint: Authorization 请求头格式无效。
+      authentication-hint: 认证失败，请检查 API Key。
+      missing-knowledge-id-hint: 服务拒绝了请求体，请检查知识库 ID。
       timeout-hint: 服务在 {seconds} 秒内没有响应。
       unreachable-hint: 服务没有响应。可能网络不可达，或被浏览器 CORS 拦截。
     notice:

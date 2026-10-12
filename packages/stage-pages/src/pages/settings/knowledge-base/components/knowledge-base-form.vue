@@ -2,7 +2,7 @@
 import type { KnowledgeBaseDraft } from '../types'
 
 import { Button, FieldInput, GhostButton } from '@proj-airi/ui'
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 import KnowledgeBaseStatusBadge from './knowledge-base-status-badge.vue'
@@ -35,8 +35,12 @@ function handleTest() {
   void run({
     baseUrl: baseUrl.value,
     apiKey: apiKey.value,
+    knowledgeId: knowledgeBaseId.value,
   })
 }
+
+/** The retrieval test needs the address and the knowledge id. */
+const readyForTest = computed(() => !!baseUrl.value.trim() && !!knowledgeBaseId.value.trim())
 </script>
 
 <template>
@@ -88,13 +92,20 @@ function handleTest() {
       >
         {{ t('settings.pages.knowledge-base.form.save') }}
       </Button>
-      <Button variant="secondary" :disabled="!baseUrl.trim() || testing" @click="handleTest">
+      <Button variant="secondary" :disabled="!readyForTest || testing" @click="handleTest">
         {{ testing ? t('settings.pages.knowledge-base.result.testing') : t('settings.pages.knowledge-base.form.test') }}
       </Button>
       <GhostButton size="sm" @click="emit('cancel')">
         {{ t('settings.pages.knowledge-base.form.cancel') }}
       </GhostButton>
     </div>
+
+    <span
+      v-if="!readyForTest"
+      :class="['text-xs text-neutral-500 dark:text-neutral-400']"
+    >
+      {{ t('settings.pages.knowledge-base.form.needs-knowledge-id') }}
+    </span>
 
     <div v-if="detail" :class="['flex items-center gap-2']">
       <KnowledgeBaseStatusBadge :status="status" />

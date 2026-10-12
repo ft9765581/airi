@@ -24,6 +24,7 @@ function handleTest() {
   void run({
     baseUrl: props.connection.baseUrl,
     apiKey: props.connection.apiKey,
+    knowledgeId: props.connection.knowledgeBaseId,
   })
 }
 </script>

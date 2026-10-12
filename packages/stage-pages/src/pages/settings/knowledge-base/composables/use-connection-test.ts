@@ -4,10 +4,10 @@ import type { KnowledgeBaseStatus } from '../types'
 import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 
-import { connectionTestTimeoutSeconds, testKnowledgeBaseConnection } from '../connection-test'
+import { connectionTestTimeoutSeconds, difyErrorCodes, testKnowledgeBaseConnection } from '../connection-test'
 
 /**
- * Runs a connection test and turns the raw result into the text a user reads.
+ * Runs a retrieval test and turns the raw result into the text a user reads.
  *
  * One instance owns one test target: the new-connection form, or one row in the
  * connection list. The raw result stays separate from the display text, so the
@@ -28,7 +28,14 @@ export function useKnowledgeBaseConnectionTest() {
     return result.value.ok ? 'connected' : 'failed'
   })
 
-  const detail = computed(() => {
+  /**
+   * Names the cause of a failed test.
+   *
+   * The service error message is the most accurate source, so it wins. The
+   * local hints cover the cases where the service sends no message of its own,
+   * which is what a rejected request and a blocked request look like.
+   */
+  const failureCause = computed(() => {
     const current = result.value
     if (!current)
       return ''
@@ -46,25 +53,61 @@ export function useKnowledgeBaseConnectionTest() {
       ].join(' · ')
     }
 
-    if (current.httpStatus === undefined)
-      return ''
-
-    const httpDetail = t('settings.pages.knowledge-base.result.http-detail', {
-      status: current.httpStatus,
-      latency: current.latencyMs,
-    })
-
-    if (current.httpStatus === 401 || current.httpStatus === 403) {
-      return [
-        httpDetail,
-        t('settings.pages.knowledge-base.result.unauthorized-hint'),
-      ].join(' · ')
+    if (current.serviceErrorMessage) {
+      return t('settings.pages.knowledge-base.result.service-error', {
+        code: current.serviceErrorCode,
+        message: current.serviceErrorMessage,
+      })
     }
 
-    return httpDetail
+    if (current.serviceErrorCode === difyErrorCodes.authorizationFormat) {
+      return t('settings.pages.knowledge-base.result.authorization-format-hint')
+    }
+
+    if (current.serviceErrorCode === difyErrorCodes.authentication) {
+      return t('settings.pages.knowledge-base.result.authentication-hint')
+    }
+
+    if (current.httpStatus === 422) {
+      return t('settings.pages.knowledge-base.result.missing-knowledge-id-hint')
+    }
+
+    if (current.httpStatus === 401 || current.httpStatus === 403) {
+      return t('settings.pages.knowledge-base.result.authentication-hint')
+    }
+
+    return ''
   })
 
-  async function run(input: { baseUrl: string, apiKey?: string }) {
+  const detail = computed(() => {
+    const current = result.value
+    if (!current)
+      return ''
+
+    if (current.httpStatus === undefined) {
+      return failureCause.value
+    }
+
+    const parts = [
+      t('settings.pages.knowledge-base.result.http-detail', {
+        status: current.httpStatus,
+        latency: current.latencyMs,
+      }),
+    ]
+
+    if (current.ok && current.recordCount !== undefined) {
+      parts.push(t('settings.pages.knowledge-base.result.record-count', {
+        count: current.recordCount,
+      }))
+    }
+    else if (failureCause.value) {
+      parts.push(failureCause.value)
+    }
+
+    return parts.join(' · ')
+  })
+
+  async function run(input: { baseUrl: string, apiKey?: string, knowledgeId?: string }) {
     testing.value = true
     result.value = undefined
 

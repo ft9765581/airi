@@ -516,26 +516,31 @@ pages:
         placeholder: Product manuals
       base-url:
         label: Server URL
-        description: The address of the knowledge base service.
-        placeholder: https://example.com/v1
+        description: The address of the retrieval endpoint.
+        placeholder: https://kb.example.com/api/dify/retrieval
       api-key:
         label: API Key
         description: The key that authenticates this client.
         placeholder: Enter the API key
       knowledge-base-id:
         label: Knowledge base ID
-        description: The identifier of the knowledge base to use.
+        description: The knowledge_id that the retrieval endpoint expects.
         placeholder: Enter the knowledge base ID
       save: Add
       test: Test connection
       cancel: Cancel
+      needs-knowledge-id: The connection test needs the server URL and the knowledge base ID.
     result:
       untested: Not tested
       testing: Testing
       connected: Connected
       failed: Failed
       http-detail: 'HTTP {status} · {latency} ms'
-      unauthorized-hint: Check the API key.
+      record-count: '{count} records'
+      service-error: 'Service error {code}: {message}'
+      authorization-format-hint: The Authorization header format is not valid.
+      authentication-hint: Authentication failed. Check the API key.
+      missing-knowledge-id-hint: The service rejected the request body. Check the knowledge base ID.
       timeout-hint: The service did not answer within {seconds} seconds.
       unreachable-hint: The service did not answer. It is unreachable, or the browser blocked the request with CORS.
     notice:
