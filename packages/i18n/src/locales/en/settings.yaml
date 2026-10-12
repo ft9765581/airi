@@ -544,7 +544,7 @@ pages:
       knowledge-base-not-found-hint: The knowledge base does not exist. Check the knowledge base ID.
       missing-knowledge-id-hint: The service rejected the request body. Check the knowledge base ID.
       timeout-hint: The service did not answer within {seconds} seconds.
-      blocked-origin-hint: The browser blocked the request with its cross-origin rule. Add {origin} to the allowed origins of the knowledge base service, or use the desktop build.
+      blocked-origin-hint: The browser blocked the cross-origin request. First check that the address opens in the browser (a 502 or no response means a server problem). Then add {origin} to the allowed origins, or use the desktop build.
       unreachable-hint: The service did not answer. Check the server URL and the network connection.
     notice:
       demo: The list is demo state and clears on refresh. The connection test sends a real request.
