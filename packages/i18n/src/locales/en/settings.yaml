@@ -480,6 +480,20 @@ pages:
   memory:
     description: Where memories got stored, and organized
     title: Memory
+  user-profile:
+    title: User Profile
+    description: Tell AIRI who the conversation is with
+    content:
+      label: Profile content
+      description: >-
+        AIRI sends this text with every message. Write facts about the user here, not instructions.
+      placeholder: |-
+        Name: Yuki
+        Postpartum day 7, caesarean section, twins
+        Allergic to penicillin
+        Main concerns: engorgement, poor sleep
+    saved: Saved automatically
+    clear: Clear
   data:
     title: Data
     description: Manage stored AIRI data, exports, and resets

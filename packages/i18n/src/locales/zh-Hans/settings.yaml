@@ -460,6 +460,20 @@ pages:
   memory:
     description: 存放记忆的地方，以及策略
     title: 记忆体
+  user-profile:
+    title: 用户画像
+    description: 让 AIRI 知道正在和谁对话
+    content:
+      label: 画像内容
+      description: >-
+        这条内容会随每条消息一起发给模型。这里写用户的事实，不要写指令。
+      placeholder: |-
+        称呼：小雅
+        产后第 7 天，剖宫产，双胎
+        青霉素过敏
+        主要困扰：涨奶、夜里睡不好
+    saved: 已自动保存
+    clear: 清空
   data:
     title: Data
     description: 管理存储 AIRI 数据、导出和重置
