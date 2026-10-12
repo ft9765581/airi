@@ -6,6 +6,11 @@ import { useI18n } from 'vue-i18n'
 
 import { connectionTestTimeoutSeconds, difyErrorCodes, testKnowledgeBaseConnection } from '../connection-test'
 
+/** The page origin, for the message that names the origin to allow. */
+function pageOrigin() {
+  return typeof window === 'undefined' ? '' : window.location.origin
+}
+
 /**
  * Runs a retrieval test and turns the raw result into the text a user reads.
  *
@@ -31,26 +36,31 @@ export function useKnowledgeBaseConnectionTest() {
   /**
    * Names the cause of a failed test.
    *
-   * The service error message is the most accurate source, so it wins. The
-   * local hints cover the cases where the service sends no message of its own,
-   * which is what a rejected request and a blocked request look like.
+   * A request that never reached the service gets one of three plain messages,
+   * because a raw browser error ("Failed to fetch") tells a user nothing. The
+   * origin message carries the address the service administrator must allow.
+   * The service error message is the most accurate source for a request that
+   * did reach the service, so it wins there.
    */
   const failureCause = computed(() => {
     const current = result.value
     if (!current)
       return ''
 
-    if (current.timedOut) {
+    if (current.failureKind === 'timeout') {
       return t('settings.pages.knowledge-base.result.timeout-hint', {
         seconds: connectionTestTimeoutSeconds,
       })
     }
 
-    if (current.errorMessage) {
-      return [
-        current.errorMessage,
-        t('settings.pages.knowledge-base.result.unreachable-hint'),
-      ].join(' · ')
+    if (current.failureKind === 'blocked-origin') {
+      return t('settings.pages.knowledge-base.result.blocked-origin-hint', {
+        origin: pageOrigin(),
+      })
+    }
+
+    if (current.failureKind === 'unreachable') {
+      return t('settings.pages.knowledge-base.result.unreachable-hint')
     }
 
     if (current.serviceErrorCode === difyErrorCodes.authorizationFormat) {

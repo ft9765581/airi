@@ -524,7 +524,8 @@ pages:
       knowledge-base-not-found-hint: 知识库不存在，请检查知识库 ID。
       missing-knowledge-id-hint: 服务拒绝了请求体，请检查知识库 ID。
       timeout-hint: 服务在 {seconds} 秒内没有响应。
-      unreachable-hint: 服务没有响应。可能网络不可达，或被浏览器 CORS 拦截。
+      blocked-origin-hint: 浏览器按跨域规则拦下了这次请求。请把 {origin} 加入知识库服务的允许来源，或改用桌面端。
+      unreachable-hint: 服务没有响应。请检查服务地址和网络连接。
     notice:
       demo: 列表是演示状态，刷新后清空。「测试连接」会真实发起请求。
   data:

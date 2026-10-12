@@ -17,6 +17,9 @@ const DIFY_ERROR_AUTHORIZATION_FORMAT = 1001
 const DIFY_ERROR_AUTHENTICATION = 1002
 const DIFY_ERROR_KNOWLEDGE_BASE_MISSING = 2001
 
+/** Why the request did not complete. */
+export type ConnectionFailureKind = 'blocked-origin' | 'unreachable' | 'timeout'
+
 /**
  * The raw result of one test request.
  *
@@ -32,7 +35,9 @@ export interface ConnectionTestResult {
   latencyMs: number
   /** True when the request ran past the timeout. */
   timedOut: boolean
-  /** The runtime error message, when the request did not complete. */
+  /** Why the request did not complete, when it did not complete. */
+  failureKind?: ConnectionFailureKind
+  /** The runtime error message, for diagnostics. */
   errorMessage?: string
   /** How many records the probe query returned. */
   recordCount?: number
@@ -98,6 +103,34 @@ async function readJsonBody(response: Response): Promise<unknown> {
 }
 
 /**
+ * Tells a blocked request apart from an unreachable service.
+ *
+ * The browser rejects both cases with one error, so it cannot name the cause.
+ * A second request in `no-cors` mode answers the question. The browser sends
+ * that request as a simple request, so it needs no preflight. A resolved
+ * promise therefore proves that the host answered, and only the cross-origin
+ * rule stopped the first request.
+ *
+ * The probe uses `text/plain`, because `no-cors` permits only simple content
+ * types. The service answers that request with an error, which is not read.
+ */
+async function classifyNetworkFailure(url: string): Promise<ConnectionFailureKind> {
+  try {
+    await fetch(url, {
+      method: 'POST',
+      mode: 'no-cors',
+      body: 'ping',
+      signal: AbortSignal.timeout(TEST_TIMEOUT_MS),
+    })
+
+    return 'blocked-origin'
+  }
+  catch {
+    return 'unreachable'
+  }
+}
+
+/**
  * Sends one retrieval request and reports what the service answered.
  *
  * The request follows the Dify external knowledge contract, because that is the
@@ -153,10 +186,14 @@ export async function testKnowledgeBaseConnection(input: {
     }
   }
   catch (error) {
+    const latencyMs = Date.now() - startedAt
+    const timedOut = error instanceof DOMException && error.name === 'TimeoutError'
+
     return {
       ok: false,
-      latencyMs: Date.now() - startedAt,
-      timedOut: error instanceof DOMException && error.name === 'TimeoutError',
+      latencyMs,
+      timedOut,
+      failureKind: timedOut ? 'timeout' : await classifyNetworkFailure(url),
       errorMessage: errorMessageFrom(error),
     }
   }
