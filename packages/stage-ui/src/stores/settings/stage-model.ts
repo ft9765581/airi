@@ -153,7 +153,14 @@ export const useSettingsStageModel = defineStore('settings-stage-model', () => {
     await updateStageModel()
   }
 
-  useEventListener('unload', () => {
+  // The browser removes the `unload` event, so Chrome reports a permissions
+  // policy violation for a listener on it and never calls the listener. This
+  // cleanup runs on `pagehide` instead. A page that enters the back/forward
+  // cache can come back, so keep the object URL while `persisted` is true.
+  useEventListener('pagehide', (event) => {
+    if (event.persisted)
+      return
+
     revokeStageModelUrl(stageModelSelectedUrl.value)
   })
 
