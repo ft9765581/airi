@@ -8,6 +8,7 @@ import { useI18n } from 'vue-i18n'
 import KnowledgeBaseStatusBadge from './knowledge-base-status-badge.vue'
 
 import { useKnowledgeBaseConnectionTest } from '../composables/use-connection-test'
+import { defaultKnowledgeBaseApiKey, defaultKnowledgeBaseServerUrl } from '../defaults'
 
 const emit = defineEmits<{
   submit: [draft: KnowledgeBaseDraft]
@@ -18,8 +19,8 @@ const { t } = useI18n()
 const { testing, status, detail, run } = useKnowledgeBaseConnectionTest()
 
 const name = ref('')
-const baseUrl = ref('')
-const apiKey = ref('')
+const baseUrl = ref(defaultKnowledgeBaseServerUrl)
+const apiKey = ref(defaultKnowledgeBaseApiKey)
 const knowledgeBaseId = ref('')
 
 function handleSubmit() {
