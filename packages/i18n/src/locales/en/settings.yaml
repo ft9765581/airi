@@ -494,6 +494,44 @@ pages:
         Main concerns: engorgement, poor sleep
     saved: Saved automatically
     clear: Clear
+  knowledge-base:
+    title: Knowledge Base
+    description: Connect one or more external knowledge bases
+    status:
+      title: Connection status
+      connected-count: 'Connected: {count}'
+      disconnected: Not connected
+    list:
+      title: Knowledge bases
+      empty: No knowledge base is connected.
+      empty-hint: Select Add knowledge base to connect one.
+      add: Add knowledge base
+      test: Test
+      remove: Remove
+    form:
+      title: New knowledge base
+      name:
+        label: Name
+        description: A short name for this knowledge base.
+        placeholder: Product manuals
+      base-url:
+        label: Server URL
+        description: The address of the knowledge base service.
+        placeholder: https://example.com/v1
+      api-key:
+        label: API Key
+        description: The key that authenticates this client.
+        placeholder: Enter the API key
+      knowledge-base-id:
+        label: Knowledge base ID
+        description: The identifier of the knowledge base to use.
+        placeholder: Enter the knowledge base ID
+      save: Add
+      test: Test connection
+      cancel: Cancel
+    notice:
+      demo: Demo interface. The list stays in this page, clears on refresh, and sends no request.
+      not-available: This feature is not available yet. No request was sent.
   data:
     title: Data
     description: Manage stored AIRI data, exports, and resets

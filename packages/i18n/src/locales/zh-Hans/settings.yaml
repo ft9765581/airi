@@ -474,6 +474,44 @@ pages:
         主要困扰：涨奶、夜里睡不好
     saved: 已自动保存
     clear: 清空
+  knowledge-base:
+    title: 知识库连接
+    description: 连接一个或多个外部知识库
+    status:
+      title: 连接状态
+      connected-count: '已连接 {count} 个知识库'
+      disconnected: 未连接
+    list:
+      title: 知识库列表
+      empty: 还没有连接知识库。
+      empty-hint: 点「添加知识库」开始连接。
+      add: 添加知识库
+      test: 测试
+      remove: 删除
+    form:
+      title: 新增知识库
+      name:
+        label: 名称
+        description: 用于在列表里区分这个知识库。
+        placeholder: 产品手册
+      base-url:
+        label: 服务地址
+        description: 知识库服务的地址。
+        placeholder: https://example.com/v1
+      api-key:
+        label: API Key
+        description: 用于校验身份的密钥。
+        placeholder: 请输入 API Key
+      knowledge-base-id:
+        label: 知识库 ID
+        description: 要使用的知识库标识。
+        placeholder: 请输入知识库 ID
+      save: 添加
+      test: 测试连接
+      cancel: 取消
+    notice:
+      demo: 演示界面：列表只保存在当前页面，刷新后清空，不会发送任何请求。
+      not-available: 该功能暂未接入，未发送任何请求。
   data:
     title: Data
     description: 管理存储 AIRI 数据、导出和重置
