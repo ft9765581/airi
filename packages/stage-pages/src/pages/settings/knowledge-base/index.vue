@@ -12,12 +12,12 @@ import KnowledgeBaseList from './components/knowledge-base-list.vue'
 const { t } = useI18n()
 
 // NOTICE:
-// The connection list is demo state for the interface only. It stays in this
-// page, clears on refresh, and sends no request. Move it into a settings store
-// when the knowledge base client lands.
+// The connection list is demo state for the interface. It stays in this page and
+// clears on refresh, so a saved connection does not survive a reload. The
+// connection test is real: it sends one request to the address the user typed.
+// Move the list into a settings store when the retrieval client lands.
 const connections = ref<KnowledgeBaseConnection[]>([])
 const adding = ref(false)
-const notice = ref('')
 
 const connectedCount = computed(() => connections.value.length)
 
@@ -28,19 +28,22 @@ function handleAdd(draft: KnowledgeBaseDraft) {
       id: nanoid(),
       name: draft.name || draft.baseUrl,
       baseUrl: draft.baseUrl,
+      apiKey: draft.apiKey,
       knowledgeBaseId: draft.knowledgeBaseId,
+      enabled: true,
     },
   ]
   adding.value = false
-  notice.value = ''
+}
+
+function handleToggle(id: string, enabled: boolean) {
+  connections.value = connections.value.map(connection =>
+    connection.id === id ? { ...connection, enabled } : connection,
+  )
 }
 
 function handleRemove(id: string) {
   connections.value = connections.value.filter(connection => connection.id !== id)
-}
-
-function handleTest() {
-  notice.value = t('settings.pages.knowledge-base.notice.not-available')
 }
 </script>
 
@@ -81,20 +84,15 @@ function handleTest() {
 
     <KnowledgeBaseList
       :connections="connections"
-      @test="handleTest"
+      @toggle="handleToggle"
       @remove="handleRemove"
     />
 
     <KnowledgeBaseForm
       v-if="adding"
       @submit="handleAdd"
-      @test="handleTest"
       @cancel="adding = false"
     />
-
-    <span v-if="notice" :class="['text-xs text-neutral-500 dark:text-neutral-400']">
-      {{ notice }}
-    </span>
   </div>
 </template>
 

@@ -480,12 +480,12 @@ pages:
     status:
       title: 连接状态
       connected-count: '已连接 {count} 个知识库'
-      disconnected: 未连接
     list:
       title: 知识库列表
       empty: 还没有连接知识库。
       empty-hint: 点「添加知识库」开始连接。
       add: 添加知识库
+      enabled: 启用
       test: 测试
       remove: 删除
     form:
@@ -509,9 +509,17 @@ pages:
       save: 添加
       test: 测试连接
       cancel: 取消
+    result:
+      untested: 未测试
+      testing: 测试中
+      connected: 已连接
+      failed: 连接失败
+      http-detail: 'HTTP {status} · {latency} 毫秒'
+      unauthorized-hint: 请检查 API Key。
+      timeout-hint: 服务在 {seconds} 秒内没有响应。
+      unreachable-hint: 服务没有响应。可能网络不可达，或被浏览器 CORS 拦截。
     notice:
-      demo: 演示界面：列表只保存在当前页面，刷新后清空，不会发送任何请求。
-      not-available: 该功能暂未接入，未发送任何请求。
+      demo: 列表是演示状态，刷新后清空。「测试连接」会真实发起请求。
   data:
     title: Data
     description: 管理存储 AIRI 数据、导出和重置

@@ -5,13 +5,17 @@ import { Button, FieldInput, GhostButton } from '@proj-airi/ui'
 import { ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 
+import KnowledgeBaseStatusBadge from './knowledge-base-status-badge.vue'
+
+import { useKnowledgeBaseConnectionTest } from '../composables/use-connection-test'
+
 const emit = defineEmits<{
   submit: [draft: KnowledgeBaseDraft]
-  test: []
   cancel: []
 }>()
 
 const { t } = useI18n()
+const { testing, status, detail, run } = useKnowledgeBaseConnectionTest()
 
 const name = ref('')
 const baseUrl = ref('')
@@ -24,6 +28,13 @@ function handleSubmit() {
     baseUrl: baseUrl.value.trim(),
     apiKey: apiKey.value,
     knowledgeBaseId: knowledgeBaseId.value.trim(),
+  })
+}
+
+function handleTest() {
+  void run({
+    baseUrl: baseUrl.value,
+    apiKey: apiKey.value,
   })
 }
 </script>
@@ -77,12 +88,17 @@ function handleSubmit() {
       >
         {{ t('settings.pages.knowledge-base.form.save') }}
       </Button>
-      <Button variant="secondary" @click="emit('test')">
-        {{ t('settings.pages.knowledge-base.form.test') }}
+      <Button variant="secondary" :disabled="!baseUrl.trim() || testing" @click="handleTest">
+        {{ testing ? t('settings.pages.knowledge-base.result.testing') : t('settings.pages.knowledge-base.form.test') }}
       </Button>
       <GhostButton size="sm" @click="emit('cancel')">
         {{ t('settings.pages.knowledge-base.form.cancel') }}
       </GhostButton>
+    </div>
+
+    <div v-if="detail" :class="['flex items-center gap-2']">
+      <KnowledgeBaseStatusBadge :status="status" />
+      <span :class="['text-xs text-neutral-500 dark:text-neutral-400']">{{ detail }}</span>
     </div>
   </div>
 </template>

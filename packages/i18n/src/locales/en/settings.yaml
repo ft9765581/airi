@@ -500,12 +500,12 @@ pages:
     status:
       title: Connection status
       connected-count: 'Connected: {count}'
-      disconnected: Not connected
     list:
       title: Knowledge bases
       empty: No knowledge base is connected.
       empty-hint: Select Add knowledge base to connect one.
       add: Add knowledge base
+      enabled: Enabled
       test: Test
       remove: Remove
     form:
@@ -529,9 +529,17 @@ pages:
       save: Add
       test: Test connection
       cancel: Cancel
+    result:
+      untested: Not tested
+      testing: Testing
+      connected: Connected
+      failed: Failed
+      http-detail: 'HTTP {status} · {latency} ms'
+      unauthorized-hint: Check the API key.
+      timeout-hint: The service did not answer within {seconds} seconds.
+      unreachable-hint: The service did not answer. It is unreachable, or the browser blocked the request with CORS.
     notice:
-      demo: Demo interface. The list stays in this page, clears on refresh, and sends no request.
-      not-available: This feature is not available yet. No request was sent.
+      demo: The list is demo state and clears on refresh. The connection test sends a real request.
   data:
     title: Data
     description: Manage stored AIRI data, exports, and resets
