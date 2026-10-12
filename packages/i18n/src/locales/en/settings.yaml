@@ -537,9 +537,11 @@ pages:
       failed: Failed
       http-detail: 'HTTP {status} · {latency} ms'
       record-count: '{count} records'
+      empty-records-hint: The connection works, but the retrieval returned no records. The knowledge base can be empty.
       service-error: 'Service error {code}: {message}'
       authorization-format-hint: The Authorization header format is not valid.
       authentication-hint: Authentication failed. Check the API key.
+      knowledge-base-not-found-hint: The knowledge base does not exist. Check the knowledge base ID.
       missing-knowledge-id-hint: The service rejected the request body. Check the knowledge base ID.
       timeout-hint: The service did not answer within {seconds} seconds.
       unreachable-hint: The service did not answer. It is unreachable, or the browser blocked the request with CORS.

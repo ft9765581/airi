@@ -15,6 +15,7 @@ const PROBE_QUERY = '连接测试'
 /** The Dify external knowledge error codes that name the failure. */
 const DIFY_ERROR_AUTHORIZATION_FORMAT = 1001
 const DIFY_ERROR_AUTHENTICATION = 1002
+const DIFY_ERROR_KNOWLEDGE_BASE_MISSING = 2001
 
 /**
  * The raw result of one test request.
@@ -136,14 +137,18 @@ export async function testKnowledgeBaseConnection(input: {
     })
 
     const body = await readJsonBody(response)
+    const serviceErrorCode = readNumber(readRecord(body, 'error_code'))
 
     return {
-      ok: response.ok,
+      // The service reports a business error with HTTP 200 and an error code in
+      // the body, so the status code alone does not prove that the connection
+      // works. A missing knowledge base answers this way.
+      ok: response.ok && serviceErrorCode === undefined,
       httpStatus: response.status,
       latencyMs: Date.now() - startedAt,
       timedOut: false,
       recordCount: readRecordCount(body),
-      serviceErrorCode: readNumber(readRecord(body, 'error_code')),
+      serviceErrorCode,
       serviceErrorMessage: readString(readRecord(body, 'error_msg')),
     }
   }
@@ -165,6 +170,7 @@ export async function testKnowledgeBaseConnection(input: {
 export const difyErrorCodes = {
   authorizationFormat: DIFY_ERROR_AUTHORIZATION_FORMAT,
   authentication: DIFY_ERROR_AUTHENTICATION,
+  knowledgeBaseMissing: DIFY_ERROR_KNOWLEDGE_BASE_MISSING,
 } as const
 
 /** The timeout in seconds, for a message a user reads. */

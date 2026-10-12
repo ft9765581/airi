@@ -517,9 +517,11 @@ pages:
       failed: 连接失败
       http-detail: 'HTTP {status} · {latency} 毫秒'
       record-count: '命中 {count} 条'
+      empty-records-hint: 连接正常，但检索没有返回内容，知识库可能是空的。
       service-error: '服务返回错误 {code}：{message}'
       authorization-format-hint: Authorization 请求头格式无效。
       authentication-hint: 认证失败，请检查 API Key。
+      knowledge-base-not-found-hint: 知识库不存在，请检查知识库 ID。
       missing-knowledge-id-hint: 服务拒绝了请求体，请检查知识库 ID。
       timeout-hint: 服务在 {seconds} 秒内没有响应。
       unreachable-hint: 服务没有响应。可能网络不可达，或被浏览器 CORS 拦截。

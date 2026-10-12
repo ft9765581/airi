@@ -53,19 +53,23 @@ export function useKnowledgeBaseConnectionTest() {
       ].join(' · ')
     }
 
-    if (current.serviceErrorMessage) {
-      return t('settings.pages.knowledge-base.result.service-error', {
-        code: current.serviceErrorCode,
-        message: current.serviceErrorMessage,
-      })
-    }
-
     if (current.serviceErrorCode === difyErrorCodes.authorizationFormat) {
       return t('settings.pages.knowledge-base.result.authorization-format-hint')
     }
 
     if (current.serviceErrorCode === difyErrorCodes.authentication) {
       return t('settings.pages.knowledge-base.result.authentication-hint')
+    }
+
+    if (current.serviceErrorCode === difyErrorCodes.knowledgeBaseMissing) {
+      return t('settings.pages.knowledge-base.result.knowledge-base-not-found-hint')
+    }
+
+    if (current.serviceErrorMessage) {
+      return t('settings.pages.knowledge-base.result.service-error', {
+        code: current.serviceErrorCode,
+        message: current.serviceErrorMessage,
+      })
     }
 
     if (current.httpStatus === 422) {
@@ -99,6 +103,12 @@ export function useKnowledgeBaseConnectionTest() {
       parts.push(t('settings.pages.knowledge-base.result.record-count', {
         count: current.recordCount,
       }))
+
+      // A working connection with no records is a common first-run state: the
+      // knowledge base answers, but it holds no content for this query.
+      if (current.recordCount === 0) {
+        parts.push(t('settings.pages.knowledge-base.result.empty-records-hint'))
+      }
     }
     else if (failureCause.value) {
       parts.push(failureCause.value)
