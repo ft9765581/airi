@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import type { KnowledgeBaseConnection, KnowledgeBaseDraft } from './types'
+import type { KnowledgeBaseDraft } from '@proj-airi/stage-ui/stores/settings/knowledge-base'
 
+import { useSettingsKnowledgeBase } from '@proj-airi/stage-ui/stores/settings/knowledge-base'
 import { Button } from '@proj-airi/ui'
 import { nanoid } from 'nanoid'
 import { computed, ref } from 'vue'
@@ -10,40 +11,79 @@ import KnowledgeBaseForm from './components/knowledge-base-form.vue'
 import KnowledgeBaseList from './components/knowledge-base-list.vue'
 
 const { t } = useI18n()
+const knowledgeBaseStore = useSettingsKnowledgeBase()
 
-// NOTICE:
-// The connection list is demo state for the interface. It stays in this page and
-// clears on refresh, so a saved connection does not survive a reload. The
-// connection test is real: it sends one request to the address the user typed.
-// Move the list into a settings store when the retrieval client lands.
-const connections = ref<KnowledgeBaseConnection[]>([])
-const adding = ref(false)
-
+const connections = computed(() => knowledgeBaseStore.connections)
 const connectedCount = computed(() => connections.value.length)
 
-function handleAdd(draft: KnowledgeBaseDraft) {
-  connections.value = [
-    ...connections.value,
-    {
-      id: nanoid(),
-      name: draft.name || draft.baseUrl,
-      baseUrl: draft.baseUrl,
-      apiKey: draft.apiKey,
-      knowledgeBaseId: draft.knowledgeBaseId,
-      enabled: true,
-    },
-  ]
-  adding.value = false
+// `editingId` holds the row under edit. An open form without it creates a
+// connection. One form is open at a time.
+const formOpen = ref(false)
+const editingId = ref<string>()
+
+const editingConnection = computed(() =>
+  editingId.value
+    ? connections.value.find(connection => connection.id === editingId.value)
+    : undefined,
+)
+
+function openCreate() {
+  editingId.value = undefined
+  formOpen.value = true
+}
+
+function openEdit(id: string) {
+  editingId.value = id
+  formOpen.value = true
+}
+
+function closeForm() {
+  formOpen.value = false
+  editingId.value = undefined
+}
+
+/** The connection fields a save writes, without the identity and the switch. */
+function toConnectionFields(draft: KnowledgeBaseDraft) {
+  return {
+    name: draft.name || draft.baseUrl,
+    baseUrl: draft.baseUrl,
+    apiKey: draft.apiKey,
+    knowledgeBaseId: draft.knowledgeBaseId,
+  }
+}
+
+function handleSubmit(draft: KnowledgeBaseDraft) {
+  if (editingId.value) {
+    const editedId = editingId.value
+    knowledgeBaseStore.connections = knowledgeBaseStore.connections.map(connection =>
+      connection.id === editedId
+        ? { ...connection, ...toConnectionFields(draft) }
+        : connection,
+    )
+  }
+  else {
+    knowledgeBaseStore.connections = [
+      ...knowledgeBaseStore.connections,
+      { id: nanoid(), enabled: true, ...toConnectionFields(draft) },
+    ]
+  }
+
+  closeForm()
 }
 
 function handleToggle(id: string, enabled: boolean) {
-  connections.value = connections.value.map(connection =>
+  knowledgeBaseStore.connections = knowledgeBaseStore.connections.map(connection =>
     connection.id === id ? { ...connection, enabled } : connection,
   )
 }
 
 function handleRemove(id: string) {
-  connections.value = connections.value.filter(connection => connection.id !== id)
+  knowledgeBaseStore.connections = knowledgeBaseStore.connections.filter(
+    connection => connection.id !== id,
+  )
+
+  if (editingId.value === id)
+    closeForm()
 }
 </script>
 
@@ -69,29 +109,31 @@ function handleRemove(id: string) {
         </div>
       </div>
       <Button
-        v-if="!adding"
+        v-if="!formOpen"
         color="primary"
         variant="primary"
         icon="i-solar:add-circle-bold-duotone"
         :label="t('settings.pages.knowledge-base.list.add')"
-        @click="adding = true"
+        @click="openCreate"
       />
     </div>
 
     <span :class="['text-xs text-neutral-500 dark:text-neutral-400']">
-      {{ t('settings.pages.knowledge-base.notice.demo') }}
+      {{ t('settings.pages.knowledge-base.notice.storage') }}
     </span>
 
     <KnowledgeBaseList
       :connections="connections"
+      @edit="openEdit"
       @toggle="handleToggle"
       @remove="handleRemove"
     />
 
     <KnowledgeBaseForm
-      v-if="adding"
-      @submit="handleAdd"
-      @cancel="adding = false"
+      v-if="formOpen"
+      :connection="editingConnection"
+      @submit="handleSubmit"
+      @cancel="closeForm"
     />
   </div>
 </template>

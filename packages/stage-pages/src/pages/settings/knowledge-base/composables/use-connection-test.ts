@@ -1,10 +1,15 @@
-import type { ConnectionTestResult } from '../connection-test'
+import type { KnowledgeBaseResponse } from '@proj-airi/stage-ui/libs/knowledge-base'
+
 import type { KnowledgeBaseStatus } from '../types'
 
+import {
+  knowledgeBaseErrorCodes,
+  knowledgeBaseProbeQuery,
+  knowledgeBaseRequestTimeoutMs,
+  requestKnowledgeBaseRetrieval,
+} from '@proj-airi/stage-ui/libs/knowledge-base'
 import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-
-import { connectionTestTimeoutSeconds, difyErrorCodes, testKnowledgeBaseConnection } from '../connection-test'
 
 /** The page origin, for the message that names the origin to allow. */
 function pageOrigin() {
@@ -12,25 +17,24 @@ function pageOrigin() {
 }
 
 /**
- * Runs a retrieval test and turns the raw result into the text a user reads.
+ * Runs a retrieval test and turns the raw response into the text a user reads.
  *
- * One instance owns one test target: the new-connection form, or one row in the
- * connection list. The raw result stays separate from the display text, so the
- * request module carries no user-facing strings.
+ * One instance owns one test target: the connection form, or one row in the
+ * connection list.
  */
 export function useKnowledgeBaseConnectionTest() {
   const { t } = useI18n()
 
   const testing = ref(false)
-  const result = ref<ConnectionTestResult>()
+  const response = ref<KnowledgeBaseResponse>()
 
   const status = computed<KnowledgeBaseStatus>(() => {
     if (testing.value)
       return 'testing'
-    if (!result.value)
+    if (!response.value)
       return 'untested'
 
-    return result.value.ok ? 'connected' : 'failed'
+    return response.value.ok ? 'connected' : 'failed'
   })
 
   /**
@@ -43,13 +47,13 @@ export function useKnowledgeBaseConnectionTest() {
    * did reach the service, so it wins there.
    */
   const failureCause = computed(() => {
-    const current = result.value
+    const current = response.value
     if (!current)
       return ''
 
     if (current.failureKind === 'timeout') {
       return t('settings.pages.knowledge-base.result.timeout-hint', {
-        seconds: connectionTestTimeoutSeconds,
+        seconds: knowledgeBaseRequestTimeoutMs / 1000,
       })
     }
 
@@ -63,15 +67,15 @@ export function useKnowledgeBaseConnectionTest() {
       return t('settings.pages.knowledge-base.result.unreachable-hint')
     }
 
-    if (current.serviceErrorCode === difyErrorCodes.authorizationFormat) {
+    if (current.serviceErrorCode === knowledgeBaseErrorCodes.authorizationFormat) {
       return t('settings.pages.knowledge-base.result.authorization-format-hint')
     }
 
-    if (current.serviceErrorCode === difyErrorCodes.authentication) {
+    if (current.serviceErrorCode === knowledgeBaseErrorCodes.authentication) {
       return t('settings.pages.knowledge-base.result.authentication-hint')
     }
 
-    if (current.serviceErrorCode === difyErrorCodes.knowledgeBaseMissing) {
+    if (current.serviceErrorCode === knowledgeBaseErrorCodes.knowledgeBaseMissing) {
       return t('settings.pages.knowledge-base.result.knowledge-base-not-found-hint')
     }
 
@@ -94,7 +98,7 @@ export function useKnowledgeBaseConnectionTest() {
   })
 
   const detail = computed(() => {
-    const current = result.value
+    const current = response.value
     if (!current)
       return ''
 
@@ -109,14 +113,14 @@ export function useKnowledgeBaseConnectionTest() {
       }),
     ]
 
-    if (current.ok && current.recordCount !== undefined) {
+    if (current.ok) {
       parts.push(t('settings.pages.knowledge-base.result.record-count', {
-        count: current.recordCount,
+        count: current.records.length,
       }))
 
       // A working connection with no records is a common first-run state: the
-      // knowledge base answers, but it holds no content for this query.
-      if (current.recordCount === 0) {
+      // knowledge base answers, but it holds no content for the probe query.
+      if (current.records.length === 0) {
         parts.push(t('settings.pages.knowledge-base.result.empty-records-hint'))
       }
     }
@@ -127,12 +131,19 @@ export function useKnowledgeBaseConnectionTest() {
     return parts.join(' · ')
   })
 
-  async function run(input: { baseUrl: string, apiKey?: string, knowledgeId?: string }) {
+  async function run(input: { baseUrl: string, apiKey?: string, knowledgeBaseId: string }) {
     testing.value = true
-    result.value = undefined
+    response.value = undefined
 
     try {
-      result.value = await testKnowledgeBaseConnection(input)
+      response.value = await requestKnowledgeBaseRetrieval({
+        baseUrl: input.baseUrl,
+        apiKey: input.apiKey,
+        knowledgeBaseId: input.knowledgeBaseId,
+        query: knowledgeBaseProbeQuery,
+        topK: 1,
+        timeoutMs: knowledgeBaseRequestTimeoutMs,
+      })
     }
     finally {
       testing.value = false
@@ -141,7 +152,7 @@ export function useKnowledgeBaseConnectionTest() {
 
   return {
     testing,
-    result,
+    response,
     status,
     detail,
     run,

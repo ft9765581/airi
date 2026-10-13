@@ -505,11 +505,13 @@ pages:
       empty: No knowledge base is connected.
       empty-hint: Select Add knowledge base to connect one.
       add: Add knowledge base
+      edit: Edit
       enabled: Enabled
       test: Test
       remove: Remove
     form:
       title: New knowledge base
+      title-edit: Edit knowledge base
       name:
         label: Name
         description: A short name for this knowledge base.
@@ -527,6 +529,9 @@ pages:
         description: The knowledge_id that the retrieval endpoint expects.
         placeholder: Enter the knowledge base ID
       save: Add
+      save-edit: Save changes
+      show-api-key: Show API key
+      hide-api-key: Hide API key
       test: Test connection
       cancel: Cancel
       needs-knowledge-id: The connection test needs the server URL and the knowledge base ID.
@@ -547,7 +552,7 @@ pages:
       blocked-origin-hint: The browser blocked the cross-origin request. First check that the address opens in the browser (a 502 or no response means a server problem). Then add {origin} to the allowed origins, or use the desktop build.
       unreachable-hint: The service did not answer. Check the server URL and the network connection.
     notice:
-      demo: The list is demo state and clears on refresh. The connection test sends a real request.
+      storage: The connections are stored in this browser. The API key is stored in clear text.
   data:
     title: Data
     description: Manage stored AIRI data, exports, and resets

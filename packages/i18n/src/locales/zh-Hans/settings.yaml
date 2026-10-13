@@ -485,11 +485,13 @@ pages:
       empty: 还没有连接知识库。
       empty-hint: 点「添加知识库」开始连接。
       add: 添加知识库
+      edit: 编辑
       enabled: 启用
       test: 测试
       remove: 删除
     form:
       title: 新增知识库
+      title-edit: 编辑知识库
       name:
         label: 名称
         description: 用于在列表里区分这个知识库。
@@ -507,6 +509,9 @@ pages:
         description: 检索接口要求的 knowledge_id。
         placeholder: 请输入知识库 ID
       save: 添加
+      save-edit: 保存修改
+      show-api-key: 显示 API Key
+      hide-api-key: 隐藏 API Key
       test: 测试连接
       cancel: 取消
       needs-knowledge-id: 测试连接需要同时填写服务地址和知识库 ID。
@@ -527,7 +532,7 @@ pages:
       blocked-origin-hint: 浏览器拦下了跨域请求。先确认该地址在浏览器里能正常打开（502 或打不开 = 服务端问题），再把 {origin} 加入允许来源，或改用桌面端。
       unreachable-hint: 服务没有响应。请检查服务地址和网络连接。
     notice:
-      demo: 列表是演示状态，刷新后清空。「测试连接」会真实发起请求。
+      storage: 连接保存在本机浏览器里，API Key 以明文保存。
   data:
     title: Data
     description: 管理存储 AIRI 数据、导出和重置

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { KnowledgeBaseConnection } from '../types'
+import type { KnowledgeBaseConnection } from '@proj-airi/stage-ui/stores/settings/knowledge-base'
 
 import { Checkbox, GhostButton } from '@proj-airi/ui'
 import { useI18n } from 'vue-i18n'
@@ -13,6 +13,7 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
+  edit: [id: string]
   toggle: [id: string, enabled: boolean]
   remove: [id: string]
 }>()
@@ -24,7 +25,7 @@ function handleTest() {
   void run({
     baseUrl: props.connection.baseUrl,
     apiKey: props.connection.apiKey,
-    knowledgeId: props.connection.knowledgeBaseId,
+    knowledgeBaseId: props.connection.knowledgeBaseId,
   })
 }
 </script>
@@ -58,6 +59,9 @@ function handleTest() {
           @update:model-value="value => emit('toggle', connection.id, value)"
         />
       </label>
+      <GhostButton size="sm" @click="emit('edit', connection.id)">
+        {{ t('settings.pages.knowledge-base.list.edit') }}
+      </GhostButton>
       <GhostButton size="sm" :disabled="testing" @click="handleTest">
         {{ testing ? t('settings.pages.knowledge-base.result.testing') : t('settings.pages.knowledge-base.list.test') }}
       </GhostButton>

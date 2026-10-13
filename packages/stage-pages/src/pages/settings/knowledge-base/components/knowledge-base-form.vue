@@ -1,14 +1,19 @@
 <script setup lang="ts">
-import type { KnowledgeBaseDraft } from '../types'
+import type { KnowledgeBaseConnection, KnowledgeBaseDraft } from '@proj-airi/stage-ui/stores/settings/knowledge-base'
 
 import { Button, FieldInput, GhostButton } from '@proj-airi/ui'
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 import KnowledgeBaseStatusBadge from './knowledge-base-status-badge.vue'
 
 import { useKnowledgeBaseConnectionTest } from '../composables/use-connection-test'
 import { defaultKnowledgeBaseApiKey, defaultKnowledgeBaseServerUrl } from '../defaults'
+
+const props = defineProps<{
+  /** The connection to edit. Without it, the form creates a connection. */
+  connection?: KnowledgeBaseConnection
+}>()
 
 const emit = defineEmits<{
   submit: [draft: KnowledgeBaseDraft]
@@ -18,16 +23,32 @@ const emit = defineEmits<{
 const { t } = useI18n()
 const { testing, status, detail, run } = useKnowledgeBaseConnectionTest()
 
+const isEditing = computed(() => props.connection !== undefined)
+
 const name = ref('')
-const baseUrl = ref(defaultKnowledgeBaseServerUrl)
-const apiKey = ref(defaultKnowledgeBaseApiKey)
+const baseUrl = ref('')
+const apiKey = ref('')
 const knowledgeBaseId = ref('')
+const revealApiKey = ref(false)
+
+// The page keeps one form open at a time and replaces the `connection` prop
+// when the user edits another row, so the fields follow the prop.
+watch(() => props.connection, (connection) => {
+  name.value = connection?.name ?? ''
+  baseUrl.value = connection?.baseUrl ?? defaultKnowledgeBaseServerUrl
+  apiKey.value = connection?.apiKey ?? defaultKnowledgeBaseApiKey
+  knowledgeBaseId.value = connection?.knowledgeBaseId ?? ''
+  revealApiKey.value = false
+}, { immediate: true })
+
+/** The retrieval test needs the address and the knowledge id. */
+const readyForTest = computed(() => !!baseUrl.value.trim() && !!knowledgeBaseId.value.trim())
 
 function handleSubmit() {
   emit('submit', {
     name: name.value.trim(),
     baseUrl: baseUrl.value.trim(),
-    apiKey: apiKey.value,
+    apiKey: apiKey.value.trim(),
     knowledgeBaseId: knowledgeBaseId.value.trim(),
   })
 }
@@ -36,12 +57,9 @@ function handleTest() {
   void run({
     baseUrl: baseUrl.value,
     apiKey: apiKey.value,
-    knowledgeId: knowledgeBaseId.value,
+    knowledgeBaseId: knowledgeBaseId.value,
   })
 }
-
-/** The retrieval test needs the address and the knowledge id. */
-const readyForTest = computed(() => !!baseUrl.value.trim() && !!knowledgeBaseId.value.trim())
 </script>
 
 <template>
@@ -54,7 +72,9 @@ const readyForTest = computed(() => !!baseUrl.value.trim() && !!knowledgeBaseId.
     ]"
   >
     <span :class="['text-sm font-medium']">
-      {{ t('settings.pages.knowledge-base.form.title') }}
+      {{ isEditing
+        ? t('settings.pages.knowledge-base.form.title-edit')
+        : t('settings.pages.knowledge-base.form.title') }}
     </span>
 
     <FieldInput
@@ -72,11 +92,22 @@ const readyForTest = computed(() => !!baseUrl.value.trim() && !!knowledgeBaseId.
     />
     <FieldInput
       v-model="apiKey"
-      type="password"
+      :type="revealApiKey ? 'text' : 'password'"
       :label="t('settings.pages.knowledge-base.form.api-key.label')"
       :description="t('settings.pages.knowledge-base.form.api-key.description')"
       :placeholder="t('settings.pages.knowledge-base.form.api-key.placeholder')"
     />
+    <div :class="['flex items-center gap-2']">
+      <GhostButton
+        size="sm"
+        :icon="revealApiKey ? 'i-solar:eye-closed-bold-duotone' : 'i-solar:eye-bold-duotone'"
+        @click="revealApiKey = !revealApiKey"
+      >
+        {{ revealApiKey
+          ? t('settings.pages.knowledge-base.form.hide-api-key')
+          : t('settings.pages.knowledge-base.form.show-api-key') }}
+      </GhostButton>
+    </div>
     <FieldInput
       v-model="knowledgeBaseId"
       :label="t('settings.pages.knowledge-base.form.knowledge-base-id.label')"
@@ -91,7 +122,9 @@ const readyForTest = computed(() => !!baseUrl.value.trim() && !!knowledgeBaseId.
         :disabled="!baseUrl.trim()"
         @click="handleSubmit"
       >
-        {{ t('settings.pages.knowledge-base.form.save') }}
+        {{ isEditing
+          ? t('settings.pages.knowledge-base.form.save-edit')
+          : t('settings.pages.knowledge-base.form.save') }}
       </Button>
       <Button variant="secondary" :disabled="!readyForTest || testing" @click="handleTest">
         {{ testing ? t('settings.pages.knowledge-base.result.testing') : t('settings.pages.knowledge-base.form.test') }}

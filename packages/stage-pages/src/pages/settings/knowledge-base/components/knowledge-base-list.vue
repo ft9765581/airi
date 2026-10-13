@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { KnowledgeBaseConnection } from '../types'
+import type { KnowledgeBaseConnection } from '@proj-airi/stage-ui/stores/settings/knowledge-base'
 
 import { useI18n } from 'vue-i18n'
 
@@ -10,6 +10,7 @@ defineProps<{
 }>()
 
 const emit = defineEmits<{
+  edit: [id: string]
   toggle: [id: string, enabled: boolean]
   remove: [id: string]
 }>()
@@ -51,6 +52,7 @@ const { t } = useI18n()
         v-for="connection in connections"
         :key="connection.id"
         :connection="connection"
+        @edit="id => emit('edit', id)"
         @toggle="(id, enabled) => emit('toggle', id, enabled)"
         @remove="id => emit('remove', id)"
       />
