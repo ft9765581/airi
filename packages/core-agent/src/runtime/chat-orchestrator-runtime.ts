@@ -16,6 +16,31 @@ import { categorizeResponse, createStreamingCategorizer } from './response-categ
 
 const REASONING_UI_FLUSH_CHUNK_SIZE = 24
 
+/**
+ * The send state a runtime context provider receives.
+ *
+ * A provider that needs the user question, such as a knowledge base retrieval,
+ * reads `message`. A provider that reports store state only can ignore the
+ * input.
+ */
+export interface RuntimeContextProviderInput {
+  /** The message text of the send under composition. */
+  message: string
+  /** The session the send belongs to. */
+  sessionId: string
+}
+
+/**
+ * Contributes one context message to the prompt of a send.
+ *
+ * A provider can return a promise, because it can read the network. The send
+ * waits for every provider before it composes the prompt. A provider that
+ * returns `null` adds no context for that send.
+ */
+export type RuntimeContextProvider = (
+  input: RuntimeContextProviderInput,
+) => ContextMessage | null | undefined | Promise<ContextMessage | null | undefined>
+
 function prependTextToContent<T extends { content?: unknown }>(msg: T, text: string): T {
   const content = msg.content
   if (content === undefined)
@@ -191,7 +216,7 @@ export interface ChatOrchestratorRuntimeDeps {
   /** Returns optional prompt text appended to the provider system message for this send. */
   getSystemPromptSupplement?: () => string | undefined
   /** Runtime context providers ingested immediately before prompt composition. */
-  runtimeContextProviders?: Array<() => ContextMessage | null | undefined>
+  runtimeContextProviders?: RuntimeContextProvider[]
   /** Clock used for persisted message timestamps. @default Date.now */
   now?: () => number
   /** Monotonic clock used for elapsed telemetry in milliseconds. @default performance.now */
@@ -409,9 +434,19 @@ export function createChatOrchestratorRuntime(deps: ChatOrchestratorRuntimeDeps)
       deps.foregroundStream.reset()
   }
 
-  function ingestRuntimeContexts() {
-    for (const provider of deps.runtimeContextProviders ?? []) {
-      const contextMessage = provider()
+  /**
+   * Ingests the side context that the runtime providers contribute to one send.
+   *
+   * The providers run at the same time, because one of them can wait on the
+   * network. The messages are ingested in provider order, not in the order the
+   * promises settle, so the prompt stays stable across sends.
+   */
+  async function ingestRuntimeContexts(input: RuntimeContextProviderInput) {
+    const contextMessages = await Promise.all(
+      (deps.runtimeContextProviders ?? []).map(provider => provider(input)),
+    )
+
+    for (const contextMessage of contextMessages) {
       if (contextMessage)
         deps.context.ingest(contextMessage)
     }
@@ -478,7 +513,7 @@ export function createChatOrchestratorRuntime(deps: ChatOrchestratorRuntimeDeps)
     // It is applied at message-assembly time (see below) as a system-prompt
     // date anchor + per-message [HH:MM] prefixes, which is more KV-cache
     // friendly and less prone to weak models echoing timestamps verbatim.
-    ingestRuntimeContexts()
+    await ingestRuntimeContexts({ message: sendingMessage, sessionId })
 
     const sendingCreatedAt = now()
 
