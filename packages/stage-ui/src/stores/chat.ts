@@ -27,7 +27,7 @@ import { useLLM } from './ai/chat-llm/llm'
 import { resolveLlmTools } from './ai/chat-llm/tool-resolver'
 import { useLlmToolsStore } from './ai/chat-llm/tools'
 import { useLlmToolsetPromptsStore } from './ai/chat-llm/toolset-prompts'
-import { createMinecraftContext, createUserProfileContext } from './chat/context-providers'
+import { createKnowledgeBaseContext, createMinecraftContext, createUserProfileContext } from './chat/context-providers'
 import { useChatContextStore } from './chat/context-store'
 import { useChatSessionStore } from './chat/session-store'
 import { useChatStreamStore } from './chat/stream-store'
@@ -299,6 +299,7 @@ export const useChatStore = defineStore('chat', () => {
     runtimeContextProviders: [
       createMinecraftContext,
       createUserProfileContext,
+      createKnowledgeBaseContext,
     ],
     createId: nanoid,
     unwrapMessage: message => toRaw(message),
