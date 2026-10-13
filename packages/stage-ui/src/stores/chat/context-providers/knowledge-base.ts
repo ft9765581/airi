@@ -14,6 +14,13 @@ const KNOWLEDGE_BASE_CONTEXT_ID = 'system:knowledge-base'
 const maxRecords = 5
 /** The maximum characters one send carries, across every knowledge base. */
 const maxCharacters = 4000
+/**
+ * How long a send waits for one knowledge base.
+ *
+ * The retrieval runs before the prompt is composed, so a slow service delays
+ * the answer. A send that waits past this limit proceeds without the records.
+ */
+const sendTimeoutMs = 3000
 
 /** A record together with the knowledge base that returned it. */
 interface RetrievedRecord {
@@ -106,6 +113,7 @@ export async function createKnowledgeBaseContext(
       knowledgeBaseId: connection.knowledgeBaseId,
       query,
       topK: maxRecords,
+      timeoutMs: sendTimeoutMs,
     })
 
     if (!response.ok && import.meta.env.DEV) {
