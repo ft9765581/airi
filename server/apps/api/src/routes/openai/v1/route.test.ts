@@ -330,6 +330,7 @@ function createTestApp(
   const { openaiRoutes, audioRoutes } = createV1Routes({
     fluxService,
     billingService: billingService ?? createMockBillingService(),
+    billingEnabled: true,
     configKV,
     requestLogService: requestLogService ?? createMockRequestLogService(),
     productEventService,

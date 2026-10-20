@@ -1,0 +1,31 @@
+name: airi-web
+
+services:
+  web:
+    image: nginx:stable-alpine
+    restart: unless-stopped
+    volumes:
+      - ../dist:/usr/share/nginx/html:ro
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    # Publish this port if an existing edge proxy terminates TLS for the domain.
+    # ports:
+    #   - '127.0.0.1:8080:80'
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on:
+      - web
+    environment:
+      AIRI_DOMAIN: ${AIRI_DOMAIN:?set AIRI_DOMAIN in .env}
+    ports:
+      - '80:80'
+      - '443:443'
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  caddy_data:
+  caddy_config:

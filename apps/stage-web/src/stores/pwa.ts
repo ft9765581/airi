@@ -26,7 +26,10 @@ export const usePWAStore = defineStore('pwa', () => {
         const id = nanoid()
         toast.custom(markRaw(h(ToasterPWAUpdateReady, { id, onUpdate: () => updateSW() })), {
           id,
-          duration: 30000,
+          // Keep the prompt until the user answers it. A toast that expires is
+          // easy to miss, and the waiting service worker then keeps serving the
+          // old bundle, so a deployed fix still looks broken in that browser.
+          duration: Number.POSITIVE_INFINITY,
           position: isMobile.value ? 'top-center' : 'bottom-right',
         })
       },

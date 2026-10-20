@@ -20,6 +20,8 @@ import { breakpointsTailwind, useBreakpoints, useMouse } from '@vueuse/core'
 import { storeToRefs } from 'pinia'
 import { computed, onMounted, onUnmounted, ref, shallowRef, useTemplateRef, watch } from 'vue'
 
+import VersionBadge from '../components/VersionBadge.vue'
+
 const paused = ref(false)
 
 function handleSettingsOpen(open: boolean) {
@@ -235,6 +237,7 @@ const cursorPosition = computed(() => ({
         <InteractiveArea v-if="!isMobile" h="85dvh" absolute right-4 flex flex-1 flex-col max-w="500px" min-w="30%" />
       </div>
       <HoloCoupon />
+      <VersionBadge />
     </div>
     <Teleport to="body">
       <MobileInteractiveArea

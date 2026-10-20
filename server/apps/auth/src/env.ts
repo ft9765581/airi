@@ -35,15 +35,26 @@ const AuthEnvSchema = object({
   PUBLIC_URL: optional(string(), 'http://localhost:3000'),
   RESOURCE_SERVER_URL: optional(string(), 'http://localhost:3001'),
   RATE_LIMIT_TRUSTED_PROXY: optional(picklist(['railway'])),
+  // Request budget for `/api/auth/*`. The defaults match the former hard-coded
+  // values and stay safe in a deployment. A local practice stack raises the
+  // maximum so repeated sign-in attempts during testing do not hit 429.
+  AUTH_RATE_LIMIT_MAX: optionalIntegerFromString(20, 'AUTH_RATE_LIMIT_MAX', 1),
+  AUTH_RATE_LIMIT_WINDOW_SEC: optionalIntegerFromString(60, 'AUTH_RATE_LIMIT_WINDOW_SEC', 1),
   AUTH_UI_URL: optional(string(), 'https://accounts.airi.build/ui'),
   ADDITIONAL_TRUSTED_ORIGINS: optional(AdditionalTrustedOriginsSchema, ''),
   DATABASE_URL: pipe(string(), nonEmpty('DATABASE_URL is required')),
   REDIS_URL: pipe(string(), nonEmpty('REDIS_URL is required')),
   BETTER_AUTH_SECRET: pipe(string(), nonEmpty('BETTER_AUTH_SECRET is required')),
-  AUTH_GOOGLE_CLIENT_ID: pipe(string(), nonEmpty('AUTH_GOOGLE_CLIENT_ID is required')),
-  AUTH_GOOGLE_CLIENT_SECRET: pipe(string(), nonEmpty('AUTH_GOOGLE_CLIENT_SECRET is required')),
-  AUTH_GITHUB_CLIENT_ID: pipe(string(), nonEmpty('AUTH_GITHUB_CLIENT_ID is required')),
-  AUTH_GITHUB_CLIENT_SECRET: pipe(string(), nonEmpty('AUTH_GITHUB_CLIENT_SECRET is required')),
+  // NOTICE:
+  // This deployment signs users in with an email address and a password only, so
+  // the social providers are optional. `auth.ts` registers a provider only when
+  // its client ID is present. Set both values to enable Google or GitHub sign-in.
+  // Removal condition: make them required again when the deployment serves only
+  // social sign-in.
+  AUTH_GOOGLE_CLIENT_ID: optional(string(), ''),
+  AUTH_GOOGLE_CLIENT_SECRET: optional(string(), ''),
+  AUTH_GITHUB_CLIENT_ID: optional(string(), ''),
+  AUTH_GITHUB_CLIENT_SECRET: optional(string(), ''),
   AUTH_APPLE_CLIENT_ID: optional(string(), ''),
   AUTH_APPLE_APP_BUNDLE_IDENTIFIERS: optional(
     pipe(

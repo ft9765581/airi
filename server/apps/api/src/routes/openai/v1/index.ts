@@ -26,8 +26,13 @@ export function createV1Routes(input: CreateV1RoutesDeps) {
   const deps: V1RouteDeps = { ...input, llmTracing: input.llmTracing ?? defaultLlmTracing }
   const gateway = createV1Gateway(deps)
     .useHono('*', '*', authGuard)
-    .useHono('openai', '/chat/*', configGuard(deps.configKV, ['FLUX_PER_REQUEST'], 'Service is not available yet'))
     .useHono('audio', '/speech', configGuard(deps.configKV, ['FLUX_PER_1K_CHARS_TTS'], 'TTS service is not available yet'))
+
+  // The chat gate makes the deployment price a request before it serves one. A
+  // deployment without billing prices nothing, so the gate would only refuse
+  // every caller. The TTS gate stays: that service still charges.
+  if (deps.billingEnabled)
+    gateway.useHono('openai', '/chat/*', configGuard(deps.configKV, ['FLUX_PER_REQUEST'], 'Service is not available yet'))
 
   // OpenAI-compatible surface (mounted at /api/v1/openai). Only routes that
   // mirror an actual OpenAI public endpoint belong here. Audio used to live

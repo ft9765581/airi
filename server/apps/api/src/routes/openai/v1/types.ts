@@ -20,6 +20,13 @@ export interface LlmTracingDeps {
 export interface V1RouteDeps {
   fluxService: FluxService
   billingService: BillingService
+  /**
+   * Prices each completion against the caller's Flux balance.
+   *
+   * A deployment that never sells credits passes `false`: the balance stays at
+   * zero, so pricing would answer 402 to every caller.
+   */
+  billingEnabled: boolean
   configKV: ConfigKVService
   requestLogService: RequestLogService
   productEventService: ProductEventService

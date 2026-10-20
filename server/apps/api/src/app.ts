@@ -264,6 +264,7 @@ export async function buildApp(deps: AppDeps) {
   const v1Routes = createV1Routes({
     fluxService: deps.fluxService,
     billingService: deps.billingService,
+    billingEnabled: deps.env.OPENAI_GATEWAY_BILLING_MODE !== 'off',
     configKV: deps.configKV,
     requestLogService: deps.requestLogService,
     productEventService: deps.productEventService,

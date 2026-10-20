@@ -498,10 +498,19 @@ export function createAuth(
 
     emailAndPassword: {
       enabled: true,
-      // Block sign-in until the user proves they own the address. Social
-      // logins (Google/GitHub) bypass this because better-auth seeds
-      // emailVerified=true for OAuth-issued accounts.
-      requireEmailVerification: true,
+      // NOTICE:
+      // The practice deployment uses short passwords on purpose. better-auth
+      // defaults to 8, which rejects `123456` with PASSWORD_TOO_SHORT. The value
+      // applies to sign-up and to password change.
+      // Removal condition: raise it to 8 or more before any public deployment.
+      minPasswordLength: 6,
+      // NOTICE:
+      // This deployment has no mail service, so it cannot send a verification
+      // link. With verification on, every sign-in fails with
+      // `EMAIL_NOT_VERIFIED` and the account is unreachable.
+      // Removal condition: turn this back on together with `RESEND_API_KEY`,
+      // and verify that the verification mail arrives.
+      requireEmailVerification: false,
       async sendResetPassword({ user, url }) {
         await requireEmailService(email).sendPasswordReset({ to: user.email, url })
       },

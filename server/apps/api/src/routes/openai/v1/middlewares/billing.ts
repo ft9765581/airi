@@ -55,11 +55,31 @@ export interface OpenAiRouteBilling {
 
 export function createOpenAiRouteBilling(deps: {
   billingService: BillingService
+  /** Prices each completion against the caller's Flux balance when true. */
+  billingEnabled: boolean
   configKV: ConfigKVService
   fluxService: FluxService
   revenue?: RevenueMetrics | null
   ttsMeter: FluxMeter
 }): OpenAiRouteBilling {
+  // NOTICE:
+  // Why: a deployment that never sells credits leaves every balance at zero, so
+  // the enforcing path answers 402 to every caller.
+  // Root cause: the gateway prices each completion against `user_flux`, and
+  // nothing in such a deployment funds that balance.
+  // Observed: 2026-10-19, while routing the browser at the gateway.
+  // Removal condition: delete this branch when the deployment sells credits.
+  if (!deps.billingEnabled) {
+    return {
+      authorizeChat: async () => ({ fallbackRate: 0, fluxPer1kTokens: 0 }),
+      authorizeTts: async (_userId, inputText) => ({ balance: 0, inputChars: inputText.length }),
+      priceChatUsage: () => 0,
+      recordChatDebitFailure: () => {},
+      settleChat: async () => 0,
+      settleTts: async () => ({ fluxDebited: 0 }),
+    }
+  }
+
   // NOTICE: Billing is best-effort — chat flux is debited AFTER the LLM
   // response is sent. This is a deliberate tradeoff: users get lower latency
   // and uninterrupted streaming, at the cost of a small revenue leak when
