@@ -30,31 +30,36 @@ const { configs: providers } = storeToRefs(providerConfigStore) as { configs: Re
 const { activeProvider } = storeToRefs(consciousnessStore)
 const providerDefinition = computed(() => providersStore.findProviderDefinition(providerId))
 
+/**
+ * Writes fields of the provider configuration record.
+ *
+ * Do not assign to `providers`: `configs` is a projection that the store
+ * rebuilds from its records, so a write to the projection is lost. The store
+ * action creates the record on the first write and keeps it.
+ */
+function updateConfig(patch: Record<string, unknown>) {
+  providerConfigStore.updateProviderConfigFields(providerId, providerDefinition.value?.id ?? providerId, patch)
+}
+
 // Define computed properties for credentials
 const apiKey = computed({
   get: () => providers.value[providerId]?.apiKey || '',
   set: (value) => {
-    if (!providers.value[providerId])
-      providers.value[providerId] = {}
-    providers.value[providerId].apiKey = value
+    updateConfig({ apiKey: value })
   },
 })
 
 const baseUrl = computed({
   get: () => providers.value[providerId]?.baseUrl || '',
   set: (value) => {
-    if (!providers.value[providerId])
-      providers.value[providerId] = {}
-    providers.value[providerId].baseUrl = value
+    updateConfig({ baseUrl: value })
   },
 })
 
 const thinkingMode = computed({
   get: () => providers.value[providerId]?.thinkingMode || 'auto',
   set: (value) => {
-    if (!providers.value[providerId])
-      providers.value[providerId] = {}
-    providers.value[providerId].thinkingMode = value
+    updateConfig({ thinkingMode: value })
   },
 })
 

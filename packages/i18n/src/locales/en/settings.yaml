@@ -555,7 +555,7 @@ pages:
       storage: The connections are stored in this browser. The API key is stored in clear text.
   data:
     title: Data
-    description: Manage stored AIRI data, exports, and resets
+    description: Manage stored Qingxi Medical data, exports, and resets
     sections:
       chats:
         title: Chat sessions
@@ -575,6 +575,14 @@ pages:
         title: Providers
         description: Reset all provider settings and credentials.
         reset: Reset provider settings
+      deployment-defaults:
+        title: Restore deployment defaults
+        description: Clear this browser, then apply the providers, character card, and model that this deployment ships. The page reloads.
+        restore: Restore defaults
+      onboarding:
+        title: First-time setup wizard
+        description: Open the welcome wizard to choose a service source again. It never opens on its own.
+        open: Open welcome wizard
       danger:
         title: Danger zone
         description: Irreversible actions. Export what you need before continuing.
@@ -584,13 +592,19 @@ pages:
         delete: Delete all data
       desktop-folder:
         title: Open app data folder
-        description: Open AIRI's data folder in your file manager.
+        description: Open Qingxi Medical's data folder in your file manager.
         open: Open folder
       desktop:
         title: Reset desktop settings & states
-        description: Clear AIRI desktop settings and runtime state.
+        description: Clear Qingxi Medical desktop settings and runtime state.
         center: Move desktop window to center
         reset: Reset desktop data
+      about:
+        title: About
+        product: Product
+        config-version: Configuration version
+        build: Build
+        development: Development
     confirmations:
       tooltip: Are you sure?
       'yes': 'Yes'
@@ -602,6 +616,7 @@ pages:
       models_deleted: Models deleted.
       modules_reset: Module settings reset.
       providers_reset: Provider settings reset.
+      deployment_defaults_restored: Defaults restored. The page reloads now.
       all_deleted: All local data deleted.
       desktop_window_centered: Desktop window moved to screen center.
       desktop_reset: Desktop data reset.
@@ -1443,6 +1458,7 @@ pages:
               test-voice:
                 generating: Generating...
                 label: Test Voice
+          error: Voice generation failed
           fields:
             field:
               input:

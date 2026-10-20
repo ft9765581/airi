@@ -5,7 +5,7 @@ import { env, exit } from 'node:process'
 
 import { useLogger } from '@guiiai/logg'
 import { injeca } from 'injeca'
-import { array, check, integer, maxValue, minValue, nonEmpty, object, optional, parse, pipe, string, transform, url } from 'valibot'
+import { array, check, integer, maxValue, minValue, nonEmpty, object, optional, parse, picklist, pipe, string, transform, url } from 'valibot'
 
 const AdditionalTrustedOriginsSchema = pipe(
   string(),
@@ -87,6 +87,16 @@ const EnvSchema = object({
     transform(b64 => Buffer.from(b64, 'base64')),
     check(buf => buf.length === 32, 'LLM_ROUTER_MASTER_KEY_PREVIOUS must decode to exactly 32 bytes when set'),
   )),
+  /**
+   * Whether the OpenAI-compatible gateway prices a completion against the
+   * caller's Flux balance.
+   *
+   * `enforce` is the upstream behavior. `off` serves every caller without a
+   * balance, which is what a deployment that never sells credits needs: the
+   * balance is always zero there, so `enforce` would answer 402 to everyone.
+   * @default 'enforce'
+   */
+  OPENAI_GATEWAY_BILLING_MODE: optional(picklist(['enforce', 'off']), 'enforce'),
   OTEL_DEBUG: optional(string()),
 
   OTEL_EXPORTER_OTLP_ENDPOINT: optional(string()),

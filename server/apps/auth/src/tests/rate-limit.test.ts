@@ -18,6 +18,11 @@ async function createApp(trustedProxy?: 'railway') {
       AUTH_UI_URL: 'https://accounts.airi.build/ui',
       ADDITIONAL_TRUSTED_ORIGINS: [],
       RATE_LIMIT_TRUSTED_PROXY: trustedProxy,
+      // The deployment defaults. These two are configurable so a practice stack
+      // can raise the budget; this fixture pins them to the production values to
+      // prove that the bucket keying below is what limits the caller.
+      AUTH_RATE_LIMIT_MAX: '20',
+      AUTH_RATE_LIMIT_WINDOW_SEC: '60',
     } as unknown as Parameters<typeof createAuthRoutes>[0]['env'],
     rateLimitMetrics: null,
   })

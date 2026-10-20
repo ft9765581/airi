@@ -14,6 +14,7 @@ import { useChatSessionStore } from '@proj-airi/stage-ui/stores/chat/session-sto
 import { useChatStreamStore } from '@proj-airi/stage-ui/stores/chat/stream-store'
 import { useL2dViewControl } from '@proj-airi/stage-ui/stores/live2d'
 import { useContextBridgeStore } from '@proj-airi/stage-ui/stores/mods/api/context-bridge'
+import { useAiriCardStore } from '@proj-airi/stage-ui/stores/modules/airi-card'
 import { useSettings, useSettingsAudioDevice } from '@proj-airi/stage-ui/stores/settings'
 import { BasicTextarea, useTheme } from '@proj-airi/ui'
 import { onLongPress, useEventListener, usePointerSwipe } from '@vueuse/core'
@@ -40,10 +41,21 @@ interface Props {
    * @default false
    */
   keyboardAvoidance?: boolean
+  /**
+   * Hides the settings entry.
+   *
+   * End-user surfaces show the conversation only. Every entry point that opens
+   * configuration or account pages must be gone, or the visitor can leave the
+   * conversation and change the shared configuration.
+   *
+   * @default false
+   */
+  hideSettings?: boolean
 }
 
 const props = withDefaults(defineProps<Props>(), {
   keyboardAvoidance: false,
+  hideSettings: false,
 })
 const emit = defineEmits<{
   /** Sends visualViewport.offsetTop so the parent can keep the Stage at the same screen position. */
@@ -54,12 +66,17 @@ const { isDark, toggleDark } = useTheme()
 const chatOrchestrator = useChatStore()
 const chatSession = useChatSessionStore()
 const chatStream = useChatStreamStore()
+const cardStore = useAiriCardStore()
 const { cleanupMessages } = useChatMaintenanceStore()
 const { activeSessionId, messages } = storeToRefs(chatSession)
 const { streamingMessage } = storeToRefs(chatStream)
 const { activeSendSessionId, activeStreamingMessage, sending } = storeToRefs(chatOrchestrator)
 const { isReceivingRemoteStream } = storeToRefs(useContextBridgeStore())
 const historyMessages = computed(() => messages.value as unknown as ChatHistoryItem[])
+// The message header names the active character, so switching the card renames
+// the speaker. `ChatHistory` keeps its own label for the case where no card is
+// loaded yet.
+const assistantLabel = computed(() => cardStore.activeCard?.name)
 const isActiveSessionSending = computed(() => (
   (sending.value && activeSendSessionId.value === activeSessionId.value)
   || isReceivingRemoteStream.value
@@ -401,6 +418,7 @@ onUnmounted(() => {
             v-if="!threeViewCtrlEnabled && !l2dViewCtrlEnabled"
             variant="mobile"
             :messages="historyMessages"
+            :assistant-label="assistantLabel"
             :sending="isActiveSessionSending"
             :streaming-message="visibleStreamingMessage"
             class="chat-history"
@@ -503,7 +521,7 @@ onUnmounted(() => {
           <!-- <button border="2 solid neutral-100/60 dark:neutral-800/30" bg="neutral-50/70 dark:neutral-800/70" w-fit flex items-center self-end justify-center rounded-xl p-2 backdrop-blur-md title="Language">
             <div i-solar:earth-outline size-5 text="neutral-500 dark:neutral-400" />
           </button> -->
-          <RouterLink to="/settings" border="2 solid neutral-100/60 dark:neutral-800/30" bg="neutral-50/70 dark:neutral-800/70" w-fit flex items-center self-end justify-center rounded-xl p-2 backdrop-blur-md title="Settings">
+          <RouterLink v-if="!props.hideSettings" to="/settings" border="2 solid neutral-100/60 dark:neutral-800/30" bg="neutral-50/70 dark:neutral-800/70" w-fit flex items-center self-end justify-center rounded-xl p-2 backdrop-blur-md title="Settings">
             <div i-solar:settings-outline size-5 text="neutral-500 dark:neutral-400" />
           </RouterLink>
           <!-- <button border="2 solid neutral-100/60 dark:neutral-800/30" bg="neutral-50/70 dark:neutral-800/70" w-fit flex items-center self-end justify-center rounded-xl p-2 backdrop-blur-md title="Model">

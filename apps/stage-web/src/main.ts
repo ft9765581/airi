@@ -20,6 +20,8 @@ import { routes } from 'vue-router/auto-routes'
 
 import App from './App.vue'
 
+import { applyBuildDefaults } from './modules/defaults'
+import { registerStageDisplayModelPresets } from './modules/display-model-presets'
 import { i18n } from './modules/i18n'
 
 import '@proj-airi/font-cjkfonts-allseto/index.css'
@@ -35,6 +37,8 @@ configureAnalyticsAdapter(async (options) => {
   return createPosthogAdapter(options)
 })
 registerAuthorizationHandler(browserAuthorizationHandler)
+registerStageDisplayModelPresets()
+applyBuildDefaults()
 
 const pinia = createPinia()
 const synced = setupSynced()

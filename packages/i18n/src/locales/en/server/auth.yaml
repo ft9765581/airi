@@ -27,7 +27,7 @@ signIn:
   step:
     identify:
       heading: Sign in
-      description: Enter your email to sign in or create an account.
+      description: Enter your phone number to sign in or create an account.
     password:
       heading: Welcome back
       description: Continue as {email}.
@@ -35,8 +35,8 @@ signIn:
       heading: Create your account
       description: We will create a new account for {email}.
   email:
-    label: Email
-    placeholder: you{'@'}example.com
+    label: Phone or email
+    placeholder: 13800138000
   password:
     label: Password
     placeholder: Your password
@@ -48,13 +48,13 @@ signIn:
     placeholder: Repeat your password
   name:
     label: Display name
-    placeholder: Optional, defaults to your email handle
+    placeholder: Optional, defaults to your phone number
   action:
     continue: Continue
     signIn: Sign in
     createAccount: Create account
     forgotPassword: Forgot password?
-    useDifferentEmail: Use a different email
+    useDifferentEmail: Use a different account
   divider:
     or: or
   message:
@@ -63,9 +63,9 @@ signIn:
     fallback: Sign in failed
     providerTimeout: Provider sign-in timed out. Please try again.
     unknown: An unknown error occurred
-    socialOnlyNoPassword: This email was registered with Google or GitHub. Sign in with a button below; you can add a password in account settings after signing in.
+    socialOnlyNoPassword: This account was registered with Google or GitHub. Sign in with a button below; you can add a password in account settings after signing in.
     passwordMismatch: Password and confirmation do not match.
-    invalidEmail: Please enter a valid email address.
+    invalidEmail: Please enter a valid phone number or email address.
   footer:
     prefix: By continuing, you agree to our
     terms: Terms
@@ -132,8 +132,8 @@ profile:
     password: Password
     linkedAccounts: Connected accounts
   field:
-    email: Email
-    emailVerified: Email status
+    email: Phone or email
+    emailVerified: Verification status
     createdAt: Joined
   label:
     verified: Verified

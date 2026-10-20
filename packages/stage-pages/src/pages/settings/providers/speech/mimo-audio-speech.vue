@@ -39,14 +39,19 @@ const providerId = 'mimo-audio-speech'
 const defaultModel = 'mimo-v2.5-tts'
 const defaultVoice = 'mimo_default'
 
+const providerDefinitionId = providersStore.getProviderDefinition(providerId).id
+
 const config = computed(() => providers.value[providerId] as MimoSpeechProviderConfig | undefined)
 
-function ensureProviderConfig(): MimoSpeechProviderConfig {
-  if (!providers.value[providerId]) {
-    providers.value[providerId] = {}
-  }
-
-  return providers.value[providerId] as MimoSpeechProviderConfig
+/**
+ * Writes fields of the provider configuration record.
+ *
+ * Do not assign to `providers`: `configs` is a projection that the store
+ * rebuilds from its records, so a write to the projection is lost. The store
+ * action creates the record on the first write and keeps it.
+ */
+function updateConfig(patch: Record<string, unknown>) {
+  providerStore.updateProviderConfigFields(providerId, providerDefinitionId, patch)
 }
 
 const providerModels = computed(() => providersStore.getModelsForProvider(providerId))
@@ -66,7 +71,7 @@ const modelOptions = computed(() => {
 const model = computed({
   get: () => config.value?.model || defaultModel,
   set: (value) => {
-    ensureProviderConfig().model = value
+    updateConfig({ model: value })
   },
 })
 
@@ -97,26 +102,23 @@ const stylePromptDescription = computed(() => {
 const stylePrompt = computed({
   get: () => config.value?.stylePrompt || '',
   set: (value) => {
-    ensureProviderConfig().stylePrompt = value
+    updateConfig({ stylePrompt: value })
   },
 })
 
 const voiceSample = computed({
   get: () => config.value?.voiceSample || '',
   set: (value) => {
-    ensureProviderConfig().voiceSample = value
+    updateConfig({ voiceSample: value })
   },
 })
 
-const apiKeyConfigured = computed(() => !!providers.value[providerId]?.apiKey)
+const apiKeyConfigured = computed(() => Boolean(config.value?.apiKey?.trim()))
 
 onMounted(async () => {
-  ensureProviderConfig()
-
-  if (!config.value?.model) {
-    model.value = defaultModel
-  }
-
+  // This page writes no default model on mount. The `model` getter already
+  // returns `defaultModel` while the record holds no value, so the write is not
+  // necessary.
   await providersStore.loadModelsForConfiguredProviders()
   await providersStore.fetchModelsForProvider(providerId)
   await speechStore.loadVoicesForProvider(providerId)

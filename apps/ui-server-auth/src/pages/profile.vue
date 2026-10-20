@@ -19,6 +19,7 @@ import {
 } from '../modules/analytics'
 import { getAuthClient } from '../modules/auth-client'
 import { requestPasswordReset } from '../modules/email-password'
+import { toDisplayIdentifier } from '../modules/phone-account'
 import {
   changePassword,
   describeProfileError,
@@ -359,7 +360,7 @@ function formatLinkedSince(iso: string): string {
       >
         <div :class="['flex items-center justify-between text-sm']">
           <span :class="['text-neutral-500']">{{ t('server.auth.profile.field.email') }}</span>
-          <span :class="['font-medium']">{{ user.email }}</span>
+          <span :class="['font-medium']">{{ toDisplayIdentifier(user.email) }}</span>
         </div>
         <div :class="['flex items-center justify-between text-sm']">
           <span :class="['text-neutral-500']">{{ t('server.auth.profile.field.emailVerified') }}</span>

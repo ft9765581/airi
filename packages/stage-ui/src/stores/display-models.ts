@@ -55,6 +55,39 @@ const displayModelsPresets: DisplayModel[] = [
   { id: 'preset-vrm-2', format: DisplayModelFormat.VRM, type: 'url', url: presetVrmAvatarBUrl, name: 'AvatarSample_B', previewImage: presetVrmAvatarBPreview, importedAt: 1733113886840 },
 ]
 
+/**
+ * Models that the running application owns.
+ *
+ * A deployment can ship a model that this shared package does not know, for
+ * example a model that the operator provides. The application registers it
+ * before the model list loads. A path in a registration is relative to the
+ * application root, so the shared package stays free of deployment paths.
+ */
+const registeredPresets: DisplayModel[] = []
+
+/**
+ * Adds one model preset for the running application.
+ *
+ * A repeated id keeps the first entry, so a second call is safe.
+ */
+export function registerDisplayModelPreset(preset: DisplayModel): void {
+  if (registeredPresets.some(item => item.id === preset.id))
+    return
+
+  registeredPresets.push(preset)
+}
+
+/**
+ * Every model that the application offers without a stored file.
+ *
+ * The registered models belong to the deployment that the build serves, so a
+ * reset and a lookup must both keep them. Only listing the built-in presets
+ * drops a model that the operator ships.
+ */
+function listPresetDisplayModels(): DisplayModel[] {
+  return [...registeredPresets, ...displayModelsPresets]
+}
+
 export const useDisplayModelsStore = defineStore('display-models', () => {
   const displayModels = ref<DisplayModel[]>([])
 
@@ -70,7 +103,7 @@ export const useDisplayModelsStore = defineStore('display-models', () => {
     await until(displayModelsFromIndexedDBLoading).toBe(false)
 
     displayModelsFromIndexedDBLoading.value = true
-    const models = [...displayModelsPresets]
+    const models = listPresetDisplayModels()
 
     try {
       await localforage.iterate<{ format: DisplayModelFormat, file: File, importedAt: number, previewImage?: string }, void>((val, key) => {
@@ -105,7 +138,7 @@ export const useDisplayModelsStore = defineStore('display-models', () => {
     }
 
     // Fallback to in-memory presets if not found in localforage
-    return displayModelsPresets.find(model => model.id === id)
+    return listPresetDisplayModels().find(model => model.id === id)
   }
 
   const loadLive2DModelPreview = (file: File) => generateLive2DPreview(file)
@@ -202,7 +235,7 @@ export const useDisplayModelsStore = defineStore('display-models', () => {
       await removeDisplayModel(id)
     }
 
-    displayModels.value = [...displayModelsPresets].sort((a, b) => b.importedAt - a.importedAt)
+    displayModels.value = listPresetDisplayModels().sort((a, b) => b.importedAt - a.importedAt)
   }
 
   async function initialize() {

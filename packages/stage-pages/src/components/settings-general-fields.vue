@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { all } from '@proj-airi/i18n'
 import { useAnalytics } from '@proj-airi/stage-ui/composables/use-analytics'
 import { isAnalyticsAvailableInBuild } from '@proj-airi/stage-ui/libs/analytics'
 import { useSettings } from '@proj-airi/stage-ui/stores/settings'
@@ -25,10 +24,6 @@ const analyticsToggleValue = computed({
 const { t } = useI18n()
 const { isDark: dark } = useTheme()
 const { privacyPolicyUrl } = useAnalytics()
-
-const languages = computed(() => {
-  return Object.entries(all).map(([value, label]) => ({ value, label }))
-})
 </script>
 
 <template>
@@ -45,19 +40,11 @@ const languages = computed(() => {
       :description="t('settings.theme.description')"
     />
 
-    <FieldCombobox
-      v-model="settings.language"
-      v-motion
-      :initial="{ opacity: 0, y: 10 }"
-      :enter="{ opacity: 1, y: 0 }"
-      :duration="250 + (3 * 10)"
-      :delay="3 * 50"
-      :class="['transition-all', 'ease-in-out', 'duration-250']"
-      :label="t('settings.language.title')"
-      :description="t('settings.language.description')"
-      layout="horizontal"
-      :options="languages"
-    />
+    <!-- NOTICE:
+         The deployment serves one language and `index.html` writes it into
+         storage before any module loads, so a picker here would hold only until
+         the next reload and then appear broken. Restore the combobox when the
+         deployment offers more than one language. -->
 
     <FieldCombobox
       v-if="showControlsIsland"

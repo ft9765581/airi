@@ -535,7 +535,7 @@ pages:
       storage: 连接保存在本机浏览器里，API Key 以明文保存。
   data:
     title: Data
-    description: 管理存储 AIRI 数据、导出和重置
+    description: 管理存储清锡医疗数据、导出和重置
     sections:
       chats:
         title: 聊天会话
@@ -555,6 +555,14 @@ pages:
         title: 服务来源
         description: 重置所有提供商设置和凭据。
         reset: 重置提供商设置
+      deployment-defaults:
+        title: 恢复默认配置
+        description: 清除本机配置，重新应用本部署内置的服务来源、角色卡和形象。页面会自动重新加载。
+        restore: 恢复默认配置
+      onboarding:
+        title: 首次设置向导
+        description: 打开欢迎引导，重新走一遍「选择服务来源」的流程。它不会自动弹出。
+        open: 打开欢迎引导
       danger:
         title: 危险区域
         description: 不可逆操作。继续之前，请导出您需要的内容。
@@ -564,13 +572,19 @@ pages:
         delete: 删除所有数据
       desktop-folder:
         title: 打开应用数据文件夹
-        description: 在文件管理器中打开 AIRI 的数据文件夹。
+        description: 在文件管理器中打开清锡医疗的数据文件夹。
         open: 打开文件夹
       desktop:
         title: 重置桌面设置和状态
-        description: 清除 AIRI 桌面设置和运行状态。
+        description: 清除清锡医疗桌面设置和运行状态。
         center: 将桌面窗口移至中央
         reset: 重置桌面数据
+      about:
+        title: 关于
+        product: 产品
+        config-version: 配置版本
+        build: 前端构建
+        development: 开发模式
     confirmations:
       tooltip: 您确定吗？
       'yes': '是'
@@ -582,6 +596,7 @@ pages:
       models_deleted: 模型已删除。
       modules_reset: 重置模块设置。
       providers_reset: 服务端设置重置。
+      deployment_defaults_restored: 已恢复默认配置，正在重新加载。
       all_deleted: 已删除所有本地数据。
       desktop_window_centered: 桌面窗口已移至屏幕中央。
       desktop_reset: 桌面数据重置。
@@ -1369,6 +1384,7 @@ pages:
               test-voice:
                 generating: 生成中...
                 label: 测试声音
+          error: 语音生成失败
           fields:
             field:
               input:

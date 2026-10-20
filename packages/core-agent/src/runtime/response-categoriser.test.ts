@@ -348,4 +348,30 @@ describe('createStreamingCategorizer', () => {
     const result = categorizer.end()
     expect(result.speech).toBe('Hello world!')
   })
+
+  it('should keep speech after a closing tag that a chunk split after `<`', () => {
+    // ROOT CAUSE:
+    //
+    // A model stream can end a chunk between `<` and `/` of a closing tag, for
+    // example `</thi` and then `nk>`.
+    // The incremental state machine entered `in-opening-tag` for the `<` and
+    // then never saw the `/`, so it counted the closing tag as an opening one.
+    // The depth stayed above zero, so `consume()` never recategorized at the
+    // close, and `filterToSpeech` returned the tail of the tag as speech.
+    //
+    // Before the patch: filterToSpeech('ink>B', 17) returned 'ink>B'.
+    // After the patch: it returns 'B'.
+    const categorizer = createStreamingCategorizer()
+    const literals = ['A', ' ', '<', 't', 'h', 'i', 'n', 'k', '>', '内', '部', '思', '考', '<', '/', 't', 'h']
+
+    let position = 0
+    for (const literal of literals) {
+      categorizer.consume(literal)
+      position += literal.length
+    }
+
+    categorizer.consume('ink>B')
+    expect(categorizer.filterToSpeech('ink>B', position)).toBe('B')
+    expect(categorizer.end().speech).toBe('A B')
+  })
 })

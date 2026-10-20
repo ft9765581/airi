@@ -1,0 +1,6 @@
+# Caddy holds the TLS certificate for the domain and sends every request to
+# the web container. Set AIRI_DOMAIN in .env before you start the stack.
+{$AIRI_DOMAIN} {
+	encode zstd gzip
+	reverse_proxy web:80
+}

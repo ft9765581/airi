@@ -287,8 +287,11 @@ export async function createAuthRoutes(deps: AuthRoutesDeps) {
      * Rate limited by the Auth-owned runtime configuration.
      */
     .use('/api/auth/*', rateLimiter({
-      max: 20,
-      windowSec: 60,
+      // A deployment keeps the credential-stuffing guard. The practice stack
+      // raises the budget through `AUTH_RATE_LIMIT_MAX`, because repeated
+      // sign-in attempts during testing otherwise end in 429.
+      max: deps.env.AUTH_RATE_LIMIT_MAX,
+      windowSec: deps.env.AUTH_RATE_LIMIT_WINDOW_SEC,
       // Proxy trust is a deployment boundary, not a property of the public
       // API URL. Custom domains and private gateways must opt in explicitly.
       trustedProxy: deps.env.RATE_LIMIT_TRUSTED_PROXY,

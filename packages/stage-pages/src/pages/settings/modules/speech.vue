@@ -974,6 +974,11 @@ function handleDeleteProvider(providerId: string) {
               </div>
             </button>
           </div>
+          <ErrorContainer
+            v-if="errorMessage"
+            :title="t('settings.pages.providers.provider.elevenlabs.playground.error')"
+            :error="errorMessage"
+          />
           <audio v-if="audioUrl" ref="audioPlayer" :src="audioUrl" controls class="mt-2 w-full" />
         </div>
       </div>

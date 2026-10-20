@@ -47,6 +47,22 @@ export default defineConfig({
       // See: https://vite.dev/config/server-options#server-fs-strict
       strict: false,
     },
+    watch: {
+      // NOTICE:
+      // Agent and editor tooling writes files atomically: it creates
+      // `.<name>.<pid>.<uuid>.tmpdir/<name>.tmp` beside the target file, then
+      // renames it into place. Chokidar descends into that temporary directory
+      // and watches the temp file. Windows then raises
+      // `EBUSY: resource busy or locked, watch '<...>.tmpdir/<name>.tmp'` when
+      // the temp file is removed, and Vite exits because nothing handles the
+      // watcher's `error` event.
+      // Observed on 2026-10-19: a write to `src/modules/i18n.ts` killed
+      // `vite --host --port 5173` here, while `apps/stage-web` stayed up because
+      // it already ignores these directories.
+      // Removal condition: only when file writers stop creating temp
+      // directories inside the project tree.
+      ignored: ['**/.*.tmpdir', '**/.*.tmpdir/**'],
+    },
     warmup: {
       clientFiles: [
         `${resolve(join(import.meta.dirname, '..', '..', 'packages', 'stage-ui', 'src'))}/*.vue`,

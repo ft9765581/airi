@@ -60,6 +60,13 @@ flatpak-repo/
 *.output
 .vfox.toml
 
+# Archives at the repository root. `airi-web-dist.zip` is a built site of about
+# 185 MB, above the single-file limit of the Git hosts we push to. The character
+# card archive repeats `apps/stage-web/src/assets/airi-cards/xiaoqing.json`.
+# Anchored to the root: a display model under `apps/stage-web/public/models`
+# must stay in version control.
+/*.zip
+
 # Vite
 dist
 # Nuxt

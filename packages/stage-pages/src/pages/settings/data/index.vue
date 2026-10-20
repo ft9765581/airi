@@ -1,7 +1,9 @@
 <script setup lang="ts">
+import AboutSection from './components/about-section.vue'
 import ChatsSection from './components/chats-section.vue'
 import DangerSection from './components/danger-section.vue'
 import ModelsModulesSection from './components/models-modules-section.vue'
+import OnboardingSection from './components/onboarding-section.vue'
 import StatusBanner from './components/status-banner.vue'
 
 import { createDataSettingsStatusState } from './status'
@@ -14,7 +16,9 @@ const { statusMessage, statusTone, handleStatus } = createDataSettingsStatusStat
     <StatusBanner v-if="statusMessage" :message="statusMessage" :tone="statusTone" />
     <ChatsSection @status="handleStatus" />
     <ModelsModulesSection @status="handleStatus" />
+    <OnboardingSection />
     <DangerSection @status="handleStatus" />
+    <AboutSection />
   </div>
 </template>
 

@@ -42,6 +42,24 @@ if (isEnvTruthy(import.meta.env.VITE_APP_TARGET_HUGGINGFACE_SPACE))
 else
   router = createRouter({ routes: routeRecords, history: createWebHistory(AUTH_UI_ROUTER_BASE_PATH) })
 
+// `/` has no page of its own: it exists so the bare `/ui/` URL matches a record
+// instead of the catch-all. A sign-in that starts outside an OIDC flow falls
+// back to that URL, so it must land on a usable page.
+//
+// NOTICE:
+// Why a guard here: unplugin-vue-router 0.19.2 emits only `path`, `name`,
+// `component`, `props`, `alias`, `children`, and `meta` from a `<route>` block
+// (`generateRouteRecords` in its dist). A `redirect` in the block is dropped
+// without a warning, and the empty page renders as a white screen.
+// Root cause: `redirect` is absent from the code generator's field list.
+// Observed: 2026-10-20, a sign-in on ui-server-auth landed on `/ui/` blank.
+// Removal condition: move back into `index.vue` once the generator emits
+// `redirect`, or when the index record is gone.
+router.beforeEach((to) => {
+  if (to.path === '/')
+    return { path: '/profile', replace: true }
+})
+
 router.beforeEach((to, from) => {
   if (to.path !== from.path)
     NProgress.start()

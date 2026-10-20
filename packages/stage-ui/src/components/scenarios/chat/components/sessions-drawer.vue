@@ -52,6 +52,25 @@ const ownedSessions = computed(() => {
 })
 
 /**
+ * First text of a session that a visitor would read, ignoring the system prompt.
+ *
+ * @example
+ * contentTextOf({ sessionId: 'a', ...meta })
+ * // => '记住这串数字：7391'
+ */
+function contentTextOf(meta: ChatSessionMeta): string {
+  const messages = sessionMessages.value[meta.sessionId] ?? []
+  for (const message of messages) {
+    if (message.role === 'system')
+      continue
+    const trimmed = extractMessageText(message).replace(/\s+/g, ' ').trim()
+    if (trimmed)
+      return trimmed
+  }
+  return ''
+}
+
+/**
  * Normalizes a session into its one-line drawer preview.
  *
  * @example
@@ -62,16 +81,22 @@ function previewFor(meta: ChatSessionMeta): string {
   if (meta.title)
     return meta.title
 
-  const messages = sessionMessages.value[meta.sessionId] ?? []
-  for (const message of messages) {
-    if (message.role === 'system')
-      continue
-    const trimmed = extractMessageText(message).replace(/\s+/g, ' ').trim()
-    if (trimmed)
-      return trimmed.length > 80 ? `${trimmed.slice(0, 80)}…` : trimmed
-  }
+  const text = contentTextOf(meta)
+  if (!text)
+    return t('stage.chat.sessions.new-chat-fallback')
 
-  return t('stage.chat.sessions.new-chat-fallback')
+  return text.length > 80 ? `${text.slice(0, 80)}…` : text
+}
+
+/**
+ * Whether a session holds anything a visitor would read as a conversation.
+ *
+ * Every start creates an empty session so the chat surface has a target, and
+ * signing in gives each one a cloud row. Listing all of them buries the real
+ * history under identical "new chat" rows, one per start.
+ */
+function hasContent(meta: ChatSessionMeta): boolean {
+  return !!meta.title || contentTextOf(meta).length > 0
 }
 
 const RELATIVE_UNITS: Array<[Intl.RelativeTimeFormatUnit, number]> = [
@@ -105,6 +130,9 @@ function formatUpdatedAt(ts: number): string {
 
 const rows = computed<SessionRow[]>(() => {
   const list = ownedSessions.value
+    // Keep the active conversation listed even before its first message, so
+    // starting a new chat never makes the drawer look empty.
+    .filter(meta => meta.sessionId === activeSessionId.value || hasContent(meta))
     .map<SessionRow>(meta => ({
       meta,
       preview: previewFor(meta),

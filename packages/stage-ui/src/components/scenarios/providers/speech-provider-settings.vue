@@ -59,20 +59,14 @@ const providerMetadata = computedAsync(async () => {
 const apiKey = computed({
   get: () => providers.value[props.providerId]?.apiKey as string | undefined || '',
   set: (value) => {
-    if (!providers.value[props.providerId])
-      providers.value[props.providerId] = {}
-
-    providers.value[props.providerId].apiKey = value
+    providerStore.updateProviderConfigFields(props.providerId, providersStore.getProviderDefinition(props.providerId).id, { apiKey: value })
   },
 })
 
 const baseUrl = computed({
   get: () => providers.value[props.providerId]?.baseUrl as string | undefined || providerMetadata.value?.defaultConfig.baseUrl as string | undefined || '',
   set: (value) => {
-    if (!providers.value[props.providerId])
-      providers.value[props.providerId] = {}
-
-    providers.value[props.providerId].baseUrl = value
+    providerStore.updateProviderConfigFields(props.providerId, providersStore.getProviderDefinition(props.providerId).id, { baseUrl: value })
   },
 })
 
@@ -127,14 +121,13 @@ onMounted(async () => {
 })
 
 const debouncedUpdate = useDebounceFn(() => {
-  providers.value[props.providerId] = {
-    ...providers.value[props.providerId],
+  providerStore.updateProviderConfigFields(props.providerId, providersStore.getProviderDefinition(props.providerId).id, {
     // A provider without a credential field keeps no `apiKey` key. The guard in
     // `onMounted` stops the same key arriving by the other path.
     ...(props.hideApiKey ? {} : { apiKey: apiKey.value }),
     baseUrl: baseUrl.value || providerMetadata.value?.defaultConfig.baseUrl || '',
     voiceSettings: { ...voiceSettings.value },
-  }
+  })
 }, 1000)
 
 // Watch all settings and update the provider configuration

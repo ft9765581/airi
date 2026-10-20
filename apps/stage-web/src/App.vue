@@ -130,9 +130,9 @@ onMounted(async () => {
   if (!authStore.isAuthenticated)
     await removeAuthenticationProviderConfiguration()
 
-  if (onboardingStore.needsOnboarding) {
-    onboardingStore.showingSetup = true
-  }
+  // The welcome wizard is a manual action on the data settings page. A
+  // deployment ships its providers, so a visitor must not enter a setup flow on
+  // the first visit.
 
   await chatStore.initialize(syncedPinia)
   await serverChannelStore.initialize({ possibleEvents: ['ui:configure'] }).catch(err => console.error('Failed to initialize Mods Server Channel in App.vue:', err))

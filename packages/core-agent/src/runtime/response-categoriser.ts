@@ -268,6 +268,14 @@ export function createStreamingCategorizer(
         }
 
         case 'in-opening-tag': {
+          // A chunk can end between `<` and `/` of a closing tag. Without this
+          // branch the machine counts that tag as an opening one, so the depth
+          // never returns to zero and the close never reaches the caller.
+          if (char === '/') {
+            tagState = 'in-closing-tag'
+            break
+          }
+
           if (char === '>') {
             tagState = 'in-content'
             tagStackDepth++
@@ -290,7 +298,10 @@ export function createStreamingCategorizer(
 
         case 'in-closing-tag': {
           if (char === '>') {
-            tagStackDepth--
+            // A closing tag without a matching opening tag must not push the
+            // depth below zero, or later closures stop reaching the caller.
+            if (tagStackDepth > 0)
+              tagStackDepth--
             if (tagStackDepth === 0) {
               tagState = 'outside'
               tagJustClosed = true
