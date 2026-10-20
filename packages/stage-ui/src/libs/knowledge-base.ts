@@ -1,5 +1,8 @@
 import { errorMessageFrom } from '@moeru/std'
 
+import { authedFetch } from './auth-fetch'
+import { SERVER_URL } from './server'
+
 /**
  * The knowledge base retrieval contract.
  *
@@ -184,6 +187,26 @@ async function classifyNetworkFailure(url: string, timeoutMs: number): Promise<K
 }
 
 /**
+ * Tells whether an endpoint is this deployment's own API.
+ *
+ * The API's retrieval route requires the session token and holds the knowledge
+ * base key itself, so a request to it must carry the token. Any other endpoint
+ * is a third-party service and gets the connection's own key instead.
+ *
+ * @example
+ * targetsDeploymentApi('http://localhost:6112/api/v1/knowledge-base/retrieval')
+ * // => true
+ */
+function targetsDeploymentApi(url: string): boolean {
+  try {
+    return new URL(url).origin === new URL(SERVER_URL).origin
+  }
+  catch {
+    return false
+  }
+}
+
+/**
  * Sends one retrieval request and reports what the service answered.
  *
  * The request follows the Dify external knowledge contract, because that is the
@@ -199,8 +222,13 @@ export async function requestKnowledgeBaseRetrieval(
   const timeoutMs = input.timeoutMs ?? knowledgeBaseRequestTimeoutMs
   const startedAt = Date.now()
 
+  // This deployment's API authorizes with the session token and adds the
+  // knowledge base key on the way out. A third-party endpoint has neither, so it
+  // keeps using the connection's own key.
+  const send = targetsDeploymentApi(url) ? authedFetch : fetch
+
   try {
-    const response = await fetch(url, {
+    const response = await send(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

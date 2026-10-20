@@ -5,9 +5,10 @@ import { computed, reactive, shallowRef } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 
-import { trackPasswordResetCompleted } from '../modules/analytics'
-import { describeAuthError, resetPasswordWithToken } from '../modules/email-password'
-import { getServerAuthBootstrapContext } from '../modules/server-auth-context'
+import { trackPasswordResetCompleted } from '../../modules/auth-ui/analytics'
+import { buildAuthUiPath } from '../../modules/auth-ui/auth-ui-base'
+import { describeAuthError, resetPasswordWithToken } from '../../modules/auth-ui/email-password'
+import { getServerAuthBootstrapContext } from '../../modules/auth-ui/server-auth-context'
 
 const { t } = useI18n()
 const route = useRoute()
@@ -65,7 +66,7 @@ async function handleSubmit(event: Event) {
 }
 
 async function goSignIn() {
-  await router.push('/sign-in')
+  await router.push(buildAuthUiPath('/sign-in'))
 }
 </script>
 

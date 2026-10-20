@@ -135,7 +135,6 @@
 | `apps/stage-web/src/assets/airi-cards/xiaoqing.json` | 小清角色卡 |
 | `apps/stage-web/public/models/live2d/chun-nurse-white.zip` | 护士 Live2D 模型（6.4 MB） |
 | `apps/stage-web/deploy/` | 部署方案 |
-| `medical-kb/` | 知识库服务（Python） |
 | `docs/scripts/sync-gitee.ps1` + `.md` | 同步已提交内容到 Gitee |
 | `docs/scripts/create-local-account.ps1` | 本地建验证过的账号 |
 | `docs/design-harness/`、`docs/canvas.html`、`.design-harness/` | 并行工作的设计文档 |
@@ -482,6 +481,44 @@ better-auth 1.4.22 自带该插件，它的 `signIn.phoneNumber` 支持密码模
 | `zh-Hans` / `en` 的 `server/auth.yaml` | 文案改为手机号优先：`手机号或邮箱`、`请输入手机号（也可填邮箱）`、`使用其他账号`、资料页 `手机号或邮箱` / `验证状态` |
 
 其他语种没有补，按仓库规则由 Crowdin 维护。
+
+## 18. 知识库检索走服务端代理（2026-10-20）
+
+上游的知识库功能是**浏览器直连**知识库服务（Dify 外部知识库契约）。这对本部署不成立，两个原因：
+
+1. **CORS**：`knowledge.bestmings.com` 的白名单只放服务端调用，浏览器请求被拦
+   （预检返回 `Disallowed CORS origin`）
+2. **Key 会泄露**：设置页把 API Key 明文存进 localStorage，线上等于公开
+
+所以新增了一个转发端点，密钥留在服务端。
+
+| 文件 | 改动 |
+| --- | --- |
+| `server/apps/api/src/routes/knowledge-base/index.ts` | **新增** `POST /api/v1/knowledge-base/retrieval`，`authGuard` 保护 |
+| `server/apps/api/src/routes/knowledge-base/schema.ts` | **新增** Valibot 校验；`top_k` 限定 1–50 |
+| `server/apps/api/src/services/domain/knowledge-base.ts` | **新增** 转发、超时、错误映射（未配置 503 / 不可达 502 / 超时 504） |
+| `server/apps/api/src/routes/knowledge-base/route.test.ts` | **新增** 7 个用例 |
+| `server/apps/api/src/libs/env.ts` | 新增 `KNOWLEDGE_BASE_URL` / `_API_KEY` / `_TIMEOUT_MS` |
+| `server/apps/api/src/app.ts` | 挂载 `/api/v1/knowledge-base` |
+| `packages/stage-ui/src/libs/knowledge-base.ts` | 目标是**本部署 API** 时改用 `authedFetch`（带 JWT）；第三方端点仍用连接自己的 key |
+
+**上游 body 原样透传**：前端已经会解释 `error_code 1001/1002/2001`，在服务端翻译会变成两套错误词汇。
+
+### 实测
+
+| 检查 | 结果 |
+| --- | --- |
+| 浏览器点「测试连接」 | `已连接 HTTP 200 · 564 毫秒`，控制台无 CORS 错误 |
+| 带 JWT / 不带 JWT | `200` / `401` |
+| 直连上游 vs 走代理 | 返回体逐字节一致（代理透明） |
+
+### 遗留
+
+- **连接仍存在浏览器 localStorage**：每个患者都要在设置里手配一遍。
+  要上线需像 provider 那样自动下发，否则患者不会自己找到这个开关。
+- 上游知识库当前对所有查询返回 `{"records":[]}`（书还在、`index_status: semantic_ready`，
+  但 `book_count` 从 1→0、3→1）。这是上游数据的问题，与本代理无关。
+
 
 
 

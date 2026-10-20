@@ -97,6 +97,20 @@ const EnvSchema = object({
    * @default 'enforce'
    */
   OPENAI_GATEWAY_BILLING_MODE: optional(picklist(['enforce', 'off']), 'enforce'),
+  /**
+   * Knowledge base retrieval endpoint that this API forwards for the browser.
+   *
+   * A knowledge base service usually refuses a browser origin, and a key placed
+   * in the bundle is public. Forwarding through this process removes both
+   * problems: the call becomes server-to-server, and the key stays here.
+   *
+   * Empty disables the endpoint, which then answers 503
+   * `KNOWLEDGE_BASE_NOT_CONFIGURED`.
+   */
+  KNOWLEDGE_BASE_URL: optional(string()),
+  KNOWLEDGE_BASE_API_KEY: optional(string(), ''),
+  /** How long one forwarded retrieval may run before this API gives up. */
+  KNOWLEDGE_BASE_TIMEOUT_MS: optionalIntegerFromString(8000, 'KNOWLEDGE_BASE_TIMEOUT_MS', 100),
   OTEL_DEBUG: optional(string()),
 
   OTEL_EXPORTER_OTLP_ENDPOINT: optional(string()),

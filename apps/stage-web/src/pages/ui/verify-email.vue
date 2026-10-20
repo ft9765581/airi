@@ -5,9 +5,9 @@ import { computed, onMounted, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute } from 'vue-router'
 
-import { trackEmailVerificationCompleted, trackEmailVerificationFailed } from '../modules/analytics'
-import { buildCurrentOriginAuthUiUrl } from '../modules/auth-ui-base'
-import { getServerAuthBootstrapContext } from '../modules/server-auth-context'
+import { trackEmailVerificationCompleted, trackEmailVerificationFailed } from '../../modules/auth-ui/analytics'
+import { buildAuthUiPath, buildCurrentOriginAuthUiUrl } from '../../modules/auth-ui/auth-ui-base'
+import { getServerAuthBootstrapContext } from '../../modules/auth-ui/server-auth-context'
 
 const { t } = useI18n()
 const route = useRoute()
@@ -155,7 +155,7 @@ watch(data, async (event) => {
     </p>
 
     <RouterLink
-      to="/sign-in"
+      :to="buildAuthUiPath('/sign-in')"
       :class="['mt-8 text-xs text-neutral-500 underline']"
     >
       {{ t('server.auth.verifyEmail.action.backToSignIn') }}

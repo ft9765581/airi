@@ -55,6 +55,15 @@ if (isEnvTruthy(import.meta.env.VITE_APP_TARGET_HUGGINGFACE_SPACE))
 else
   router = createRouter({ routes: routeRecords, history: createWebHistory() })
 
+// The account pages live under `/ui`. That path has no page of its own, so a
+// bare `/ui` URL would fall through to the catch-all. Send it to the account
+// page instead, which is where a sign-in that started outside an OIDC flow
+// expects to land.
+router.beforeEach((to) => {
+  if (to.path === '/ui' || to.path === '/ui/')
+    return { path: '/ui/profile', replace: true }
+})
+
 router.beforeEach((to, from) => {
   if (to.path !== from.path)
     NProgress.start()

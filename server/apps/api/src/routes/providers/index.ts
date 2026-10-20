@@ -5,7 +5,7 @@ import { Hono } from 'hono'
 import { safeParse } from 'valibot'
 
 import { authGuard } from '../../middlewares/auth'
-import { createBadRequestError, createForbiddenError, createNotFoundError } from '../../utils/error'
+import { createBadRequestError, createNotFoundError } from '../../utils/error'
 import { CreateProviderConfigSchema, UpdateProviderConfigSchema } from './schema'
 
 export function createProviderRoutes(providerService: ProviderService) {
@@ -55,14 +55,13 @@ export function createProviderRoutes(providerService: ProviderService) {
         throw createBadRequestError('Invalid Request', 'INVALID_REQUEST', result.issues)
       }
 
-      // TODO: Move ownership checks into the service layer with an actor-aware API such as updateUserConfigByOwner(user.id, id, input).
-      const existing = await providerService.findUserConfigById(id)
-      if (!existing)
+      // The id is unique per owner only, so the update is owner-scoped. Another
+      // account's row with the same id resolves to 404 rather than 403: the
+      // response must not reveal that the id exists elsewhere.
+      const updated = await providerService.updateUserConfig(id, user.id, result.output)
+      if (!updated)
         throw createNotFoundError()
-      if (existing.ownerId !== user.id)
-        throw createForbiddenError()
 
-      const updated = await providerService.updateUserConfig(id, result.output)
       return c.json(updated)
     })
 
@@ -70,14 +69,10 @@ export function createProviderRoutes(providerService: ProviderService) {
       const user = c.get('user')!
       const id = c.req.param('id')
 
-      // TODO: Move ownership checks into the service layer with an actor-aware API such as deleteUserConfigByOwner(user.id, id).
-      const existing = await providerService.findUserConfigById(id)
-      if (!existing)
+      const deleted = await providerService.deleteUserConfig(id, user.id)
+      if (deleted.length === 0)
         throw createNotFoundError()
-      if (existing.ownerId !== user.id)
-        throw createForbiddenError()
 
-      await providerService.deleteUserConfig(id)
       return c.body(null, 204)
     })
 }

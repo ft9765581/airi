@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { ProfileUser } from '../modules/profile'
+import type { ProfileUser } from '../../modules/auth-ui/profile'
 
 import { defaultSignInProviders } from '@proj-airi/stage-ui/components/auth'
 import { useLinkedAccounts } from '@proj-airi/stage-ui/composables/use-linked-accounts'
@@ -16,18 +16,19 @@ import {
   trackPasswordChanged,
   trackPasswordResetRequested,
   trackSignedOut,
-} from '../modules/analytics'
-import { getAuthClient } from '../modules/auth-client'
-import { requestPasswordReset } from '../modules/email-password'
-import { toDisplayIdentifier } from '../modules/phone-account'
+} from '../../modules/auth-ui/analytics'
+import { getAuthClient } from '../../modules/auth-ui/auth-client'
+import { buildAuthUiPath } from '../../modules/auth-ui/auth-ui-base'
+import { requestPasswordReset } from '../../modules/auth-ui/email-password'
+import { toDisplayIdentifier } from '../../modules/auth-ui/phone-account'
 import {
   changePassword,
   describeProfileError,
   getCurrentSession,
   signOut,
   updateUserProfile,
-} from '../modules/profile'
-import { getServerAuthBootstrapContext } from '../modules/server-auth-context'
+} from '../../modules/auth-ui/profile'
+import { getServerAuthBootstrapContext } from '../../modules/auth-ui/server-auth-context'
 
 const { t, locale } = useI18n()
 const router = useRouter()
@@ -139,7 +140,7 @@ onMounted(async () => {
       // Preserve the original target so the user lands back on /profile after
       // sign-in, rather than the sign-in default landing.
       await router.replace({
-        path: '/sign-in',
+        path: buildAuthUiPath('/sign-in'),
         query: { redirect: '/profile' },
       })
       return
@@ -273,7 +274,7 @@ async function handleSignOut() {
   try {
     await signOut({ apiServerUrl })
     trackSignedOut()
-    await router.replace('/sign-in')
+    await router.replace(buildAuthUiPath('/sign-in'))
   }
   catch (error) {
     signOutError.value = describeProfileError(error) || t('server.auth.profile.error.signOutFailed')
