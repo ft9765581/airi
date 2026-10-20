@@ -135,7 +135,6 @@
 | `apps/stage-web/src/assets/airi-cards/xiaoqing.json` | 小清角色卡 |
 | `apps/stage-web/public/models/live2d/chun-nurse-white.zip` | 护士 Live2D 模型（6.4 MB） |
 | `apps/stage-web/deploy/` | 部署方案 |
-| `medical-kb/` | 知识库服务（Python） |
 | `docs/scripts/sync-gitee.ps1` + `.md` | 同步已提交内容到 Gitee |
 | `docs/scripts/create-local-account.ps1` | 本地建验证过的账号 |
 | `docs/design-harness/`、`docs/canvas.html`、`.design-harness/` | 并行工作的设计文档 |
