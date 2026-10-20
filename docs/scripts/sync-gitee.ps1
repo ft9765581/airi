@@ -274,6 +274,14 @@ $parentArguments = @()
 $localBranchRef = 'refs/heads/' + $LocalBranch
 $existingTip = Get-FirstLine (Invoke-Git @('rev-parse', '--verify', '--quiet', $localBranchRef) -AllowFailure)
 
+# The local chain branch is not durable: a fresh clone, a deleted branch, or a
+# cleaned-up worktree leaves it missing while the remote still holds a mirror.
+# Parent on the remote tip in that case, so the receiver keeps one history and
+# can pull, instead of being told to reset onto an unrelated root commit.
+if (-not $existingTip -and -not $Fresh) {
+  $existingTip = Get-FirstLine (Invoke-Git @('rev-parse', '--verify', '--quiet', ('refs/remotes/{0}/{1}' -f $Remote, $TargetBranch)) -AllowFailure)
+}
+
 if ($existingTip -and -not $Fresh) {
   $existingTree = Get-FirstLine (Invoke-Git @('rev-parse', ($existingTip + '^{tree}')))
   if ($existingTree -eq $tree) {
@@ -320,7 +328,9 @@ if ($remoteLine) {
   $pushArguments += ('--force-with-lease=refs/heads/{0}:{1}' -f $TargetBranch, $remoteSha)
 }
 $pushArguments += $Remote
-$pushArguments += ('{0}:{1}' -f $LocalBranch, $TargetBranch)
+# Push the commit itself, not the local branch: the branch is only created after
+# the remote accepts the commit, so the first run has no branch to name here.
+$pushArguments += ('{0}:{1}' -f $commit, $TargetBranch)
 
 Write-Host ('Pushing to {0} ...' -f $remoteUrl)
 $pushOutput = Invoke-Git $pushArguments
