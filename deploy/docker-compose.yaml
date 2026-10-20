@@ -1,0 +1,94 @@
+# 只跑后端服务。前端静态文件由宝塔 nginx 直接托管，不用容器。
+# 宿主机端口：api 127.0.0.1:3000，auth 127.0.0.1:3001，都不对公网开放。
+
+name: airi
+
+services:
+  db:
+    image: ghcr.io/tensorchord/vchord-postgres:pg18-v1.0.0
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      # 这个镜像需要 vchord 扩展，初始化脚本在第一次启动时创建它。
+      # 宝塔自带的 PostgreSQL 装不了这个扩展，不要替换成本机数据库。
+      - ../server/apps/api/sql/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+      - db_data:/var/lib/postgresql
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ['redis-server', '--requirepass', '${REDIS_PASSWORD}', '--appendonly', 'yes']
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', '-a', '${REDIS_PASSWORD}', 'ping']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build:
+      context: ..
+      dockerfile: server/apps/api/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      db: {condition: service_healthy}
+      redis: {condition: service_healthy}
+    ports:
+      - '127.0.0.1:3000:3000'
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
+      # API_SERVER_URL 和 AUTH_SERVER_URL 必须与 auth 的 PUBLIC_URL 完全一致。
+      # 三者任何一个不同，JWT 校验失败，每个请求都 401。
+      API_SERVER_URL: https://${APP_DOMAIN}
+      AUTH_SERVER_URL: https://${APP_DOMAIN}
+      # 容器之间直连，绕开公网
+      AUTH_SERVER_INTERNAL_URL: http://auth:3000
+      WEB_APP_URL: https://${APP_DOMAIN}
+      ADDITIONAL_TRUSTED_ORIGINS: https://${ACCOUNTS_DOMAIN}
+      LLM_ROUTER_MASTER_KEY: ${LLM_ROUTER_MASTER_KEY}
+      OPENAI_GATEWAY_BILLING_MODE: ${OPENAI_GATEWAY_BILLING_MODE:-off}
+    healthcheck:
+      test: ['CMD-SHELL', 'wget -qO- http://localhost:3000/readyz >/dev/null']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  auth:
+    build:
+      context: ..
+      dockerfile: server/apps/auth/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      api: {condition: service_healthy}
+    ports:
+      - '127.0.0.1:3001:3000'
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
+      PUBLIC_URL: https://${APP_DOMAIN}
+      # 服务端互调走容器网络
+      RESOURCE_SERVER_URL: http://api:3000
+      # 登录流程会把 /auth/* 重定向到账号界面
+      AUTH_UI_URL: https://${ACCOUNTS_DOMAIN}/ui
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET}
+      ADDITIONAL_TRUSTED_ORIGINS: https://${ACCOUNTS_DOMAIN}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+    healthcheck:
+      test: ['CMD-SHELL', 'wget -qO- http://localhost:3000/readyz >/dev/null']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  db_data:
+  redis_data:
