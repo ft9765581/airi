@@ -3,7 +3,7 @@ import { computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute } from 'vue-router'
 
-import { trackAccountDeletionCompleted } from '../modules/analytics'
+import { trackAccountDeletionCompleted } from '../../modules/auth-ui/analytics'
 
 // NOTICE:
 // This page is a SUCCESS landing — better-auth's `/api/auth/delete-user/callback`

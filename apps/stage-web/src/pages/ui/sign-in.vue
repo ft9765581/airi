@@ -13,21 +13,21 @@ import {
   trackLoginStarted,
   trackLoginSucceeded,
   trackSignupFormCompleted,
-} from '../modules/analytics'
-import { buildCurrentOriginAuthUiUrl } from '../modules/auth-ui-base'
+} from '../../modules/auth-ui/analytics'
+import { buildAuthUiPath, buildCurrentOriginAuthUiUrl } from '../../modules/auth-ui/auth-ui-base'
 import {
   checkEmail,
   describeAuthError,
   signInWithEmail,
   signUpWithEmail,
-} from '../modules/email-password'
-import { defaultAccountName, toAccountEmail } from '../modules/phone-account'
-import { getServerAuthBootstrapContext } from '../modules/server-auth-context'
+} from '../../modules/auth-ui/email-password'
+import { defaultAccountName, toAccountEmail } from '../../modules/auth-ui/phone-account'
+import { getServerAuthBootstrapContext } from '../../modules/auth-ui/server-auth-context'
 import {
   createServerSignInContext,
   requestSocialSignInRedirect,
   SocialSignInTimeoutError,
-} from '../modules/sign-in'
+} from '../../modules/auth-ui/sign-in'
 
 type Step = 'identify' | 'password' | 'create'
 
@@ -219,7 +219,7 @@ async function handleEmailSignIn(event: Event) {
       // verify-email tab would resume to /ui/profile after the cookie lands
       // and the upstream stage app never receives its auth code/tokens.
       await router.push({
-        path: '/verify-email',
+        path: buildAuthUiPath('/verify-email'),
         query: {
           email: credentials.email.trim(),
           ...(oidcContinueURL.value ? { continueURL: oidcContinueURL.value } : {}),
@@ -270,7 +270,7 @@ async function handleEmailSignUp(event: Event) {
     if (result.requiresVerification) {
       trackSignupFormCompleted({ source: 'email', requires_verification: true })
       await router.push({
-        path: '/verify-email',
+        path: buildAuthUiPath('/verify-email'),
         query: {
           email,
           ...(oidcContinueURL.value ? { continueURL: oidcContinueURL.value } : {}),

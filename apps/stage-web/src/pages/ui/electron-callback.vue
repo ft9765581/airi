@@ -3,9 +3,9 @@ import { Button } from '@proj-airi/ui'
 import { onMounted, shallowRef } from 'vue'
 import { useI18n } from 'vue-i18n'
 
-import { parseElectronCallbackQuery } from '../composables/electron-callback.shared'
-import { trackOauthCallbackFailed } from '../modules/analytics'
-import { getServerAuthBootstrapContext } from '../modules/server-auth-context'
+import { parseElectronCallbackQuery } from '../../composables/electron-callback.shared'
+import { trackOauthCallbackFailed } from '../../modules/auth-ui/analytics'
+import { getServerAuthBootstrapContext } from '../../modules/auth-ui/server-auth-context'
 
 type CallbackStatus = 'loading' | 'success' | 'fallback' | 'error'
 

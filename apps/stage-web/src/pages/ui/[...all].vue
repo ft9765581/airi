@@ -2,6 +2,8 @@
 import { Button } from '@proj-airi/ui'
 import { useRouter } from 'vue-router'
 
+import { buildAuthUiPath } from '../../modules/auth-ui/auth-ui-base'
+
 const router = useRouter()
 </script>
 
@@ -55,7 +57,7 @@ const router = useRouter()
           'flex flex-wrap items-center justify-center gap-3',
         ]"
       >
-        <Button @click="router.push('/sign-in')">
+        <Button @click="router.push(buildAuthUiPath('/sign-in'))">
           Sign in
         </Button>
         <Button @click="router.go(-1)">
