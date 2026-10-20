@@ -130,11 +130,11 @@ describe('providerRoutes', () => {
     }), { user: testUser } as any)
 
     expect(res.status).toBe(200)
-    const updated = await providerService.findUserConfigById(providerId)
+    const updated = await providerService.findUserConfigById(providerId, testUser.id)
     expect(updated?.name).toBe('Updated Name')
   })
 
-  it('patch /:id should return 403 if not owner', async () => {
+  it('patch /:id should return 404 when another user owns that id', async () => {
     // Create another user
     const [otherUser] = await db.insert(schema.user).values({
       id: 'user-2',
@@ -145,13 +145,47 @@ describe('providerRoutes', () => {
     const providers = await providerService.findUserConfigsByOwnerId(testUser.id)
     const providerId = providers[0].id
 
+    // The id is unique per owner only, so another account can hold the same one.
+    // The response must not reveal that it exists elsewhere.
     const res = await app.fetch(new Request(`http://localhost/${providerId}`, {
       method: 'PATCH',
       body: JSON.stringify({ name: 'Hacked Name' }),
       headers: { 'Content-Type': 'application/json' },
     }), { user: otherUser } as any)
 
-    expect(res.status).toBe(403)
+    expect(res.status).toBe(404)
+  })
+
+  it('post / should let two accounts store the same provider id', async () => {
+    const [firstUser] = await db.insert(schema.user).values({
+      id: 'user-3',
+      name: 'First',
+      email: 'first@example.com',
+    }).returning()
+    const [secondUser] = await db.insert(schema.user).values({
+      id: 'user-4',
+      name: 'Second',
+      email: 'second@example.com',
+    }).returning()
+
+    const payload = {
+      id: 'deepseek',
+      definitionId: 'deepseek',
+      name: 'DeepSeek',
+      config: { apiKey: 'sk-same-id' },
+    }
+
+    for (const user of [firstUser, secondUser]) {
+      const res = await app.fetch(new Request('http://localhost/', {
+        method: 'POST',
+        body: JSON.stringify(payload),
+        headers: { 'Content-Type': 'application/json' },
+      }), { user } as any)
+      expect(res.status).toBe(201)
+    }
+
+    const owned = await providerService.findUserConfigsByOwnerId(secondUser.id)
+    expect(owned.some((p: { id: string }) => p.id === 'deepseek')).toBe(true)
   })
 
   it('delete /:id should soft delete provider', async () => {
@@ -163,7 +197,7 @@ describe('providerRoutes', () => {
     }), { user: testUser } as any)
 
     expect(res.status).toBe(204)
-    const deleted = await providerService.findUserConfigById(providerId)
+    const deleted = await providerService.findUserConfigById(providerId, testUser.id)
     expect(deleted).toBeUndefined()
   })
 })

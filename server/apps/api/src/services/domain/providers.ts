@@ -84,10 +84,17 @@ export function createProviderService(db: Database) {
       return null
     },
 
-    async findUserConfigById(id: string) {
+    /**
+     * Finds one provider config that `ownerId` owns.
+     *
+     * The id alone is not unique: every account stores its own `deepseek` row, so
+     * a lookup without the owner could read another account's credentials.
+     */
+    async findUserConfigById(id: string, ownerId: string) {
       return await db.query.userProviderConfigs.findFirst({
         where: and(
           eq(schema.userProviderConfigs.id, id),
+          eq(schema.userProviderConfigs.ownerId, ownerId),
           isNull(schema.userProviderConfigs.deletedAt),
         ),
       })
@@ -99,27 +106,31 @@ export function createProviderService(db: Database) {
       return inserted
     },
 
-    async updateUserConfig(id: string, data: Partial<schema.NewUserProviderConfig>) {
+    /** Updates one config that `ownerId` owns. Resolves `undefined` when it holds none with that id. */
+    async updateUserConfig(id: string, ownerId: string, data: Partial<schema.NewUserProviderConfig>) {
       const [updated] = await db.update(schema.userProviderConfigs)
         .set({ ...data, updatedAt: new Date() })
         .where(and(
           eq(schema.userProviderConfigs.id, id),
+          eq(schema.userProviderConfigs.ownerId, ownerId),
           isNull(schema.userProviderConfigs.deletedAt),
         ))
         .returning()
-      logger.withFields({ id }).log('Updated user provider config')
+      logger.withFields({ id, ownerId }).log('Updated user provider config')
       return updated
     },
 
-    async deleteUserConfig(id: string) {
+    /** Soft-deletes one config that `ownerId` owns. An empty array means the owner holds none with that id. */
+    async deleteUserConfig(id: string, ownerId: string) {
       const result = await db.update(schema.userProviderConfigs)
         .set({ deletedAt: new Date() })
         .where(and(
           eq(schema.userProviderConfigs.id, id),
+          eq(schema.userProviderConfigs.ownerId, ownerId),
           isNull(schema.userProviderConfigs.deletedAt),
         ))
         .returning()
-      logger.withFields({ id }).log('Deleted user provider config')
+      logger.withFields({ id, ownerId }).log('Deleted user provider config')
       return result
     },
 

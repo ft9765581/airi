@@ -40,7 +40,7 @@ describe('providerService', () => {
     expect(result.id).toBe('prov-1')
     expect(result.name).toBe('My OpenAI')
 
-    const found = await service.findUserConfigById('prov-1')
+    const found = await service.findUserConfigById('prov-1', testUser.id)
     expect(found).toBeDefined()
     expect(found!.definitionId).toBe('openai')
     expect((found!.config as Record<string, string>).apiKey).toBe('sk-123')
@@ -81,14 +81,36 @@ describe('providerService', () => {
   })
 
   it('updateUserConfig should update provider fields', async () => {
-    await service.updateUserConfig('prov-1', { name: 'Updated OpenAI' })
-    const prov = await service.findUserConfigById('prov-1')
+    await service.updateUserConfig('prov-1', testUser.id, { name: 'Updated OpenAI' })
+    const prov = await service.findUserConfigById('prov-1', testUser.id)
     expect(prov?.name).toBe('Updated OpenAI')
   })
 
+  it('updateUserConfig should not touch another owner row with the same id', async () => {
+    const [otherUser] = await db.insert(schema.user).values({
+      id: 'user-2',
+      name: 'Other User',
+      email: 'other@example.com',
+    }).returning()
+
+    await service.createUserConfig({
+      id: 'prov-1',
+      ownerId: otherUser.id,
+      definitionId: 'openai',
+      name: 'Other OpenAI',
+      config: { apiKey: 'sk-other' },
+    })
+
+    const updated = await service.updateUserConfig('prov-1', testUser.id, { name: 'Only Mine' })
+    expect(updated?.name).toBe('Only Mine')
+
+    const otherRow = await service.findUserConfigById('prov-1', otherUser.id)
+    expect(otherRow?.name).toBe('Other OpenAI')
+  })
+
   it('deleteUserConfig should soft delete provider', async () => {
-    await service.deleteUserConfig('prov-1')
-    const prov = await service.findUserConfigById('prov-1')
+    await service.deleteUserConfig('prov-1', testUser.id)
+    const prov = await service.findUserConfigById('prov-1', testUser.id)
     expect(prov).toBeUndefined()
   })
 })
