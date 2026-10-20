@@ -16,6 +16,7 @@ lerna-debug.log*
 
 .idea
 .temp
+.tmp/
 **/temp/
 
 # AI Agents
