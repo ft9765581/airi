@@ -6,6 +6,11 @@ import LogoDark from '../../assets/logo-dark.svg'
 import Logo from '../../assets/logo.svg'
 
 const { isDark: dark } = useTheme()
+
+// This fork ships as a white-label product, so the brand comes from the build
+// environment. The default replaces the upstream name, because a build without
+// `VITE_APP_NAME` would otherwise show the upstream brand to end users.
+const appName = import.meta.env.VITE_APP_NAME || '清锡医疗'
 </script>
 
 <template>
@@ -20,7 +25,7 @@ const { isDark: dark } = useTheme()
       <img :src="Logo" h-8 w-8 class="theme-colored">
     </template>
     <div translate-y="[2px]" font-quicksand font-semibold>
-      <span>AIRI</span>
+      <span>{{ appName }}</span>
     </div>
   </RouterLink>
 </template>

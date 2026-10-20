@@ -10,6 +10,7 @@ import { computed } from 'vue'
 import { client } from '../../composables/api'
 import { getDefinedProvider } from '../../libs/providers'
 import { inferenceServiceProvidersService as service } from '../../services/inference-service-providers'
+import { useAuthStore } from '../auth'
 
 const PROVIDERS_QUERY_KEY = ['inference-service-providers']
 const providerStorageOptions = {
@@ -46,6 +47,10 @@ export const useProviderConfigStore = defineStore('provider-config', () => {
   const providers = useLocalStorage<Record<string, InferenceServiceProvider>>('settings/providers/configured', {}, providerStorageOptions)
   const addedProviders = useLocalStorage<Record<string, boolean>>('settings/providers/added', {}, providerStorageOptions)
   const legacyConfigs = useLocalStorage<Record<string, Record<string, unknown>>>('settings/credentials/providers', {}, providerStorageOptions)
+
+  // `stores/auth` states that it does not import this store, so this direction
+  // cannot create a cycle. The sign-in and sign-out hooks below need it.
+  const authStore = useAuthStore()
 
   // Import the previous provider configuration shape once. Provider ids remain
   // stable, so existing model selections keep pointing at the same provider.
@@ -139,6 +144,18 @@ export const useProviderConfigStore = defineStore('provider-config', () => {
     return provider
   }
 
+  function updateProviderConfigFields(providerId: string, definitionId: string, patch: Record<string, unknown>) {
+    const provider = ensureProvider(providerId, definitionId)
+    const normalizedPatch = Object.fromEntries(
+      Object.entries(patch).map(([key, value]) => [key, key === 'apiKey' && typeof value === 'string' ? value.trim() : value]),
+    )
+
+    Object.assign(provider.config, normalizedPatch)
+    // A synchronized action result crosses a `structuredClone` boundary, and a
+    // Vue reactive proxy fails that clone. Callers read the stored value, so
+    // this action returns nothing.
+  }
+
   function markProviderAdded(providerId: string) {
     addedProviders.value[providerId] = true
   }
@@ -159,19 +176,52 @@ export const useProviderConfigStore = defineStore('provider-config', () => {
       markProviderAdded(providerId)
   }
 
+  /**
+   * Brings this browser and the account's stored configuration in line.
+   *
+   * The server is authoritative for the providers it holds, so a second device
+   * shows the same set. A server that holds nothing is the first sign-in of this
+   * account, so the providers this browser already has go up: that carries the
+   * deployment defaults and anything the visitor configured before signing in.
+   *
+   * A failed request leaves the local snapshot alone, so the store keeps working
+   * offline and the next sign-in tries again.
+   *
+   * This stays a synchronized action. The sign-in hook calls it, and a follower
+   * window must ask the leader rather than write the replicated snapshot itself.
+   */
   async function fetchProviders() {
+    let remote: Record<string, InferenceServiceProvider>
     try {
       const state = await providersQuery.refetch(true)
-      if (state.data) {
-        // The server snapshot has the highest priority for ids that exist remotely.
-        mergeProviderSnapshot(state.data)
-      }
-      return providers.value
+      if (!state.data)
+        return providers.value
+      remote = state.data
     }
     catch {
       // The merged local snapshot is authoritative while the remote endpoint is unavailable.
       return providers.value
     }
+
+    if (Object.keys(remote).length > 0) {
+      // The server snapshot has the highest priority for ids that exist remotely.
+      mergeProviderSnapshot(remote)
+      return providers.value
+    }
+
+    if (!authStore.isAuthenticated)
+      return providers.value
+
+    for (const provider of Object.values(providers.value)) {
+      try {
+        await addProviderMutation.mutateAsync(provider)
+      }
+      catch {
+        // One rejected provider must not stop the remaining ones from uploading.
+      }
+    }
+
+    return providers.value
   }
 
   async function addProvider(definitionId: string, initialConfig: Record<string, unknown> = {}) {
@@ -236,6 +286,14 @@ export const useProviderConfigStore = defineStore('provider-config', () => {
     addedProviders.value = {}
   }
 
+  // The account owns its provider configuration, so signing in brings this
+  // browser in line with it. Signing out clears the local copy: without that,
+  // the next account to sign in on this browser would inherit these providers
+  // and upload them to its own account. The deployment seeds its defaults again
+  // on the next start.
+  authStore.onAuthenticated(() => void fetchProviders())
+  authStore.onLogout(() => void resetProviders())
+
   return {
     providers,
     configs,
@@ -249,6 +307,7 @@ export const useProviderConfigStore = defineStore('provider-config', () => {
     getProvider,
     getProviderConfig,
     ensureProvider,
+    updateProviderConfigFields,
     markProviderAdded,
     unmarkProviderAdded,
     setProviderStatus,
@@ -263,6 +322,7 @@ export const useProviderConfigStore = defineStore('provider-config', () => {
     actions: [
       'fetchProviders',
       'ensureProvider',
+      'updateProviderConfigFields',
       'markProviderAdded',
       'unmarkProviderAdded',
       'setProviderStatus',

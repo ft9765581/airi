@@ -11,8 +11,20 @@ import { createDataSettingsStatusHelpers } from '../status'
 const emit = defineEmits<DataSettingsStatusEmits>()
 const { t } = useI18n()
 const { trackDataAction } = useAnalytics()
-const { deleteAllData, resetProvidersSettings } = useDataMaintenance()
+const { deleteAllData, resetProvidersSettings, restoreBuildDefaults } = useDataMaintenance()
 const { emitStatus, handleActionError } = createDataSettingsStatusHelpers(emit)
+
+async function restoreDefaults() {
+  try {
+    restoreBuildDefaults()
+    trackDataAction({ action: 'deployment_defaults_restored' })
+    emitStatus(t('settings.pages.data.status.deployment_defaults_restored'))
+    window.location.reload()
+  }
+  catch (error) {
+    handleActionError(error)
+  }
+}
 
 async function resetProviders() {
   try {
@@ -63,6 +75,28 @@ async function deleteAll() {
             <div :class="['flex flex-col items-start gap-2']">
               <DoubleCheckButton @confirm="resetProviders">
                 {{ t('settings.pages.data.sections.providers.reset') }}
+                <template #confirm>
+                  {{ t('settings.pages.data.confirmations.yes') }}
+                </template>
+                <template #cancel>
+                  {{ t('settings.pages.card.cancel') }}
+                </template>
+              </DoubleCheckButton>
+            </div>
+          </div>
+
+          <div :class="['grid grid-cols-1 items-start gap-2 md:grid-cols-[minmax(0,1fr)_auto]']">
+            <div :class="['flex flex-col gap-1 md:max-w-[560px]']">
+              <div :class="['text-sm text-red-700 font-medium dark:text-red-200']">
+                {{ t('settings.pages.data.sections.deployment-defaults.title') }}
+              </div>
+              <p :class="['text-xs text-red-700/80 dark:text-red-200/80']">
+                {{ t('settings.pages.data.sections.deployment-defaults.description') }}
+              </p>
+            </div>
+            <div :class="['flex flex-col items-start gap-2']">
+              <DoubleCheckButton @confirm="restoreDefaults">
+                {{ t('settings.pages.data.sections.deployment-defaults.restore') }}
                 <template #confirm>
                   {{ t('settings.pages.data.confirmations.yes') }}
                 </template>

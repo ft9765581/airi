@@ -7,6 +7,7 @@ import { useChatStore } from '@proj-airi/stage-ui/stores/chat'
 import { useChatSessionStore } from '@proj-airi/stage-ui/stores/chat/session-store'
 import { useChatStreamStore } from '@proj-airi/stage-ui/stores/chat/stream-store'
 import { useContextBridgeStore } from '@proj-airi/stage-ui/stores/mods/api/context-bridge'
+import { useAiriCardStore } from '@proj-airi/stage-ui/stores/modules/airi-card'
 import { useDeferredMount } from '@proj-airi/ui'
 import { storeToRefs } from 'pinia'
 import { computed, ref } from 'vue'
@@ -18,6 +19,7 @@ import ChatContainer from '../Widgets/ChatContainer.vue'
 import { useChatToolCallRerun } from '../../composables/useChatToolCallRerun'
 
 const { isReady } = useDeferredMount()
+const cardStore = useAiriCardStore()
 const { activeSendSessionId, activeStreamingMessage, sending } = storeToRefs(useChatStore())
 const { activeSessionId, messages } = storeToRefs(useChatSessionStore())
 const { streamingMessage } = storeToRefs(useChatStreamStore())
@@ -25,6 +27,10 @@ const { isReceivingRemoteStream } = storeToRefs(useContextBridgeStore())
 
 const isLoading = ref(true)
 const historyMessages = computed(() => messages.value as unknown as ChatHistoryItem[])
+// The message header names the active character, so switching the card renames
+// the speaker. `ChatHistory` keeps its own label for the case where no card is
+// loaded yet.
+const assistantLabel = computed(() => cardStore.activeCard?.name)
 const isActiveSessionSending = computed(() => (
   (sending.value && activeSendSessionId.value === activeSessionId.value)
   || isReceivingRemoteStream.value
@@ -64,6 +70,7 @@ async function handleDeleteMessage(index: number) {
           <ChatHistory
             v-if="isReady"
             :messages="historyMessages"
+            :assistant-label="assistantLabel"
             :sending="isActiveSessionSending"
             :streaming-message="visibleStreamingMessage"
             h-full

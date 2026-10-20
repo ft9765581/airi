@@ -5,6 +5,7 @@ import { useLive2dParams, useSettingsLive2d } from '@proj-airi/stage-ui-live2d'
 import { useModelStore } from '@proj-airi/stage-ui-three'
 
 import { useLive2DMotionMagicSettings } from '../features/motions/live2d'
+import { VISITOR_OWNED_SELECTION_KEYS } from '../libs/deployment-default-keys'
 import { useChatStore } from '../stores/chat'
 import { useChatSessionStore } from '../stores/chat/session-store'
 import { useDisplayModelsStore } from '../stores/display-models'
@@ -112,6 +113,32 @@ export function useDataMaintenance() {
     await resetSettingsState()
   }
 
+  /**
+   * Removes the markers that say a deployed build already applied its defaults,
+   * and the module selections that the visitor owns.
+   *
+   * The next load applies the deployment defaults again, which includes the
+   * providers, the module selections, and the character card that the
+   * deployment ships. The selection keys must go too: the build defaults write
+   * a selection only while its key is empty, so a key that still holds the
+   * visitor's choice would keep that choice instead of restoring the default.
+   *
+   * The caller reloads the application, because the defaults run while the
+   * application starts.
+   *
+   * This function writes storage directly. The store resets persist through an
+   * asynchronous watcher, so a reload in the same turn would lose them.
+   */
+  function restoreBuildDefaults() {
+    for (const key of VISITOR_OWNED_SELECTION_KEYS)
+      window.localStorage.removeItem(key)
+
+    for (const key of Object.keys(window.localStorage)) {
+      if (key.startsWith('settings/defaults/'))
+        window.localStorage.removeItem(key)
+    }
+  }
+
   async function resetDesktopApplicationState() {
     if (!isStageTamagotchi())
       return
@@ -128,6 +155,7 @@ export function useDataMaintenance() {
     exportChatSessions,
     importChatSessions,
     deleteAllData,
+    restoreBuildDefaults,
     resetDesktopApplicationState,
   }
 }

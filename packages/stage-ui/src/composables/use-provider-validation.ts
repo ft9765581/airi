@@ -37,6 +37,7 @@ export function useProviderValidation(providerId: string) {
     trackProviderConnectionTestStarted,
   } = useAnalytics()
   const { configs: providers } = storeToRefs(providerStore) as { configs: RemovableRef<Record<string, any>> }
+  const providerDefinitionId = providersStore.getProviderDefinition(providerId).id
 
   const providerMetadata = computedAsync(async () => {
     const definition = providersStore.getProviderDefinition(providerId)
@@ -52,27 +53,21 @@ export function useProviderValidation(providerId: string) {
   const apiKey = computed({
     get: () => credentials.value.apiKey || '',
     set: (value) => {
-      if (!providers.value[providerId])
-        providers.value[providerId] = {}
-      providers.value[providerId].apiKey = value
+      providerStore.updateProviderConfigFields(providerId, providerDefinitionId, { apiKey: value })
     },
   })
 
   const baseUrl = computed({
     get: () => credentials.value.baseUrl || '',
     set: (value) => {
-      if (!providers.value[providerId])
-        providers.value[providerId] = {}
-      providers.value[providerId].baseUrl = value
+      providerStore.updateProviderConfigFields(providerId, providerDefinitionId, { baseUrl: value })
     },
   })
 
   const accountId = computed({
     get: () => credentials.value.accountId || '',
     set: (value) => {
-      if (!providers.value[providerId])
-        providers.value[providerId] = {}
-      providers.value[providerId].accountId = value
+      providerStore.updateProviderConfigFields(providerId, providerDefinitionId, { accountId: value })
     },
   })
   // --- End of Internal Computed Properties ---
@@ -244,7 +239,8 @@ export function useProviderValidation(providerId: string) {
 
   function handleResetSettings() {
     const defaultOptions = providerMetadata.value?.defaultConfig ?? {}
-    providers.value[providerId] = { ...defaultOptions }
+    const provider = providerStore.ensureProvider(providerId, providerDefinitionId)
+    provider.config = { ...defaultOptions }
     isValid.value = false
     validationMessage.value = ''
     isValidating.value = 0

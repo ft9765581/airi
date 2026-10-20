@@ -118,4 +118,13 @@ describe('provider config store', () => {
     )
     expect(mocks.service.deleteRemote).toHaveBeenCalledWith(mocks.client, remoteProvider.id)
   })
+
+  it('creates a provider record and normalizes API keys for field updates', () => {
+    const store = installStore()
+
+    store.updateProviderConfigFields('mimo', 'mimo', { apiKey: '  test-key  ' })
+
+    expect(store.getProviderConfig('mimo')).toEqual({ apiKey: 'test-key' })
+    expect(store.getProvider('mimo')?.status).toBe('unconfigured')
+  })
 })

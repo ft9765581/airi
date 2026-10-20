@@ -19,7 +19,7 @@ import { computedAsync, useAsyncState, useIntervalFn } from '@vueuse/core'
 import { listModels } from '@xsai/model'
 import { uniqBy } from 'es-toolkit'
 import { defineStore } from 'pinia'
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 import {
@@ -91,6 +91,7 @@ export const useProviderStore = defineStore('provider', () => {
   const providerConfigStore = useProviderConfigStore()
   const providerStateStore = useProviderStateStore()
   const providerCredentials = computed(() => providerConfigStore.configs)
+  const providerCredentialsSignature = computed(() => JSON.stringify(providerCredentials.value))
   const addedProviders = computed(() => providerConfigStore.addedProviders)
   // Provider instances contain functions and transport handles. Keep this map
   // private so it never enters Pinia state.
@@ -707,6 +708,10 @@ export const useProviderStore = defineStore('provider', () => {
       }
     }
   }
+
+  watch(providerCredentialsSignature, async () => {
+    await refreshModelsForChangedCredentials()
+  })
 
   function projectProvider(providerId: string): ProviderMetadata | undefined {
     const configuredProvider = providerConfigStore.providers[providerId]
