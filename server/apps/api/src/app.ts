@@ -54,6 +54,7 @@ import { createChatWsPayloadLimit } from './routes/chat-ws/v2/payload-limit'
 import { createChatRoutes } from './routes/chats'
 import { createFluxRoutes } from './routes/flux'
 import { createInternalAuthRoutes } from './routes/internal-auth'
+import { createKnowledgeBaseRoutes } from './routes/knowledge-base'
 import { createV1Routes } from './routes/openai/v1'
 import { createProviderRoutes } from './routes/providers'
 import { createStripeRoutes } from './routes/stripe'
@@ -67,6 +68,7 @@ import { createCharacterService } from './services/domain/characters'
 import { createChatService } from './services/domain/chats'
 import { createFluxService } from './services/domain/flux'
 import { createFluxTransactionService } from './services/domain/flux-transaction'
+import { createKnowledgeBaseService } from './services/domain/knowledge-base'
 import { createConcurrencyLedger, createConfigSyncSubscriber, createLlmRouterService } from './services/domain/llm-router'
 import { createProductEventService } from './services/domain/product-events'
 import { createProviderCatalogService } from './services/domain/provider-catalog'
@@ -375,6 +377,15 @@ export async function buildApp(deps: AppDeps) {
      * Voice Pack routes expose the enabled curated library for binding.
      */
     .route('/api/v1/voice-packs', createVoicePackRoutes(deps.voicePackService))
+
+    /**
+     * Knowledge base retrieval proxy.
+     *
+     * The browser posts the Dify external knowledge base contract and this
+     * process forwards it with the deployment's key, so a knowledge base that
+     * refuses browser origins still works and the key never reaches the bundle.
+     */
+    .route('/api/v1/knowledge-base', createKnowledgeBaseRoutes(createKnowledgeBaseService(deps.env)))
 
     /**
      * Chat routes are handled by the chat service.
