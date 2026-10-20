@@ -21,6 +21,7 @@ import {
   signInWithEmail,
   signUpWithEmail,
 } from '../modules/email-password'
+import { defaultAccountName, toAccountEmail } from '../modules/phone-account'
 import { getServerAuthBootstrapContext } from '../modules/server-auth-context'
 import {
   createServerSignInContext,
@@ -169,7 +170,10 @@ async function handleIdentify(event: Event) {
   identifierLoading.value = true
 
   try {
-    const email = credentials.email.trim()
+    // The field accepts a phone number or an email address. `toAccountEmail`
+    // maps a phone onto the identifier this deployment stores, so both kinds of
+    // account go through the same email + password routes.
+    const email = toAccountEmail(credentials.email)
     const result = await checkEmail({ apiServerUrl, email })
 
     if (result.exists && !result.hasPassword) {
@@ -204,7 +208,7 @@ async function handleEmailSignIn(event: Event) {
   try {
     const result = await signInWithEmail({
       apiServerUrl,
-      email: credentials.email.trim(),
+      email: toAccountEmail(credentials.email),
       password: credentials.password,
       callbackURL: effectiveCallbackURL.value,
     })
@@ -253,8 +257,8 @@ async function handleEmailSignUp(event: Event) {
 
   credentialsLoading.value = true
   try {
-    const email = credentials.email.trim()
-    const name = credentials.name.trim() || email.split('@')[0]
+    const email = toAccountEmail(credentials.email)
+    const name = credentials.name.trim() || defaultAccountName(credentials.email)
     const result = await signUpWithEmail({
       apiServerUrl,
       email,
@@ -346,7 +350,8 @@ async function handleEmailSignUp(event: Event) {
     >
       <FieldInput
         v-model="credentials.email"
-        type="email"
+        type="text"
+        autocomplete="username"
         :label="t('server.auth.signIn.email.label')"
         :placeholder="t('server.auth.signIn.email.placeholder')"
         required
@@ -385,10 +390,11 @@ async function handleEmailSignUp(event: Event) {
         <span>{{ t('server.auth.signIn.action.signIn') }}</span>
       </Button>
 
-      <div :class="['flex items-center justify-between text-xs text-neutral-500']">
-        <RouterLink to="/forgot-password" :class="['underline']">
-          {{ t('server.auth.signIn.action.forgotPassword') }}
-        </RouterLink>
+      <!-- NOTICE:
+           Password reset sends a mail, and this deployment has no mail service,
+           so the link fails with a 503. Restore it together with
+           `RESEND_API_KEY` in `server/apps/auth`. -->
+      <div :class="['flex items-center justify-end text-xs text-neutral-500']">
         <button type="button" :class="['underline']" @click="backToIdentify">
           {{ t('server.auth.signIn.action.useDifferentEmail') }}
         </button>
@@ -462,15 +468,16 @@ async function handleEmailSignUp(event: Event) {
       </div>
     </template>
 
+    <!-- NOTICE:
+         The footer named terms and privacy, but both links opened the AIRI
+         project documentation in English. A product deployment must own those
+         pages, so the labels are plain text until the deployment supplies its
+         own URLs. Restore them as anchors when the URLs exist. -->
     <div :class="['mt-8 text-center text-xs text-gray-400']">
       {{ t('server.auth.signIn.footer.prefix') }}
-      <a href="https://airi.moeru.ai/docs/en/about/terms" :class="['underline']">
-        {{ t('server.auth.signIn.footer.terms') }}
-      </a>
+      <span>{{ t('server.auth.signIn.footer.terms') }}</span>
       {{ t('server.auth.signIn.footer.and') }}
-      <a href="https://airi.moeru.ai/docs/en/about/privacy" :class="['underline']">
-        {{ t('server.auth.signIn.footer.privacy') }}
-      </a>.
+      <span>{{ t('server.auth.signIn.footer.privacy') }}</span>.
     </div>
   </main>
 </template>

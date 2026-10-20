@@ -1,13 +1,10 @@
 <script setup lang="ts">
-// Empty placeholder. The route below redirects /ui/ to /ui/profile so a
-// directly-typed `/ui/` URL or a post-sign-in callback that fell back to
-// the auth-UI root lands on a usable page instead of an empty RouterView.
+// This record exists so the bare `/ui/` URL matches a page instead of the
+// catch-all. The redirect to `/profile` lives in `main.ts`: unplugin-vue-router
+// does not emit `redirect` from a `<route>` block, so a block here would be
+// dropped without a warning and this empty page would render a white screen.
 </script>
 
 <template>
   <div />
 </template>
-
-<route lang="yaml">
-redirect: /profile
-</route>
