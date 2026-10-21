@@ -12,6 +12,7 @@
 | `docker-compose.yaml` | db / redis / api / auth 四个服务 |
 | `.env.example` | 环境变量模板，复制成 `.env` 再改 |
 | `baota-nginx.conf` | 粘进宝塔站点配置的 nginx 反代片段 |
+| `baota-nginx.full.conf` | **整段替换**用的完整 `server { }` 配置（含 SPA 回退、登录回调例外、缓存头） |
 | `README.md` | 本文件 |
 
 ## 步骤
@@ -58,7 +59,18 @@ openssl rand -hex 24      # POSTGRES_PASSWORD（只能用字母数字）
 openssl rand -hex 24      # REDIS_PASSWORD
 ```
 
-`APP_DOMAIN` 填主应用域名，`ACCOUNTS_DOMAIN` 填账号界面域名，两者必须不同。
+`APP_DOMAIN` 填主应用域名。
+
+`AUTH_UI_URL` 填登录页地址，必填。**推荐直接指向主域的 `/ui`**：
+
+```sh
+AUTH_UI_URL=https://你的主域/ui
+```
+
+主站源码里本来就带整套登录/注册页面（`apps/stage-web/src/pages/ui/`：sign-in、profile、
+forgot-password、reset-password、verify-email、delete-account），同域打开时品牌一致、
+不跨站、登录完成回到 `/auth/callback` 无感。只有把账号界面单独部署成另一个站点时，
+才改填 `https://你的账号域/ui`（那种情况必须同时配 `ACCOUNTS_DOMAIN`）。
 
 ### 4. 拉镜像
 

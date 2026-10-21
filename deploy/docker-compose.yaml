@@ -78,8 +78,12 @@ services:
       PUBLIC_URL: https://${APP_DOMAIN}
       # 服务端互调走容器网络
       RESOURCE_SERVER_URL: http://api:3000
-      # 登录流程会把 /auth/* 重定向到账号界面
-      AUTH_UI_URL: https://${ACCOUNTS_DOMAIN}/ui
+      # 登录流程会把 /auth/* 重定向到这个地址的 /ui 下。
+      #
+      # 同域部署（推荐）：填主域，登录页就用主站自带的 /ui/sign-in，
+      #   品牌一致、不跨站、登录回来无感 —— AUTH_UI_URL=https://你的主域/ui
+      # 独立账号站：填账号域，登录会跳到另一个站点 —— AUTH_UI_URL=https://账号域/ui
+      AUTH_UI_URL: ${AUTH_UI_URL}
       BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET}
       ADDITIONAL_TRUSTED_ORIGINS: https://${ACCOUNTS_DOMAIN}
       RESEND_API_KEY: ${RESEND_API_KEY:-}
