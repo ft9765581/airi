@@ -527,3 +527,48 @@ better-auth 1.4.22 自带该插件，它的 `signIn.phoneNumber` 支持密码模
 
 
 
+
+## 19. 构建瘦身（2026-10-21）
+
+线上包 162.8 MB 里有一大半是这个产品用不到的东西。这一节记录删了什么、为什么可以删。
+
+| 文件 | 改动 |
+| --- | --- |
+| `packages/stage-ui/src/stores/display-models.ts` | 删除 4 个上游演示预设里的 2 个 VRM（`preset-vrm-1/2`，AvatarSample A/B，52.6 MB）及其资源 URL |
+| `apps/stage-web/vite.config.ts` | `sourcemap: true` 改为 `env.VITE_BUILD_SOURCEMAP === '1'`，发布构建不再产出 62.9 MB 的 `.map` |
+| `apps/stage-web/src/pages/devtools/model-driver-mediapipe.vue` | 删除（唯一引用 `@proj-airi/model-driver-mediapipe` 的地方，它带来 16.6 MB 的 MediaPipe `.task` 模型） |
+| `apps/stage-web/src/pages/settings/system/developer.vue` | 去掉上面那个页面的入口 |
+| `packages/stage-ui/src/components/scenes/Stage.vue` | 删除从未执行的 DuckDB 初始化（`useDuckDb` + `onMounted(() => getDb())`，真代码早已注释；97.5 MB 的 wasm 因此不再产出） |
+
+结果：dist 392 → 155.5 MB，zip 185 → 97.5 MB，service worker 预缓存 150.8 → 49.9 MB。
+
+保留项及理由：
+
+- `Hiyori (Pro/Free)`：`preset-live2d-1` 是 `settings/stage-model.ts` 的兜底 id，
+  删掉要改兜底逻辑，暂留（44 MB）。
+- 中文字体（`XiaolaiSC`、`cjkFonts_allseto`，51 MB）：是视觉的一部分，换系统字体只是选项。
+- `ort-wasm-simd-threaded`（25.6 MB）：语音活动检测在用。
+
+## 20. 换包之后的缓存自愈（2026-10-21）
+
+线上换包后，浏览器可能还拿着旧 bundle：懒加载 chunk 的名字带哈希，新包里已经不存在，
+页面白屏或卡在加载，用户没有任何出口。这一节把三类缓存分开处理。
+
+| 文件 | 改动 |
+| --- | --- |
+| `apps/stage-web/src/modules/stale-build-recovery.ts` | **新增**：监听 Vite 的 `vite:preloadError` 与 `unhandledrejection`，命中"模块加载失败"时清空 Cache Storage 并自动刷新一次；30 秒内再次失败则停止刷新、只打日志（部署真坏了时不要变成刷新死循环） |
+| `apps/stage-web/src/main.ts` | 挂载前调用 `installStaleBuildRecovery()` |
+| `apps/stage-web/src/modules/stale-build-recovery.test.ts` | **新增** 4 个用例：清缓存并刷新、从 unhandledrejection 恢复、忽略无关错误、防循环 |
+| `apps/stage-web/vite.config.ts` | `registerType: 'prompt'` → `'autoUpdate'`（新 SW 自己接管，用户不用点"更新"）；`navigateFallbackDenylist` 增加 `/^\/auth\//`、`/^\/internal\//`；manifest 名字改为「清锡医疗」 |
+
+**为什么 `navigateFallbackDenylist` 必须带 `/auth/`**：旧 SW 把所有页面导航用预缓存的
+`index.html` 回答，`/auth/sign-in` 是服务端 302 中转页，被拦下后前端在自己的路由上渲染
+兜底页「Where are we?」，登录永远走不完。这个坑只有装过 SW 的老浏览器会踩，全新浏览器复现不了。
+
+**不在自愈里清理的东西**：`localStorage`（用户设置）、`IndexedDB`（聊天记录）、cookie（会话）。
+清掉它们会丢用户数据，而换包不需要它们失效 —— 配置层面的"版本一变就重写默认值"由
+`VITE_DEFAULT_CONFIG_VERSION` 负责（见第 3 节），provider 凭据轮换由
+`VITE_PROVIDER_PURGE_VERSION` 负责。
+
+**不用 `selfDestroying` 的原因**：它激活时会 `client.navigate()` 重载所有页面，而本站每次加载
+都会重新注册 SW，两者叠加会变成无限刷新。
