@@ -120,7 +120,9 @@ export default defineConfig({
         },
       },
     },
-    sourcemap: true,
+    // Source maps never reach a browser request, and they dominate the upload
+    // size. A debugging build sets `VITE_BUILD_SOURCEMAP=1` to get them back.
+    sourcemap: env.VITE_BUILD_SOURCEMAP === '1',
   },
   worker: {
     format: 'es',
