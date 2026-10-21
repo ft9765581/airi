@@ -23,6 +23,7 @@ import App from './App.vue'
 import { applyBuildDefaults } from './modules/defaults'
 import { registerStageDisplayModelPresets } from './modules/display-model-presets'
 import { i18n } from './modules/i18n'
+import { installStaleBuildRecovery } from './modules/stale-build-recovery'
 
 import '@proj-airi/font-cjkfonts-allseto/index.css'
 import '@proj-airi/font-xiaolai/index.css'
@@ -38,6 +39,7 @@ configureAnalyticsAdapter(async (options) => {
 })
 registerAuthorizationHandler(browserAuthorizationHandler)
 registerStageDisplayModelPresets()
+installStaleBuildRecovery()
 applyBuildDefaults()
 
 const pinia = createPinia()
