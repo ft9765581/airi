@@ -23,6 +23,7 @@ import {
 } from '../libs/analytics-headers'
 import { createChatAnalyticsHooks, getProviderMode } from '../libs/analytics/events/chat'
 import { extractMessageText, isCloudSyncableMessage } from '../libs/chat-sync'
+import { getMedicalGateReply } from '../libs/intent/medical-gate'
 import { useLLM } from './ai/chat-llm/llm'
 import { resolveLlmTools } from './ai/chat-llm/tool-resolver'
 import { useLlmToolsStore } from './ai/chat-llm/tools'
@@ -348,11 +349,46 @@ export const useChatStore = defineStore('chat', () => {
     },
   })
 
+  /**
+   * Sends one user message.
+   *
+   * A medical question never reaches the model. The gate answers with a fixed
+   * reply, because this deployment has no way to check a medical answer the
+   * model writes. The reply is written as a normal turn, so the history, the
+   * session record and the pending-send state stay consistent with a real send.
+   */
   async function ingest(
     sendingMessage: string,
     options: ChatOrchestratorSendOptions,
     targetSessionId?: string,
   ) {
+    const gateReply = getMedicalGateReply(sendingMessage)
+    if (gateReply) {
+      const sessionId = targetSessionId ?? activeSessionId.value
+      const createdAt = Date.now()
+
+      chatSession.appendSessionMessage(sessionId, {
+        role: 'user',
+        content: sendingMessage,
+        createdAt,
+        id: nanoid(),
+      })
+      chatSession.appendSessionMessage(sessionId, {
+        role: 'assistant',
+        content: gateReply,
+        slices: [],
+        tool_results: [],
+        createdAt,
+        id: nanoid(),
+      })
+
+      // Length only. This line answers "did the gate fire at all" without
+      // putting a medical question into the console.
+      console.info('[medical-gate] blocked', sendingMessage.length)
+
+      return
+    }
+
     return runtime.ingest(sendingMessage, options, targetSessionId)
   }
 
