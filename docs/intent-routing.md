@@ -99,7 +99,7 @@ provider 里 await 完判定、写进 store，到 718 行拼系统提示词时�
 | 契约 | `packages/stage-ui/src/libs/intent/contract.ts` | `IntentDecision` 类型、判定版本号 |
 | 判定 | `packages/stage-ui/src/libs/intent/classify.ts` | 纯函数：规则命中。可选模型兜底在后面加 |
 | 状态 | `packages/stage-ui/src/stores/intent.ts` | 保存本轮判定结果，提供 memo |
-| 处置 A | `apps/stage-web/src/stores/chat.ts` 发送入口 | `block`：短路 + 固定话术 |
+| 处置 A | `packages/stage-ui/src/stores/chat.ts` 的 `ingest` | `block`：短路 + 固定话术 |
 | 处置 B | `packages/stage-ui/src/stores/chat/context-providers/` | `route`：门控知识库 + 提示词切换 |
 
 阶段一只需要前三行加处置 A。阶段二替换处置 B，前三行不动。
@@ -328,3 +328,141 @@ provider 里 await 完判定、写进 store，到 718 行拼系统提示词时�
 1. 不建通用意图体系。这条路上只关心「医学」和「非医学」。
 2. 不改 `core-agent`。三个挂点都在 `stage-ui` 和 `stage-web` 内。
 3. 不把判定结果写进系统提示词当指令。它是上下文事实，风险路径由程序直接走。
+
+## 15. 实施步骤
+
+四个阶段。每个阶段都能停下来，停在原地也是可用的状态。
+
+| 阶段 | 判定器 | 处置 | 线上行为 | 新增依赖 |
+| --- | --- | --- | --- | --- |
+| A 地基 | `rules` | `off` | 不变 | 无 |
+| B 阶段一 | `rules` | `block` | 医学问题回固定话术 | 无 |
+| C 阶段二 | `rules` | `route` | 医学问题换提示词并检索 | 无 |
+| D 收敛 | 可选 `rules+llm` | 不变 | 不变 | 需要时才加 |
+
+没有一步需要新依赖。`rules` 加 `block` 全部是本地计算。
+
+### 15.1 阶段 A：地基
+
+目标：把判定能力做出来，但不接进任何流程。可以单独合并。
+
+**A1 契约**
+
+- 位置：新增 `packages/stage-ui/src/libs/intent/contract.ts`。
+- 内容：`IntentDecision`（第 6 节的字段）、`IntentSource`、`CLASSIFIER_VERSION`。
+- 验收：`pnpm -F @proj-airi/stage-ui typecheck` 通过。
+- 影响：无运行时行为。
+
+**A2 词表**
+
+- 位置：新增 `packages/stage-ui/src/libs/intent/lexicon.ts`。
+- 内容：四块数据。ack 白名单、医学实体（产妇、新生儿、医疗行为）、疑问句式、禁止降级例外。
+- 约定：只放数据，不放逻辑。词表要能单独 review。
+- 验收：数据文件不写测试。
+
+**A3 规则判定**
+
+- 位置：新增 `packages/stage-ui/src/libs/intent/classify.ts`。
+- 签名：`matchRules(input) -> IntentDecision`，同步纯函数。
+- 输入：`{ message, previousDecision? }`。`previousDecision` 只给指代回看用。
+- 禁止：不 import store，不 import fetch，不读环境变量。
+- 顺序：ack 白名单，实体，疑问式共现，数值单位，指代回看，降级例外。
+- 验收：A4 的测试。
+
+**A4 判例测试**
+
+- 位置：新增 `packages/stage-ui/src/libs/intent/classify.test.ts`。
+- 内容：第 7.6 节 8 条判例，加 ack 5 条、指代 2 条、降级例外 2 条。表驱动。
+- 运行：`pnpm run test-ui:run`。根 `vitest.config.ts` 的 `projects` 不含 stage-ui，直接跑 `vitest run` 找不到用例。
+- 验收：全部通过。每条用例连 `evidence` 一起断言，否则改了词表不知道哪条规则在起作用。
+
+**A5 开关**
+
+- 位置：新增 `libs/intent/config.ts`，并在 `apps/stage-web/.env.example` 补两个变量。
+- 变量：`VITE_MEDICAL_GATE_CLASSIFIER`（`rules` / `rules+llm`）、`VITE_MEDICAL_GATE_MODE`（`off` / `block` / `route`）。
+- 默认值：`rules` 加 `off`。不配置就是今天的行为。
+- 取舍：构建期变量，改值要重新构建。运行时切换要改成 settings store 存 localStorage。见 15.5 第 1 条。
+- 验收：默认配置下线上行为不变。
+
+### 15.2 阶段 B：阶段一上线
+
+目标：医学问题回固定话术。上线后开始产生判定日志。
+
+**B1 判定状态**
+
+- 位置：新增 `packages/stage-ui/src/stores/intent.ts`。
+- 要求：按会话 id 加消息内容做键，同一个键返回同一个 promise。取用后清理。
+- 禁止：全局布尔。原因见第 8 节。
+- 验收：单测覆盖两条消息并发、结果不串味。
+
+**B2 发送前短路**
+
+- 位置：`packages/stage-ui/src/stores/chat.ts` 的 `ingest`（约第 351 行）。
+- 逻辑：`mode` 为 `block` 且判定为 `medical` 时，写用户消息、写固定助手消息、patch `streamingMessage`，**不调用 `runtime.ingest`**。
+- 理由：第 3.3 节。发送流程没有短路能力，只能在入口拦。
+- 固定话术：新增 `libs/intent/replies.ts`。不放进 `packages/i18n`，它是产品内容，不是界面文案。
+- 消息标记：助手消息上留一个可辨识字段。见第 9 节第 2 条。
+- 出口：固定话术之后要能继续。用户补充细节，下一次发送照常进流程。不要在 store 里留「已拒绝」状态。
+- 验收：手动对话。请求日志和计费无新增。历史、云同步、语音合成正常。
+
+**B3 判定日志**
+
+- 位置：新增 `libs/intent/observability.ts`。
+- 字段：消息摘要、`decision`、`evidence`、`source`、耗时、`classifierVersion`。
+- 出口：开发期打 console，加一个可导出的数组。不做上报。
+- 验收：跑一轮对话，能导出每一条判定。
+
+阶段一不要停留太久。挡住真实医学问题本身是风险。B 到 C 的间隔按周算，不按月算。
+
+### 15.3 阶段 C：阶段二上线
+
+目标：医学问题换提示词并查知识库。前置条件：B3 的日志已经攒够。
+
+**C1 两段提示词**
+
+- 位置：新增 `libs/intent/prompts.ts`，改 `chat.ts` 的 `getSystemPromptSupplement`（第 298 行）。
+- 拼接：`[toolset 提示词, 模式提示词]`，模式在后，文本里写明「以下约束优先」。
+- 验收：闲聊回合的系统提示词里没有医学约束。
+
+**C2 知识库门控**
+
+- 位置：`packages/stage-ui/src/stores/chat/context-providers/knowledge-base.ts` 的 `createKnowledgeBaseContext` 开头。
+- 逻辑：非医学直接 `return null`。医学用 `rewrittenQuery` 查，不用原话。
+- 验收：Network 面板确认闲聊回合不发检索请求。
+
+**C3 失败策略分叉**
+
+- 位置：同上。
+- 逻辑：医学问题检索失败时，返回的上下文里带一条明确的兜底要求，并给出字面话术。闲聊失败不注入任何东西。
+- 理由：第 10 节第 3 条。8B 模型对「请不要编造」不敏感，给现成句子更有效。
+- 验收：改错知识库地址后，医学问题回「我确定不了，建议问医生」，闲聊无感。
+
+**C4 上下文清理**
+
+- 位置：同上，或 `chat.ts` 的发送入口。
+- 逻辑：闲聊回合开始前，用固定 `contextId` 覆盖医学回合注入的内容。
+- 理由：第 10 节第 5 条。
+- 验收：医学问一句再闲聊，prompt 里没有上一轮的记录。
+
+### 15.4 阶段 D：按数据收敛
+
+不加新功能。按第 12 节的两个指标改词表。
+
+1. 攒标注集。从判定日志抽 100–200 条真实问句，人工标「该不该查库」。
+2. 只改 `lexicon.ts`。每个错例变成一条规则，或者一条例外。
+3. 手动加 `CLASSIFIER_VERSION`，让旧缓存失效。
+4. 第一层补到不再有新增错例，再考虑 `rules+llm`。判断依据是 `source` 的分布，不是感觉。
+
+### 15.5 开始前要定的两件事
+
+1. **开关放哪。** 构建期环境变量简单，改值要重新构建。运行时 settings 灵活，要写持久化和设置页。阶段一建议前者，阶段二之前再定。
+2. **固定话术的措辞。** 第 9 节第 3 条要求留出口。话术除了「我暂时回答不了医学问题」，必须带一句让人能继续说的话。这一句决定患者是继续描述，还是直接关掉页面。
+
+### 15.6 顺序的理由
+
+1. A 不接流程，可以单独合并、单独 review。
+2. B 一上线就有日志。日志是后面所有决定的输入。
+3. C 的需求要靠日志判断。没有日志就做 C，等于在没有数据时猜。
+4. D 不是阶段，是长期循环。
+
+每做完一个阶段停一下。不要连着做下一个。
