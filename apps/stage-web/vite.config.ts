@@ -200,11 +200,22 @@ export default defineConfig({
     ...(env.TARGET_HUGGINGFACE_SPACE
       ? []
       : [VitePWA({
-          registerType: 'prompt',
+          // `autoUpdate` installs, activates and takes control of open tabs by
+          // itself, so a visitor never has to answer an update prompt. The
+          // previous `prompt` mode left the old worker in charge: it answered
+          // navigations to `/auth/sign-in` from the precached `index.html`,
+          // which broke login until the user pressed the update toast.
+          //
+          // `selfDestroying` is deliberately NOT used here: it reloads open tabs
+          // on activation, and this app registers the worker again on every
+          // load, which would reload in a loop.
+          registerType: 'autoUpdate',
           includeAssets: ['favicon.svg', 'apple-touch-icon.png'],
           manifest: {
-            name: 'AIRI',
-            short_name: 'AIRI',
+            name: '清锡医疗',
+            short_name: '清锡医疗',
+            description: '产后访视护士助手',
+            lang: 'zh-Hans',
             icons: [
               {
                 src: '/web-app-manifest-192x192.png',
@@ -232,11 +243,21 @@ export default defineConfig({
           },
           workbox: {
             maximumFileSizeToCacheInBytes: 64 * 1024 * 1024,
+            // A path listed here is never answered from the precached
+            // `index.html`; the browser must ask the server.
+            //
+            // `/auth/` is required: `/auth/sign-in` is a server-side hop that
+            // answers 302 to the sign-in page. Without the entry the active
+            // service worker served `index.html` for that navigation, so the
+            // app router rendered its catch-all ("Where are we?") instead of
+            // following the redirect, and login could never finish.
             navigateFallbackDenylist: [
               /^\/docs\//,
               /^\/ui\//,
+              /^\/auth\//,
               /^\/remote-assets\//,
               /^\/api\//,
+              /^\/internal\//,
             ],
           },
         })]),
