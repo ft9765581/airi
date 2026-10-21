@@ -11,7 +11,7 @@ import type { CommonContentPart } from '@xsai/shared-chat'
 
 import { errorMessageFrom } from '@moeru/std'
 import { Client, createTextProtocolConnector, WebSocketEventSource } from '@proj-airi/server-sdk'
-import { isStageTamagotchi, isStageWeb } from '@proj-airi/stage-shared'
+import { isServerChannelDisabled, isStageTamagotchi, isStageWeb } from '@proj-airi/stage-shared'
 import { useLocalStorage } from '@vueuse/core'
 import { nanoid } from 'nanoid'
 import { defineStore } from 'pinia'
@@ -101,6 +101,11 @@ export const useModsServerChannelStore = defineStore('mods:channels:proj-airi:se
     possibleEvents?: Array<keyof WebSocketEvents>
     connector?: TextConnectorFactory
   }) {
+    // The deployment runs no mods server channel: connecting would fail for
+    // every visitor and the SDK would retry in the background.
+    if (isServerChannelDisabled())
+      return
+
     if (options?.connector) {
       textConnectorFactory.value = options.connector
     }

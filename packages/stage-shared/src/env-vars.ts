@@ -16,3 +16,14 @@ export function isFluxPurchaseDisabled(): boolean {
 export function isCustomProvidersDisabled(): boolean {
   return isEnvTruthy(import.meta.env.VITE_DISABLE_CUSTOM_PROVIDERS)
 }
+
+/**
+ * A deployment that runs no mods server channel sets this flag.
+ *
+ * The channel is a local WebSocket (`ws://localhost:6121/ws`) that drives mods
+ * and remote control. Without the flag every visitor attempts that connection,
+ * fails, and the browser console fills with retry errors.
+ */
+export function isServerChannelDisabled(): boolean {
+  return isEnvTruthy(import.meta.env.VITE_DISABLE_SERVER_CHANNEL)
+}
