@@ -8,6 +8,12 @@ animations:
       某些页面会有自己的过场动画，这将覆盖舞台过场动画
     title: 是否使用页面特定过场动画
 dialogs:
+  runtime-profile-import:
+    title: 把这台设备上的角色设定保存到当前账号？
+    description: >-
+      角色卡、当前使用的角色卡和用户画像现在只在这台设备上。保存之后，这个账号每次登录都会读取它们。Live2D 和 VRM 文件仍留在这台设备上。
+    import: 保存到这个账号
+    dismiss: 暂不保存
   onboarding:
     official:
       title: AIRI 官方提供商
@@ -833,6 +839,16 @@ pages:
     memory-long-term:
       description: 长期记忆
       title: 长期记忆
+      intro: 这些事实属于当前登录的账号。关于你的事实会跟着每一张角色卡。关于某张角色卡的事实只留在那张卡上。
+      sign-in: 登录后可以查看这个账号的长期记忆。
+      loading: 正在加载事实…
+      empty: 这个账号还没有记住的事实。
+      load-error: 事实加载失败。
+      delete: 删除
+      confirm-delete: 确认删除
+      scope-user: 关于你
+      scope-character: 关于{name}
+      recall: 已回忆 {count} 次
     memory-short-term:
       description: 短期记忆
       title: 短期记忆

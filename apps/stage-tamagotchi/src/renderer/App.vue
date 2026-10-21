@@ -5,8 +5,9 @@ import { defineInvokeHandler } from '@moeru/eventa'
 import { useElectronEventaContext, useElectronEventaInvoke } from '@proj-airi/electron-vueuse'
 import { themeColorFromValue, useThemeColor } from '@proj-airi/stage-layouts/composables/theme-color'
 import { artistrySyncConfig } from '@proj-airi/stage-shared'
-import { ToasterRoot } from '@proj-airi/stage-ui/components'
+import { RuntimeProfileImportDialog, ToasterRoot } from '@proj-airi/stage-ui/components'
 import { useInferencePreload } from '@proj-airi/stage-ui/composables'
+import { useRuntimeProfileSync } from '@proj-airi/stage-ui/composables/use-runtime-profile-sync'
 import { initializeAnalytics } from '@proj-airi/stage-ui/libs/analytics'
 import { usePiniaSynced } from '@proj-airi/stage-ui/libs/pinia'
 import { useAuthStore } from '@proj-airi/stage-ui/stores/auth'
@@ -88,6 +89,7 @@ const builtinToolsStore = useTamagotchiBuiltinToolsStore()
 const mcpToolsStore = useTamagotchiMcpToolsStore()
 const pluginToolsStore = useTamagotchiPluginToolsStore()
 const syncedPinia = usePiniaSynced()
+const runtimeProfileSync = useRuntimeProfileSync()
 const isSpotlightWindow = initialRoutePath === '/spotlight'
 const isSettingsWindow = initialRoutePath === '/settings' || initialRoutePath.startsWith('/settings/')
 
@@ -260,6 +262,7 @@ function createFullStageRuntime() {
       await authStore.initialize()
       await displayModelsStore.initialize()
       await cardStore.initialize()
+      runtimeProfileSync.start()
       registerAuthenticatedSetup()
       if (!authStore.isAuthenticated)
         await removeAuthenticationProviderConfiguration()
@@ -373,6 +376,13 @@ onUnmounted(() => {
   </ToasterRoot>
   <ResizeHandler v-if="!isSpotlightWindow" />
   <RouterView />
+  <RuntimeProfileImportDialog
+    :open="runtimeProfileSync.importPromptOpen.value"
+    :pending="runtimeProfileSync.importPending.value"
+    :error="runtimeProfileSync.importError.value"
+    @import="runtimeProfileSync.acceptImport"
+    @dismiss="runtimeProfileSync.dismissImport"
+  />
 </template>
 
 <style>

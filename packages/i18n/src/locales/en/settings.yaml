@@ -9,6 +9,14 @@ animations:
       transitions
     title: Use Page Specific Transitions
 dialogs:
+  runtime-profile-import:
+    title: Save this device's character setup to your account?
+    description: >-
+      Character cards, the selected card, and the user profile stay on this
+      device until you save them. After that, this account loads them on each
+      sign-in. Live2D and VRM files stay on this device.
+    import: Save to this account
+    dismiss: Not now
   onboarding:
     official:
       title: AIRI Official Provider
@@ -867,6 +875,16 @@ pages:
     memory-long-term:
       description: Long-term memory specific settings and management
       title: Long-Term Memory
+      intro: These facts belong to the signed-in account. A fact about you follows every character. A fact about a character stays on that character.
+      sign-in: Sign in to view Long-Term Memory for this account.
+      loading: Loading facts…
+      empty: This account has no stored facts yet.
+      load-error: The facts could not be loaded.
+      delete: Delete
+      confirm-delete: Delete this fact
+      scope-user: About you
+      scope-character: About {name}
+      recall: Recalled {count} times
     memory-short-term:
       description: Short-term memory specific settings and management
       title: Short-Term Memory

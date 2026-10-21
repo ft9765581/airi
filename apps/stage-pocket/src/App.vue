@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { OnboardingDialog, OnboardingStepAnalyticsNotice, ToasterRoot } from '@proj-airi/stage-ui/components'
+import { OnboardingDialog, OnboardingStepAnalyticsNotice, RuntimeProfileImportDialog, ToasterRoot } from '@proj-airi/stage-ui/components'
+import { useRuntimeProfileSync } from '@proj-airi/stage-ui/composables/use-runtime-profile-sync'
 import { initializeAnalytics, isAnalyticsAvailableInBuild } from '@proj-airi/stage-ui/libs/analytics'
 import { usePiniaSynced } from '@proj-airi/stage-ui/libs/pinia'
 import { useAuthStore } from '@proj-airi/stage-ui/stores/auth'
@@ -43,6 +44,7 @@ const settingsAudioDeviceStore = useSettingsAudioDevice()
 const { showingSetup } = storeToRefs(onboardingStore)
 const { isDark } = useTheme()
 const cardStore = useAiriCardStore()
+const runtimeProfileSync = useRuntimeProfileSync()
 useArtistryStore()
 useConsciousnessStore()
 useHearingStore()
@@ -113,6 +115,7 @@ onMounted(async () => {
   await authStore.initialize()
   await displayModelsStore.initialize()
   await cardStore.initialize()
+  runtimeProfileSync.start()
   registerAuthenticatedSetup()
   if (!authStore.isAuthenticated)
     await removeAuthenticationProviderConfiguration()
@@ -188,6 +191,14 @@ const extraSteps = computed(() => [
     :extra-steps="extraSteps"
     @configured="handleSetupConfigured"
     @skipped="handleSetupSkipped"
+  />
+
+  <RuntimeProfileImportDialog
+    :open="runtimeProfileSync.importPromptOpen.value"
+    :pending="runtimeProfileSync.importPending.value"
+    :error="runtimeProfileSync.importError.value"
+    @import="runtimeProfileSync.acceptImport"
+    @dismiss="runtimeProfileSync.dismissImport"
   />
 </template>
 
