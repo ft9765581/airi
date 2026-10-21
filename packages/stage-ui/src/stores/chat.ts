@@ -350,44 +350,49 @@ export const useChatStore = defineStore('chat', () => {
   })
 
   /**
-   * Sends one user message.
+   * Answers a medical question with a fixed reply instead of a model call.
    *
-   * A medical question never reaches the model. The gate answers with a fixed
-   * reply, because this deployment has no way to check a medical answer the
-   * model writes. The reply is written as a normal turn, so the history, the
-   * session record and the pending-send state stay consistent with a real send.
+   * Returns `true` when the message was answered here, so the caller must stop.
+   * Every send entry shares this helper: the chat text box goes through
+   * `executeSend`, while the voice pipeline and the devtools playground go
+   * through `ingest`. A second copy would let the two paths decide differently.
    */
+  function appendMedicalGateReply(sessionId: string, message: string): boolean {
+    const gateReply = getMedicalGateReply(message)
+    if (!gateReply)
+      return false
+
+    const createdAt = Date.now()
+
+    chatSession.appendSessionMessage(sessionId, {
+      role: 'user',
+      content: message,
+      createdAt,
+      id: nanoid(),
+    })
+    chatSession.appendSessionMessage(sessionId, {
+      role: 'assistant',
+      content: gateReply,
+      slices: [],
+      tool_results: [],
+      createdAt,
+      id: nanoid(),
+    })
+
+    // Length only. This line answers "did the gate fire at all" without
+    // putting a medical question into the console.
+    console.info('[medical-gate] blocked', message.length)
+
+    return true
+  }
+
   async function ingest(
     sendingMessage: string,
     options: ChatOrchestratorSendOptions,
     targetSessionId?: string,
   ) {
-    const gateReply = getMedicalGateReply(sendingMessage)
-    if (gateReply) {
-      const sessionId = targetSessionId ?? activeSessionId.value
-      const createdAt = Date.now()
-
-      chatSession.appendSessionMessage(sessionId, {
-        role: 'user',
-        content: sendingMessage,
-        createdAt,
-        id: nanoid(),
-      })
-      chatSession.appendSessionMessage(sessionId, {
-        role: 'assistant',
-        content: gateReply,
-        slices: [],
-        tool_results: [],
-        createdAt,
-        id: nanoid(),
-      })
-
-      // Length only. This line answers "did the gate fire at all" without
-      // putting a medical question into the console.
-      console.info('[medical-gate] blocked', sendingMessage.length)
-
+    if (appendMedicalGateReply(targetSessionId ?? activeSessionId.value, sendingMessage))
       return
-    }
 
     return runtime.ingest(sendingMessage, options, targetSessionId)
   }
@@ -426,6 +431,15 @@ export const useChatStore = defineStore('chat', () => {
       throw new Error('Failed to load the target chat session')
 
     const messageCount = chatSession.getSessionMessages(payload.sessionId).length
+
+    if (appendMedicalGateReply(payload.sessionId, payload.text)) {
+      const gatedMessages = chatSession.getSessionMessagesIfLoaded(payload.sessionId) ?? []
+      return {
+        messages: gatedMessages.slice(messageCount).map(message => structuredClone(toRaw(message))),
+        sessionId: payload.sessionId,
+      }
+    }
+
     const chatProvider = await consciousnessStore.getChatProviderInstance(providerId)
     if (!chatProvider)
       throw new Error(`Failed to resolve chat provider "${providerId}"`)
