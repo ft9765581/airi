@@ -34,7 +34,14 @@ const modelEvidenceCodes = [
   'model:no_signal',
 ] as const satisfies readonly IntentEvidenceCode[]
 
-const classifierSystemPrompt = `你是医疗场景分类器。判断用户这条消息是否属于医疗场景。
+/**
+ * The prompt the classifier sends when the caller does not supply one.
+ *
+ * The evaluation page shows this text and lets a person edit it, because the
+ * wording is the whole classifier. An edited copy is not recorded in
+ * `classifierVersion`, so a conclusion must be confirmed with this default.
+ */
+export const defaultClassifierSystemPrompt = `你是医疗场景分类器。判断用户这条消息是否属于医疗场景。
 
 只输出一个 JSON 对象，不要解释，不要加 Markdown 代码块。
 
@@ -75,6 +82,13 @@ export interface IntentModelOptions {
   model: string
   /** @default 1800 */
   timeoutMs?: number
+  /**
+   * Replaces the default prompt. Only the evaluation page sets this, so a
+   * person can try a wording without editing code.
+   *
+   * @default defaultClassifierSystemPrompt
+   */
+  systemPrompt?: string
   /**
    * Replaces the network call. Tests pass a fake here, so an automated run
    * never reaches a real provider.
@@ -195,7 +209,7 @@ export async function classifyWithModel(
       abortSignal: AbortSignal.timeout(options.timeoutMs ?? defaultTimeoutMs),
       fetch: options.fetch,
       messages: message.messages(
-        message.system(classifierSystemPrompt),
+        message.system(options.systemPrompt ?? defaultClassifierSystemPrompt),
         message.user(userText),
       ),
     })

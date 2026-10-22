@@ -5,12 +5,14 @@ import type { EvaluationCase, EvaluationReport, IntentSampleGroup } from '@proj-
 
 import { errorMessageFrom } from '@moeru/std'
 import { classifyMessage } from '@proj-airi/stage-ui/libs/intent/classify'
+import { defaultClassifierSystemPrompt } from '@proj-airi/stage-ui/libs/intent/classify-model'
 import { evaluateSamples } from '@proj-airi/stage-ui/libs/intent/evaluate'
 import { intentSampleGroupLabels, intentSamples } from '@proj-airi/stage-ui/libs/intent/fixtures'
 import { useConsciousnessStore } from '@proj-airi/stage-ui/stores/modules/consciousness'
 import { useProviderConfigStore } from '@proj-airi/stage-ui/stores/providers/config'
 import { BasicTextarea, Button } from '@proj-airi/ui'
-import { ref } from 'vue'
+import { useLocalStorage } from '@vueuse/core'
+import { computed, ref } from 'vue'
 
 /**
  * Internal comparison page for the intent classifiers.
@@ -57,6 +59,16 @@ const result = ref<ClassifyResult>()
 const report = ref<EvaluationReport>()
 const records = ref<TestRecord[]>([])
 
+/**
+ * The prompt under test.
+ *
+ * Kept in local storage so a tuning session survives a reload. An edited copy
+ * is not reflected in `classifierVersion`, so a conclusion has to be confirmed
+ * against the default prompt before it is written down.
+ */
+const systemPrompt = useLocalStorage('devtools/intent-routing/system-prompt', defaultClassifierSystemPrompt)
+const promptIsCustom = computed(() => systemPrompt.value !== defaultClassifierSystemPrompt)
+
 function resolveModelOptions() {
   const providerId = consciousnessStore.activeProvider
   const config = providerId ? providerConfigStore.getProviderConfig(providerId) : undefined
@@ -66,6 +78,7 @@ function resolveModelOptions() {
     baseURL,
     apiKey: typeof config?.apiKey === 'string' ? config.apiKey : undefined,
     model: consciousnessStore.activeModel,
+    systemPrompt: systemPrompt.value,
   }
 }
 
@@ -238,6 +251,55 @@ function overviewMetrics() {
           {{ consciousnessStore.activeProvider || '未配置 provider' }} / {{ consciousnessStore.activeModel || '未配置 model' }}
         </span>
       </div>
+
+      <details
+        :class="[
+          'rounded-2xl border px-4 py-3 text-sm',
+          'bg-white dark:bg-neutral-900',
+          'border-neutral-200 dark:border-neutral-700',
+        ]"
+      >
+        <summary :class="['cursor-pointer font-500']">
+          模型提示词
+          <span :class="['text-xs text-neutral-500 dark:text-neutral-400']">
+            {{ promptIsCustom ? '已修改，不写入分类器版本号' : '默认' }}
+          </span>
+        </summary>
+
+        <div
+          :class="[
+            'mt-3 flex flex-col gap-2',
+          ]"
+        >
+          <BasicTextarea
+            v-model="systemPrompt"
+            :submit-on-enter="false"
+            placeholder="分类器提示词"
+            :class="[
+              'rounded-xl border px-3 py-2 font-mono text-xs',
+              'bg-white dark:bg-neutral-900',
+              'border-neutral-200 dark:border-neutral-700',
+            ]"
+            min-h="[220px]"
+            w-full
+          />
+          <div
+            :class="[
+              'flex flex-wrap items-center gap-2',
+            ]"
+          >
+            <Button
+              size="sm"
+              variant="secondary"
+              label="恢复默认"
+              @click="systemPrompt = defaultClassifierSystemPrompt"
+            />
+            <span :class="['text-xs text-neutral-500 dark:text-neutral-400']">
+              只有 model / compare 模式用到这段提示词。改完直接测，刷新不会丢。
+            </span>
+          </div>
+        </div>
+      </details>
 
       <div
         :class="[

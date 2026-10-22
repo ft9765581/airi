@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { classifyWithModel } from './classify-model'
+import { classifyWithModel, defaultClassifierSystemPrompt } from './classify-model'
 
 /**
  * The model classifier is tested through the injected `fetch`, so an automated
@@ -142,5 +142,32 @@ describe('classifyWithModel', () => {
     expect(called).toBe(false)
     expect(result.source).toBe('fallback')
     expect(result.evidenceCodes).toEqual(['fallback:not_configured'])
+  })
+
+  /**
+   * The page lets a person edit the prompt, so what it sends is worth checking:
+   * a silently ignored override would look like the edit changed nothing.
+   */
+  async function captureSystemPrompt(systemPrompt?: string): Promise<string> {
+    let captured = ''
+    const fetchSpy: typeof globalThis.fetch = async (_input, init) => {
+      const body = JSON.parse(String(init?.body ?? '{}')) as { messages?: { role: string, content: string }[] }
+      captured = body.messages?.find(item => item.role === 'system')?.content ?? ''
+      return new Response(JSON.stringify(completion('{"decision":"chat","scene":"non-medical","evidenceCodes":["model:smalltalk"]}')), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      })
+    }
+
+    await classifyWithModel({ message: '你好' }, { ...options, fetch: fetchSpy, systemPrompt })
+    return captured
+  }
+
+  it('sends the prompt it was given', async () => {
+    expect(await captureSystemPrompt('自定义提示词')).toBe('自定义提示词')
+  })
+
+  it('falls back to the default prompt when none is given', async () => {
+    expect(await captureSystemPrompt()).toBe(defaultClassifierSystemPrompt)
   })
 })
