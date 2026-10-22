@@ -81,7 +81,8 @@ function isMissingChunkError(reason: unknown): boolean {
   if (!reason)
     return false
 
-  const message = errorMessageFrom(reason)
+  // `errorMessageFrom` answers `undefined` for a value it cannot describe.
+  const message = errorMessageFrom(reason) ?? ''
   // A network outage also says "Failed to fetch". The pattern only matches the
   // browser's module-loading wording, so an offline visitor keeps the page.
   return MISSING_CHUNK_PATTERN.test(message) && /module/i.test(message)
