@@ -44,7 +44,10 @@ export const intentSamples: IntentSample[] = [
   { id: 'med-15', group: 'medical-explicit', expected: 'medical', input: '出血比昨天多' },
 
   // ── 隐含医学担忧（没有实体词，规则容易漏）──────────────────────
-  { id: 'imp-01', group: 'medical-implicit', expected: 'medical', input: '她今天特别没精神' },
+  // This group holds the boundary, so it carries one sample a person judged as
+  // chat: `她今天特别没精神` describes a state, not a symptom. Telling the two
+  // apart is the whole job, so the group must hold both answers.
+  { id: 'imp-01', group: 'medical-implicit', expected: 'chat', input: '她今天特别没精神' },
   { id: 'imp-02', group: 'medical-implicit', expected: 'medical', input: '我有点不放心' },
   { id: 'imp-03', group: 'medical-implicit', expected: 'medical', input: '这样下去会不会有事' },
   { id: 'imp-04', group: 'medical-implicit', expected: 'medical', input: '这个颜色看着不太对' },
