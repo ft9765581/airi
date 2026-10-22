@@ -110,6 +110,12 @@ const menu = computed(() => [
     icon: 'i-solar:sledgehammer-bold-duotone',
     to: '/devtools/performance-playground',
   },
+  {
+    title: 'Intent Routing',
+    description: 'Compare the rule and DeepSeek medical classifiers (development builds only)',
+    icon: 'i-solar:sledgehammer-bold-duotone',
+    to: '/devtools/intent-routing',
+  },
 ])
 </script>
 
