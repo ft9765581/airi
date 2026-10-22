@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { ClassifyResult } from '@proj-airi/stage-ui/libs/intent/classify'
 import type { IntentClassifierMode, IntentDecision } from '@proj-airi/stage-ui/libs/intent/contract'
-import type { EvaluationReport, IntentSampleGroup } from '@proj-airi/stage-ui/libs/intent/evaluate'
+import type { EvaluationCase, EvaluationReport, IntentSampleGroup } from '@proj-airi/stage-ui/libs/intent/evaluate'
 
 import { errorMessageFrom } from '@moeru/std'
 import { classifyMessage } from '@proj-airi/stage-ui/libs/intent/classify'
@@ -79,6 +79,37 @@ function percent(value: number) {
 
 function modelGroup(group: IntentSampleGroup) {
   return report.value?.model?.groups.find(item => item.group === group)
+}
+
+/** Names the side that matched the label, so a row needs no reading to judge. */
+function verdictOf(item: EvaluationCase) {
+  const rulesRight = item.rules.decision === item.sample.expected
+  const modelRight = item.model ? item.model.decision === item.sample.expected : false
+
+  if (rulesRight && modelRight)
+    return '都对'
+  if (rulesRight)
+    return '规则对'
+  if (modelRight)
+    return '模型对'
+
+  return '都不对'
+}
+
+/** Colour for one verdict, so a wrong row is visible without reading the text. */
+function verdictClass(item: EvaluationCase) {
+  const verdict = verdictOf(item)
+
+  if (verdict === '都不对')
+    return 'text-red-600 dark:text-red-400'
+  if (verdict === '都对')
+    return 'text-green-700 dark:text-green-400'
+
+  return 'text-amber-700 dark:text-amber-400'
+}
+
+function labelText(decision: 'medical' | 'chat') {
+  return decision === 'medical' ? '医学' : '闲聊'
 }
 
 function pushRecord(entry: TestRecord) {
@@ -445,45 +476,128 @@ function overviewMetrics() {
           </table>
         </div>
 
-        <div
-          v-if="report.disagreements.length"
-          :class="[
-            'flex flex-col gap-1 rounded-2xl border px-4 py-3 text-sm',
-            'bg-amber-50/70 border-amber-200 dark:bg-amber-950/30 dark:border-amber-900',
-          ]"
-        >
-          <div :class="['font-600']">
-            两边不一致 {{ report.disagreements.length }} 条
-          </div>
-          <div
-            v-for="item in report.disagreements"
-            :key="item.sample.id"
-            :class="['text-xs text-neutral-600 dark:text-neutral-300']"
-          >
-            {{ item.sample.input }} · 规则 {{ item.rules.decision === 'medical' ? '医学' : '闲聊' }}
-            · 模型 {{ item.model?.decision === 'medical' ? '医学' : '闲聊' }}
-            · 标答 {{ item.sample.expected === 'medical' ? '医学' : '闲聊' }}
-          </div>
-        </div>
+        <template v-if="report.disagreements.length">
+          <h2 :class="['text-base font-600']">
+            两边不一致 · {{ report.disagreements.length }} 条
+          </h2>
 
-        <div
-          v-if="report.rules.falseNegatives.length"
-          :class="[
-            'flex flex-col gap-1 rounded-2xl border px-4 py-3 text-sm',
-            'bg-red-50/70 border-red-200 dark:bg-red-950/30 dark:border-red-900',
-          ]"
-        >
-          <div :class="['font-600']">
-            规则漏判 {{ report.rules.falseNegatives.length }} 条
-          </div>
           <div
-            v-for="item in report.rules.falseNegatives"
-            :key="item.sample.id"
-            :class="['text-xs text-neutral-600 dark:text-neutral-300']"
+            :class="[
+              'overflow-x-auto rounded-2xl border',
+              'border-neutral-200 dark:border-neutral-700',
+            ]"
           >
-            {{ item.sample.input }} · {{ intentSampleGroupLabels[item.sample.group] }}
+            <table :class="['w-full text-left text-sm']">
+              <thead :class="['bg-neutral-50 dark:bg-neutral-900']">
+                <tr>
+                  <th :class="['px-3 py-2 font-500']">
+                    输入
+                  </th>
+                  <th :class="['px-3 py-2 font-500']">
+                    标答
+                  </th>
+                  <th :class="['px-3 py-2 font-500']">
+                    规则
+                  </th>
+                  <th :class="['px-3 py-2 font-500']">
+                    模型
+                  </th>
+                  <th :class="['px-3 py-2 font-500']">
+                    谁对
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr
+                  v-for="item in report.disagreements"
+                  :key="item.sample.id"
+                  :class="['border-t border-neutral-200 dark:border-neutral-800']"
+                >
+                  <td :class="['px-3 py-2']">
+                    {{ item.sample.input }}
+                  </td>
+                  <td :class="['px-3 py-2']">
+                    {{ labelText(item.sample.expected) }}
+                  </td>
+                  <td :class="['px-3 py-2']">
+                    {{ labelText(item.rules.decision) }}
+                  </td>
+                  <td :class="['px-3 py-2']">
+                    {{ item.model ? labelText(item.model.decision) : '—' }}
+                  </td>
+                  <td :class="['px-3 py-2 font-500', verdictClass(item)]">
+                    {{ verdictOf(item) }}
+                  </td>
+                </tr>
+              </tbody>
+            </table>
           </div>
-        </div>
+        </template>
+
+        <template v-if="report.rules.falseNegatives.length">
+          <h2 :class="['text-base font-600']">
+            规则漏判 · {{ report.rules.falseNegatives.length }} 条
+          </h2>
+
+          <div
+            :class="[
+              'overflow-x-auto rounded-2xl border',
+              'border-neutral-200 dark:border-neutral-700',
+            ]"
+          >
+            <table :class="['w-full text-left text-sm']">
+              <thead :class="['bg-neutral-50 dark:bg-neutral-900']">
+                <tr>
+                  <th :class="['px-3 py-2 font-500']">
+                    输入
+                  </th>
+                  <th :class="['px-3 py-2 font-500']">
+                    分组
+                  </th>
+                  <th :class="['px-3 py-2 font-500']">
+                    规则
+                  </th>
+                  <th :class="['px-3 py-2 font-500']">
+                    模型
+                  </th>
+                  <th :class="['px-3 py-2 font-500']">
+                    模型补上了吗
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr
+                  v-for="item in report.rules.falseNegatives"
+                  :key="item.sample.id"
+                  :class="['border-t border-neutral-200 dark:border-neutral-800']"
+                >
+                  <td :class="['px-3 py-2']">
+                    {{ item.sample.input }}
+                  </td>
+                  <td :class="['px-3 py-2']">
+                    {{ intentSampleGroupLabels[item.sample.group] }}
+                  </td>
+                  <td :class="['px-3 py-2']">
+                    {{ labelText(item.rules.decision) }}
+                  </td>
+                  <td :class="['px-3 py-2']">
+                    {{ item.model ? labelText(item.model.decision) : '—' }}
+                  </td>
+                  <td
+                    :class="[
+                      'px-3 py-2 font-500',
+                      item.model?.decision === 'medical'
+                        ? 'text-green-700 dark:text-green-400'
+                        : 'text-red-600 dark:text-red-400',
+                    ]"
+                  >
+                    {{ item.model ? (item.model.decision === 'medical' ? '补上了' : '没补上') : '—' }}
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </template>
       </template>
 
       <template v-if="records.length">
