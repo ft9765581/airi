@@ -6,9 +6,8 @@ import { useI18n } from 'vue-i18n'
 export interface LongTermMemoryListItem {
   id: string
   content: string
-  scopeLabel: string
-  recallLabel: string
   whenLabel: string
+  scopeLabel: string
 }
 
 defineProps<{
@@ -17,6 +16,7 @@ defineProps<{
 }>()
 
 const emit = defineEmits<{
+  edit: [id: string]
   delete: [id: string]
 }>()
 
@@ -34,23 +34,32 @@ function requestDelete(id: string) {
 </script>
 
 <template>
-  <ul :class="['flex flex-col gap-3']">
+  <ul :class="['flex flex-col']">
     <li
       v-for="item in items"
       :key="item.id"
       :class="[
-        'flex flex-col gap-2 rounded-xl p-4',
-        'bg-neutral-100 dark:bg-neutral-800',
+        'flex items-start justify-between gap-3 rounded-xl px-3 py-2',
+        'hover:bg-neutral-100 dark:hover:bg-neutral-800',
       ]"
     >
-      <p :class="['text-sm leading-6']">
-        {{ item.content }}
-      </p>
-      <div :class="['flex flex-wrap items-center justify-between gap-2']">
-        <p :class="['text-xs text-neutral-500 dark:text-neutral-400']">
-          {{ item.scopeLabel }} · {{ item.recallLabel }} · {{ item.whenLabel }}
+      <div :class="['min-w-0']">
+        <p :class="['text-sm leading-6']">
+          {{ item.content }}
         </p>
+        <p :class="['text-xs text-neutral-500 dark:text-neutral-400']">
+          {{ item.whenLabel }}
+        </p>
+        <p v-if="item.scopeLabel" :class="['text-xs text-neutral-400 dark:text-neutral-500']">
+          {{ item.scopeLabel }}
+        </p>
+      </div>
+      <div :class="['flex shrink-0 gap-1']">
+        <GhostButton size="sm" @click="emit('edit', item.id)">
+          {{ t('settings.pages.modules.memory-long-term.edit') }}
+        </GhostButton>
         <GhostButton
+          size="sm"
           :disabled="deletingId === item.id"
           @click="requestDelete(item.id)"
         >

@@ -4,6 +4,10 @@ import { useAuthStore } from '../stores/auth'
 import { authClient } from './auth-client'
 import { OIDC_CLIENT_ID, OIDC_REDIRECT_URI } from './auth-config'
 import { buildAuthorizationURL, consumeFlowState, exchangeCodeForTokens, persistFlowState } from './auth-oidc'
+import { SERVER_URL } from './server'
+
+/** How long sign-in waits for the auth service before it stops. */
+const AUTH_REACHABILITY_TIMEOUT_MS = 3_000
 
 export type OAuthProvider = 'google' | 'github' | 'steam'
 
@@ -108,6 +112,29 @@ export async function completeOIDCSignIn(callbackUrl: string): Promise<boolean> 
 }
 
 /**
+ * Checks that the auth service answers before the browser navigates to it.
+ *
+ * A dead local backend used to leave the page on a blank loading tab after
+ * sign-in. This probe fails fast so the UI can show an error instead.
+ */
+export async function assertAuthServerReachable(
+  timeoutMs = AUTH_REACHABILITY_TIMEOUT_MS,
+): Promise<void> {
+  let response: Response
+  try {
+    response = await fetch(new URL('/api/auth/ok', SERVER_URL), {
+      signal: AbortSignal.timeout(timeoutMs),
+    })
+  }
+  catch {
+    throw new Error(`Auth server is unreachable at ${SERVER_URL}`)
+  }
+
+  if (!response.ok)
+    throw new Error(`Auth server returned ${response.status} at ${SERVER_URL}`)
+}
+
+/**
  * Initiate OIDC Authorization Code + PKCE sign-in flow.
  * Builds the authorization URL, persists PKCE state, and navigates.
  */
@@ -115,6 +142,8 @@ export async function signInOIDC(params: OIDCFlowParams) {
   const handler = authorizationHandler
   if (!handler)
     throw new Error('No authorization handler is registered for this app runtime.')
+
+  await assertAuthServerReachable()
 
   const { provider, ...oidcParams } = params
   const { url, flowState } = await buildAuthorizationURL(oidcParams)

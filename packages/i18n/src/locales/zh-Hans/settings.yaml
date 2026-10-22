@@ -9,9 +9,9 @@ animations:
     title: 是否使用页面特定过场动画
 dialogs:
   runtime-profile-import:
-    title: 把这台设备上的角色设定保存到当前账号？
+    title: 把这台设备上的设置保存到当前账号？
     description: >-
-      角色卡、当前使用的角色卡和用户画像现在只在这台设备上。保存之后，这个账号每次登录都会读取它们。Live2D 和 VRM 文件仍留在这台设备上。
+      当前角色卡、这张卡上的音色，以及这台设备上的设置，保存之前只在这台设备上。保存之后，这个账号每次登录都会读取它们。角色卡文件仍留在这台设备上。Live2D 和 VRM 文件仍留在这台设备上。
     import: 保存到这个账号
     dismiss: 暂不保存
   onboarding:
@@ -464,8 +464,8 @@ pages:
     upload: 上传
     upload_desc: 点击或拖动 AIRI 角色卡包以导入
   memory:
-    description: 存放记忆的地方，以及策略
-    title: 记忆体
+    description: 查看、修改和删除账号保存的长期记忆
+    title: 长期记忆
   user-profile:
     title: 用户画像
     description: 让 AIRI 知道正在和谁对话
@@ -846,6 +846,21 @@ pages:
       load-error: 事实加载失败。
       delete: 删除
       confirm-delete: 确认删除
+      delete-error: 这条事实没能删除。
+      add: 新建
+      edit: 编辑
+      save: 保存
+      cancel: 取消
+      save-error: 这条事实没能保存。
+      content-label: 事实
+      content-placeholder: 写一条关于用户的事实。
+      category-label: 类别
+      categories:
+        name: 称呼
+        background: 基本情况
+        allergy: 过敏
+        concern: 主要困扰
+        other: 其他
       scope-user: 关于你
       scope-character: 关于{name}
       recall: 已回忆 {count} 次

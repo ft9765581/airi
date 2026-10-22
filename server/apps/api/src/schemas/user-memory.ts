@@ -17,6 +17,7 @@ export const userMemories = pgTable(
     ownerId: text('owner_id').notNull(),
     characterId: text('character_id').notNull(),
     scope: text('scope').notNull(),
+    category: text('category'),
     content: text('content').notNull(),
     importance: integer('importance').notNull(),
     recallCount: integer('recall_count').notNull().default(0),
@@ -24,6 +25,7 @@ export const userMemories = pgTable(
     createdAt: timestamp('created_at', { withTimezone: true }).notNull(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
     deletedAt: timestamp('deleted_at', { withTimezone: true }),
+    consolidatedAt: timestamp('consolidated_at', { withTimezone: true }),
   },
   table => [
     index('user_memories_owner_created_idx').on(table.ownerId, table.createdAt),

@@ -1,3 +1,5 @@
+import type { AccountSections } from './account-settings'
+
 import { authedFetch } from './auth-fetch'
 import { SERVER_URL } from './server'
 
@@ -13,6 +15,7 @@ export interface RuntimeSettingsRecord {
   activeCardUpdatedAt: string
   profileContent: string
   profileUpdatedAt: string
+  sections: AccountSections
   deletedAt: string | null
 }
 
@@ -48,6 +51,7 @@ export async function saveRuntimeSettings(input: {
   activeCardUpdatedAt: string
   profileContent: string
   profileUpdatedAt: string
+  sections?: AccountSections
 }): Promise<RuntimeSettingsRecord> {
   const response = await authedFetch(profileUrl('/api/v1/runtime-profile/settings'), {
     method: 'PUT',

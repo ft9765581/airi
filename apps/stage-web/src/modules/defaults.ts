@@ -24,6 +24,8 @@ import {
   SPEECH_PROVIDER_KEY,
   SPEECH_VOICE_KEY,
 } from '@proj-airi/stage-ui/libs/deployment-default-keys'
+import { useConsciousnessStore } from '@proj-airi/stage-ui/stores/modules/consciousness'
+import { useProviderConfigStore } from '@proj-airi/stage-ui/stores/providers/config'
 
 import xiaoqingCard from '../assets/airi-cards/xiaoqing.json'
 
@@ -186,15 +188,26 @@ function readStringList(key: string): string[] {
  *
  * The record carries the credentials that the endpoint needs, and the character
  * card names the provider, so the runtime fails without it. A record that
- * already exists stays, because the user can change its values there. The
- * status is `configured` because the module pages read any other status as a
+ * already has a key stays, because the user can change its values there. A
+ * record with an empty key receives the key from this build. The status is `configured` because the module pages read any other status as a
  * failed health check, and this build points at the endpoint that the operator
  * ships. The application validates the provider again when the user opens its
  * settings page, so a broken endpoint corrects the status.
  */
+function storedApiKey(record: unknown): string {
+  const config = (record as { config?: { apiKey?: unknown } } | undefined)?.config
+  return typeof config?.apiKey === 'string' ? config.apiKey.trim() : ''
+}
+
 function writeProviderRecord(record: ProviderDefault): void {
   const records = readObject(PROVIDERS_KEY)
-  if (!records[record.id]) {
+  const existing = records[record.id] as {
+    config?: Record<string, unknown>
+    status?: string
+  } | undefined
+  const incomingKey = typeof record.config.apiKey === 'string' ? record.config.apiKey.trim() : ''
+
+  if (!existing) {
     records[record.id] = {
       id: record.id,
       definitionId: record.definitionId,
@@ -202,6 +215,17 @@ function writeProviderRecord(record: ProviderDefault): void {
       status: 'configured',
       configuredBy: 'user',
     }
+    window.localStorage.setItem(PROVIDERS_KEY, JSON.stringify(records))
+  }
+  else if (incomingKey && !storedApiKey(existing)) {
+    // The character card names this provider before a key exists, and the
+    // runtime then stores a blank record. A later start must fill that key:
+    // an existing record is otherwise left untouched, so chat keeps failing.
+    const config = existing.config && typeof existing.config === 'object' ? existing.config : {}
+    existing.config = { ...config, apiKey: incomingKey }
+    if (!existing.status || existing.status === 'unconfigured')
+      existing.status = 'configured'
+    records[record.id] = existing
     window.localStorage.setItem(PROVIDERS_KEY, JSON.stringify(records))
   }
 
@@ -547,6 +571,46 @@ function writeCharacterDefault(served: ServedModules): void {
  * The defaults version is part of the environment. A new value applies the
  * defaults again, which is how a later build changes an existing browser.
  */
+/**
+ * Puts this build's DeepSeek key into the live provider store.
+ *
+ * `applyBuildDefaults` writes localStorage before Pinia starts. A blank
+ * DeepSeek record created by the character card can still be the value the
+ * store loaded. Chat reads the store, so the key has to be there too.
+ */
+export function repairDeploymentCredentials(): void {
+  const deepseekApiKey = envValue(import.meta.env.VITE_DEFAULT_DEEPSEEK_API_KEY)
+  const deepseekModel = envValue(import.meta.env.VITE_DEFAULT_DEEPSEEK_MODEL)
+  if (!deepseekApiKey)
+    return
+
+  const providerConfigStore = useProviderConfigStore()
+  const currentKey = storedApiKey(providerConfigStore.getProvider('deepseek'))
+  if (!currentKey) {
+    providerConfigStore.updateProviderConfigFields('deepseek', 'deepseek', {
+      apiKey: deepseekApiKey,
+      thinkingMode: 'auto',
+    })
+    providerConfigStore.markProviderAdded('deepseek')
+    providerConfigStore.setProviderStatus('deepseek', 'configured')
+  }
+
+  if (!deepseekModel)
+    return
+
+  const consciousness = useConsciousnessStore()
+  const model = consciousness.activeModel
+  const providerMissing = !consciousness.activeProvider
+  const modelMissing = !model || model === 'deepseek-flash'
+  if (!providerMissing && (consciousness.activeProvider !== 'deepseek' || !modelMissing))
+    return
+
+  if (providerMissing)
+    consciousness.activeProvider = 'deepseek'
+  if (consciousness.activeProvider === 'deepseek' && (!consciousness.activeModel || consciousness.activeModel === 'deepseek-flash'))
+    consciousness.activeModel = deepseekModel
+}
+
 export function applyBuildDefaults(): void {
   if (typeof window === 'undefined' || !window.localStorage)
     return

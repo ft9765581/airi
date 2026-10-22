@@ -106,3 +106,84 @@ export function planFieldSync<T>(input: {
 
   return { type: 'apply', value: input.remote.value, updatedAt: input.remote.updatedAt }
 }
+
+/**
+ * Plans expression-system sync for one display model.
+ *
+ * ROOT CAUSE:
+ *
+ * A browser with older checkboxes and no/missing local edit time used to push
+ * whenever content differed. That let Cursor re-upload stale `f01` over Chrome's
+ * newer `f02`. Local blobs now carry `updatedAt`; unstamped local choices only
+ * win when the account has no expression choices yet.
+ */
+export function planExpressionSync<T>(input: {
+  localUpdatedAt: string | null
+  localHasChoices: boolean
+  remoteHasChoices: boolean
+  contentEqual: boolean
+  remote: { value: T, updatedAt: string } | null
+}): FieldSyncAction<T> {
+  if (input.contentEqual)
+    return { type: 'none' }
+
+  if (!input.remote)
+    return input.localUpdatedAt || input.localHasChoices ? { type: 'push' } : { type: 'none' }
+
+  const side = preferredSide(input.localUpdatedAt, input.remote.updatedAt)
+
+  // A newer local timestamp only wins when this browser still has real
+  // choices. Idle browsers mint fresh empty blobs while models remount; those
+  // must apply the account copy instead of blocking sync.
+  if (side === 'local') {
+    if (input.localHasChoices)
+      return { type: 'push' }
+    if (input.remoteHasChoices)
+      return { type: 'apply', value: input.remote.value, updatedAt: input.remote.updatedAt }
+    return { type: 'none' }
+  }
+
+  // Unstamped local edits upload only into an empty account.
+  if (input.localUpdatedAt == null && input.localHasChoices && !input.remoteHasChoices)
+    return { type: 'push' }
+
+  // Same save time with different content: only push when local still has
+  // choices. An empty local browser must apply the account copy instead of
+  // wiping it.
+  if (timestampMillis(input.localUpdatedAt) === timestampMillis(input.remote.updatedAt)) {
+    if (input.localHasChoices)
+      return { type: 'push' }
+    return { type: 'apply', value: input.remote.value, updatedAt: input.remote.updatedAt }
+  }
+
+  return { type: 'apply', value: input.remote.value, updatedAt: input.remote.updatedAt }
+}
+
+/**
+ * Decides whether to ask before the first upload.
+ *
+ * An account with a settings row does not see the question. A stored choice
+ * also keeps the question closed after a reload.
+ */
+export function shouldAskRuntimeImport(input: {
+  hasSettingsRow: boolean
+  storedChoice: string | null
+}): boolean {
+  if (input.hasSettingsRow)
+    return false
+  return input.storedChoice == null
+}
+
+/**
+ * Decides whether this browser must copy one account value.
+ *
+ * A newer account value is copied. An equal save time is copied when this
+ * browser does not show that value. A newer local save stays on this browser.
+ */
+export function shouldWriteAccountField(actionType: FieldSyncAction<unknown>['type'], localMatches: boolean): boolean {
+  if (actionType === 'push')
+    return false
+  if (actionType === 'apply')
+    return true
+  return !localMatches
+}

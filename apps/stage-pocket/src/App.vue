@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { OnboardingDialog, OnboardingStepAnalyticsNotice, RuntimeProfileImportDialog, ToasterRoot } from '@proj-airi/stage-ui/components'
+import { useMemoryProfileRollup } from '@proj-airi/stage-ui/composables/use-memory-profile-rollup'
 import { useRuntimeProfileSync } from '@proj-airi/stage-ui/composables/use-runtime-profile-sync'
 import { initializeAnalytics, isAnalyticsAvailableInBuild } from '@proj-airi/stage-ui/libs/analytics'
 import { usePiniaSynced } from '@proj-airi/stage-ui/libs/pinia'
@@ -11,7 +12,7 @@ import { useContextBridgeStore } from '@proj-airi/stage-ui/stores/mods/api/conte
 import { useAiriCardStore } from '@proj-airi/stage-ui/stores/modules/airi-card'
 import { useArtistryStore } from '@proj-airi/stage-ui/stores/modules/artistry'
 import { useConsciousnessStore } from '@proj-airi/stage-ui/stores/modules/consciousness'
-import { configureAsDefaultsIfEmpty, unconfigureAuthenticationProviders } from '@proj-airi/stage-ui/stores/modules/default'
+import { unconfigureAuthenticationProviders } from '@proj-airi/stage-ui/stores/modules/default'
 import { useHearingStore } from '@proj-airi/stage-ui/stores/modules/hearing'
 import { useSpeechStore } from '@proj-airi/stage-ui/stores/modules/speech'
 import { useVisionStore } from '@proj-airi/stage-ui/stores/modules/vision'
@@ -45,6 +46,10 @@ const { showingSetup } = storeToRefs(onboardingStore)
 const { isDark } = useTheme()
 const cardStore = useAiriCardStore()
 const runtimeProfileSync = useRuntimeProfileSync()
+const memoryProfileRollup = useMemoryProfileRollup({
+  readProfile: () => runtimeProfileSync.readProfileRevision(),
+  applyProfile: (content, updatedAt) => runtimeProfileSync.applyRolledProfile(content, updatedAt),
+})
 useArtistryStore()
 useConsciousnessStore()
 useHearingStore()
@@ -68,8 +73,6 @@ function registerAuthenticatedSetup() {
     if (!syncedPinia.isLeader())
       return
 
-    if (await configureAsDefaultsIfEmpty())
-      await cardStore.persistActiveCardModuleSelections()
     await onboardingStore.closeAfterAuthentication()
   })
   stopLoggedOutSetup ??= authStore.onLogout(removeAuthenticationProviderConfiguration)
@@ -115,10 +118,12 @@ onMounted(async () => {
   await authStore.initialize()
   await displayModelsStore.initialize()
   await cardStore.initialize()
-  runtimeProfileSync.start()
+  // Show the local character first. Account sync runs in the background and
+  // replaces the model and scene when the account copy arrives.
   registerAuthenticatedSetup()
   if (!authStore.isAuthenticated)
     await removeAuthenticationProviderConfiguration()
+  void runtimeProfileSync.start().then(() => memoryProfileRollup.start())
 
   if (onboardingStore.needsOnboarding) {
     onboardingStore.showingSetup = true

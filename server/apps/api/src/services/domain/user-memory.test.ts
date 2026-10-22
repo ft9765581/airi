@@ -51,6 +51,18 @@ describe('userMemoryService', () => {
     expect(matches.every(memory => memory.content !== '用户对花生过敏')).toBe(true)
   })
 
+  it('returns an age fact when the user asks how old they are', async () => {
+    await service.remember('user-age-ask', 'card-a', [{
+      scope: 'user',
+      content: '用户今年30岁。',
+      importance: 8,
+    }])
+
+    const matches = await service.search('user-age-ask', 'card-a', '我多大你不知道吗')
+
+    expect(matches.some(memory => memory.content === '用户今年30岁。')).toBe(true)
+  })
+
   it('stores the same fact once', async () => {
     const first = await service.remember('user-2', 'card-a', [{
       scope: 'user',
@@ -91,7 +103,7 @@ describe('userMemoryService', () => {
   })
 
   it('ranks a recently recalled fact above an unused fact of the same age', async () => {
-    const createdAt = new Date('2026-05-12T00:00:00.000Z')
+    const createdAt = new Date('2026-06-01T00:00:00.000Z')
     const [recalled] = await service.remember('user-decay', 'card-a', [{
       scope: 'user',
       content: '用户对花生过敏',
@@ -104,15 +116,15 @@ describe('userMemoryService', () => {
     }], createdAt)
     await db.update(schema.userMemories).set({
       recallCount: 3,
-      lastRecalledAt: new Date('2026-05-31T00:00:00.000Z'),
+      lastRecalledAt: new Date('2026-06-01T08:00:00.000Z'),
     }).where(eq(schema.userMemories.id, recalled!.id))
 
-    const matches = await service.search('user-decay', 'card-a', '花生', new Date('2026-06-01T00:00:00.000Z'))
+    const matches = await service.search('user-decay', 'card-a', '花生', new Date('2026-06-01T12:00:00.000Z'))
 
     expect(matches[0]?.content).toBe('用户对花生过敏')
   })
 
-  it('ranks a new fact above an old fact that was never recalled', async () => {
+  it('leaves out a fact stored on an earlier local day', async () => {
     await service.remember('user-fresh', 'card-a', [{
       scope: 'user',
       content: '用户对花生过敏',
@@ -124,9 +136,9 @@ describe('userMemoryService', () => {
       importance: 5,
     }], new Date('2026-06-01T00:00:00.000Z'))
 
-    const matches = await service.search('user-fresh', 'card-a', '花生', new Date('2026-06-01T00:00:00.000Z'))
+    const matches = await service.search('user-fresh', 'card-a', '花生', new Date('2026-06-01T12:00:00.000Z'), 'UTC')
 
-    expect(matches[0]?.content).toBe('用户提到花生酱')
+    expect(matches.map(memory => memory.content)).toEqual(['用户提到花生酱'])
   })
 
   it('replaces an older fact when a later fact shares most of its words', async () => {
@@ -207,5 +219,66 @@ describe('userMemoryService', () => {
 
     expect(listed[0]?.id).toBe(saved!.id)
     expect(listed[0]?.recallCount).toBe(2)
+  })
+
+  it('changes the text of one fact and keeps its created time', async () => {
+    const [saved] = await service.remember('user-edit', 'card-a', [{
+      scope: 'user',
+      content: '用户对花粉过敏',
+      importance: 8,
+      category: 'allergy',
+    }])
+
+    const updated = await service.update('user-edit', saved!.id, {
+      content: '用户对尘螨过敏',
+      category: 'allergy',
+    })
+
+    expect(updated?.content).toBe('用户对尘螨过敏')
+    expect(updated?.category).toBe('allergy')
+    expect(updated?.createdAt.getTime()).toBeGreaterThan(0)
+    expect(await service.update('user-edit', 'missing', { content: '这条不存在' })).toBeNull()
+  })
+
+  it('folds an earlier user fact into the profile and leaves today alone', async () => {
+    const now = new Date('2026-10-22T02:00:00.000Z')
+    await service.remember('user-roll', 'card-a', [{
+      scope: 'user',
+      content: '用户对青霉素过敏',
+      importance: 9,
+      category: 'allergy',
+    }], new Date('2026-10-21T02:00:00.000Z'))
+    await service.remember('user-roll', 'card-a', [{
+      scope: 'user',
+      content: '用户今天喝了汤',
+      importance: 4,
+      category: 'other',
+    }], now)
+    await service.remember('user-roll', 'card-a', [{
+      scope: 'character',
+      content: '这张角色卡记得昨天的约定',
+      importance: 4,
+    }], new Date('2026-10-21T03:00:00.000Z'))
+
+    const first = await service.rollup('user-roll', {
+      timeZone: 'Asia/Shanghai',
+      profileContent: '称呼：小雅\n青霉素过敏',
+      profileUpdatedAt: new Date('2026-10-20T00:00:00.000Z'),
+      replayIds: [],
+    }, now)
+
+    expect(first.rolledCount).toBe(1)
+    expect(first.profileContent).toContain('用户对青霉素过敏')
+    expect(first.profileContent).not.toContain('用户今天喝了汤')
+    expect(first.profileContent).not.toContain('昨天的约定')
+
+    const second = await service.rollup('user-roll', {
+      timeZone: 'Asia/Shanghai',
+      profileContent: first.profileContent,
+      profileUpdatedAt: new Date(first.profileUpdatedAt),
+      replayIds: [],
+    }, now)
+
+    expect(second.rolledCount).toBe(0)
   })
 })

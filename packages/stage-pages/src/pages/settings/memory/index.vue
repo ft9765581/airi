@@ -1,18 +1,18 @@
 <script setup lang="ts">
-import { WIP } from '@proj-airi/stage-ui/components'
+import { LongTermMemorySettings } from '@proj-airi/stage-ui/components'
 </script>
 
 <template>
-  <WIP />
+  <LongTermMemorySettings />
 </template>
 
 <route lang="yaml">
 meta:
   layout: settings
-  titleKey: settings.pages.memory.title
+  titleKey: settings.pages.modules.memory-long-term.title
   subtitleKey: settings.title
-  descriptionKey: settings.pages.memory.description
-  icon: i-solar:leaf-bold-duotone
+  descriptionKey: settings.pages.modules.memory-long-term.description
+  icon: i-solar:book-bookmark-bold-duotone
   settingsEntry: true
   order: 5
   stageTransition:

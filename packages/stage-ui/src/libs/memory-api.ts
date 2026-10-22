@@ -1,4 +1,4 @@
-import type { MemoryFactDraft } from './memory-facts'
+import type { MemoryCategory, MemoryFactDraft } from './memory-facts'
 
 import { authedFetch } from './auth-fetch'
 import { SERVER_URL } from './server'
@@ -7,9 +7,17 @@ export interface MemoryHit {
   id: string
   characterId: string
   scope: 'user' | 'character'
+  category: MemoryCategory | null
   content: string
   importance: number
   createdAt: string
+}
+
+export interface MemoryRollupResult {
+  profileContent: string
+  profileUpdatedAt: string
+  rolledCount: number
+  appliedIds: string[]
 }
 
 export interface StoredMemory extends MemoryHit {
@@ -32,6 +40,7 @@ export async function searchMemories(query: string, characterId: string, signal?
   const url = memoriesUrl()
   url.searchParams.set('query', query)
   url.searchParams.set('characterId', characterId)
+  url.searchParams.set('timeZone', Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC')
 
   const response = await authedFetch(url, { signal })
   if (!response.ok)
@@ -68,6 +77,56 @@ export async function deleteMemory(memoryId: string): Promise<void> {
   })
   if (!response.ok)
     throw new Error(`Memory delete failed with ${response.status}`)
+}
+
+export async function createMemory(input: { content: string, category: MemoryCategory }): Promise<void> {
+  const response = await authedFetch(memoriesUrl(), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      characterId: 'default',
+      items: [{
+        scope: 'user',
+        content: input.content,
+        importance: 8,
+        category: input.category,
+      }],
+    }),
+  })
+  if (!response.ok)
+    throw new Error(`Memory create failed with ${response.status}`)
+}
+
+export async function updateMemory(memoryId: string, input: { content: string, category?: MemoryCategory }): Promise<StoredMemory> {
+  const response = await authedFetch(memoriesUrl(`/api/v1/memories/${encodeURIComponent(memoryId)}`), {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  })
+  if (!response.ok)
+    throw new Error(`Memory update failed with ${response.status}`)
+
+  const body = await response.json() as { memory?: StoredMemory }
+  if (!body.memory)
+    throw new Error('Memory update failed')
+  return body.memory
+}
+
+export async function rollupMemories(input: {
+  timeZone: string
+  profileContent: string
+  profileUpdatedAt: string
+  replayIds: readonly string[]
+}): Promise<MemoryRollupResult> {
+  const response = await authedFetch(memoriesUrl('/api/v1/memories/rollup'), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  })
+  if (!response.ok)
+    throw new Error(`Memory rollup failed with ${response.status}`)
+
+  return await response.json() as MemoryRollupResult
 }
 
 export async function saveMemories(characterId: string, items: readonly MemoryFactDraft[]): Promise<void> {

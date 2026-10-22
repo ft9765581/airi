@@ -50,6 +50,7 @@ export function createUserRuntimeRoutes(userRuntimeService: UserRuntimeService) 
         activeCardUpdatedAt: new Date(result.output.activeCardUpdatedAt),
         profileContent: result.output.profileContent,
         profileUpdatedAt: new Date(result.output.profileUpdatedAt),
+        sections: result.output.sections,
       })
 
       return c.json(settings)

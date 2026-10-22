@@ -10,6 +10,7 @@ describe('parseMemoryFacts', () => {
       scope: 'user',
       content: '用户对花生过敏',
       importance: 9,
+      category: 'other',
     }])
   })
 
@@ -71,6 +72,7 @@ describe('extractMemoryFacts', () => {
       scope: 'user',
       content: '用户对花生过敏',
       importance: 9,
+      category: 'other',
     }])
     expect(complete).toHaveBeenCalledOnce()
   })

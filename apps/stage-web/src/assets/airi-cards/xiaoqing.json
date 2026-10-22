@@ -21,7 +21,7 @@
       "modules": {
         "consciousness": {
           "provider": "deepseek",
-          "model": "deepseek-flash"
+          "model": "deepseek-chat"
         },
         "vision": {
           "provider": "",

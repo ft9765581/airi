@@ -21,7 +21,7 @@ import { TachieScene } from '@proj-airi/stage-ui-tachie'
 import { ThreeScene } from '@proj-airi/stage-ui-three'
 import { animations } from '@proj-airi/stage-ui-three/assets/vrm'
 import { createQueue } from '@proj-airi/stream-kit'
-import { Callout } from '@proj-airi/ui'
+import { Callout, ErrorBoundary } from '@proj-airi/ui'
 import { useBroadcastChannel } from '@vueuse/core'
 // import { createTransformers } from '@xsai-transformers/embed'
 // import embedWorkerURL from '@xsai-transformers/embed/worker?worker&url'
@@ -52,6 +52,7 @@ import { useProviderStore } from '../../stores/providers/provider'
 import { useSettings } from '../../stores/settings'
 import { useSpeechOutputControlStore } from '../../stores/speech-output-control'
 import { useSpeechRuntimeStore } from '../../stores/speech-runtime'
+import { isWebGLAvailable, stageRendererNeedsWebGL } from '../../utils/webgl-available'
 
 const props = withDefaults(defineProps<{
   cursorPosition?: { x: number, y: number }
@@ -181,10 +182,17 @@ const providerStore = useProviderConfigStore()
 const live2dStore = useLive2dParams()
 const showStage = ref(true)
 const stageRenderError = shallowRef<Error>()
+const webglAvailable = isWebGLAvailable()
 const viewUpdateCleanups: Array<() => void> = []
 
-function handleStageRenderError(error: Error) {
-  stageRenderError.value = error
+const WEBGL_UNAVAILABLE_MESSAGE = 'WebGL is not available in this browser. VRM and MMD models need WebGL. Choose a Live2D model instead.'
+
+function handleStageRenderError(error: unknown) {
+  stageRenderError.value = error instanceof Error ? error : new Error(String(error))
+}
+
+function handleSceneBoundaryError(error: unknown) {
+  handleStageRenderError(error)
 }
 
 async function retryStageRenderer() {
@@ -194,9 +202,17 @@ async function retryStageRenderer() {
   showStage.value = true
 }
 
-watch([stageModelRenderer, stageModelSelected, stageModelSelectedUrl], () => {
+function refreshWebGLStageGate() {
+  if (stageRendererNeedsWebGL(stageModelRenderer.value) && !webglAvailable) {
+    stageRenderError.value = new Error(WEBGL_UNAVAILABLE_MESSAGE)
+    return
+  }
   stageRenderError.value = undefined
-})
+}
+
+watch([stageModelRenderer, stageModelSelected, stageModelSelectedUrl], () => {
+  refreshWebGLStageGate()
+}, { immediate: true })
 
 // Caption + Presentation broadcast channels
 const { post: postCaption } = useBroadcastChannel<CaptionChannelEvent, CaptionChannelEvent>({ name: 'airi-caption-overlay' })
@@ -1103,21 +1119,29 @@ defineExpose({
         :live2d-render-scale="live2dRenderScale"
         @error="handleStageRenderError"
       />
-      <ThreeScene
-        v-if="stageModelRenderer === 'vrm' && showStage"
-        ref="vrmViewerRef"
-        v-model:state="componentState"
-        min-w="50% <lg:full" min-h="100 sm:100" h-full w-full flex-1
-        :model-src="stageModelSelectedUrl"
-        :cursor-position="cursorPosition"
-        :idle-animation="animations.idleLoop.toString()"
-        :paused="paused"
-        :show-axes="stageViewControlsEnabled"
-        :enable-orbit-controls="props.enableOrbitControls"
-        :current-audio-source="currentAudioSource"
-        @error="console.error"
-        @vrm-interact="onVRMInteract"
-      />
+      <ErrorBoundary
+        v-if="stageModelRenderer === 'vrm' && showStage && webglAvailable && !stageRenderError"
+        :retryable="false"
+        @error="handleSceneBoundaryError"
+      >
+        <template #fallback>
+          <div />
+        </template>
+        <ThreeScene
+          ref="vrmViewerRef"
+          v-model:state="componentState"
+          min-w="50% <lg:full" min-h="100 sm:100" h-full w-full flex-1
+          :model-src="stageModelSelectedUrl"
+          :cursor-position="cursorPosition"
+          :idle-animation="animations.idleLoop.toString()"
+          :paused="paused"
+          :show-axes="stageViewControlsEnabled"
+          :enable-orbit-controls="props.enableOrbitControls"
+          :current-audio-source="currentAudioSource"
+          @error="handleStageRenderError"
+          @vrm-interact="onVRMInteract"
+        />
+      </ErrorBoundary>
       <SpineScene
         v-if="stageModelRenderer === 'spine' && showStage"
         ref="spineSceneRef"
@@ -1146,20 +1170,28 @@ defineExpose({
         :theme-colors-hue-dynamic="themeColorsHueDynamic"
         @error="console.error"
       />
-      <MMDScene
-        v-if="stageModelRenderer === 'mmd' && showStage"
-        ref="mmdSceneRef"
-        v-model:state="componentState"
-        min-w="50% <lg:full" min-h="100 sm:100"
-        h-full w-full flex-1
-        :model-src="stageModelSelectedUrl"
-        :model-id="stageModelSelected"
-        :paused="paused"
-        :cursor-position="cursorPosition"
-        :enable-orbit-controls="props.enableOrbitControls"
-        :current-audio-source="currentAudioSource"
-        @error="console.error"
-      />
+      <ErrorBoundary
+        v-if="stageModelRenderer === 'mmd' && showStage && webglAvailable && !stageRenderError"
+        :retryable="false"
+        @error="handleSceneBoundaryError"
+      >
+        <template #fallback>
+          <div />
+        </template>
+        <MMDScene
+          ref="mmdSceneRef"
+          v-model:state="componentState"
+          min-w="50% <lg:full" min-h="100 sm:100"
+          h-full w-full flex-1
+          :model-src="stageModelSelectedUrl"
+          :model-id="stageModelSelected"
+          :paused="paused"
+          :cursor-position="cursorPosition"
+          :enable-orbit-controls="props.enableOrbitControls"
+          :current-audio-source="currentAudioSource"
+          @error="handleStageRenderError"
+        />
+      </ErrorBoundary>
       <div
         v-if="stageModelRenderer === 'godot'"
         :class="[
@@ -1184,7 +1216,7 @@ defineExpose({
       <StageRenderError
         v-if="stageRenderError"
         :error="stageRenderError"
-        renderer="Live2D"
+        :renderer="stageModelRenderer || 'stage'"
         :model-id="stageModelSelected"
         @retry="retryStageRenderer"
       />

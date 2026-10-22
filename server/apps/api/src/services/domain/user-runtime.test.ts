@@ -77,4 +77,57 @@ describe('userRuntimeService', () => {
     expect(snapshot.settings?.deletedAt).not.toBeNull()
     expect(snapshot.cards.every(card => card.deletedAt != null)).toBe(true)
   })
+
+  it('stores a settings block and keeps a newer block', async () => {
+    await db.insert(schema.user).values({
+      id: 'user-sections',
+      name: 'Sections',
+      email: 'sections@example.com',
+    })
+
+    await service.saveSettings('user-sections', {
+      activeCardId: 'default',
+      activeCardUpdatedAt: new Date('2026-05-01T00:00:00.000Z'),
+      profileContent: '',
+      profileUpdatedAt: new Date('2026-05-01T00:00:00.000Z'),
+      sections: {
+        system: {
+          updatedAt: '2026-05-02T00:00:00.000Z',
+          language: 'zh-Hans',
+          disableTransitions: true,
+          usePageSpecificTransitions: true,
+          themeColorsHue: 220,
+          themeColorsHueDynamic: false,
+          analyticsEnabled: true,
+        },
+      },
+    })
+
+    const merged = await service.saveSettings('user-sections', {
+      activeCardId: 'default',
+      activeCardUpdatedAt: new Date('2026-05-01T00:00:00.000Z'),
+      profileContent: 'kept aside',
+      profileUpdatedAt: new Date('2026-05-03T00:00:00.000Z'),
+      sections: {
+        system: {
+          updatedAt: '2026-05-01T00:00:00.000Z',
+          language: 'en',
+          disableTransitions: false,
+          usePageSpecificTransitions: false,
+          themeColorsHue: 10,
+          themeColorsHueDynamic: true,
+          analyticsEnabled: false,
+        },
+        connection: {
+          updatedAt: '2026-05-03T00:00:00.000Z',
+          websocketUrl: 'wss://example.test/ws',
+          websocketSecure: true,
+        },
+      },
+    })
+
+    expect(merged.profileContent).toBe('kept aside')
+    expect(merged.sections.system?.language).toBe('zh-Hans')
+    expect(merged.sections.connection?.websocketUrl).toBe('wss://example.test/ws')
+  })
 })

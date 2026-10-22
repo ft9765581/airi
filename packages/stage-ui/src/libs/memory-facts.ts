@@ -1,7 +1,12 @@
+export const MEMORY_CATEGORIES = ['name', 'background', 'allergy', 'concern', 'other'] as const
+
+export type MemoryCategory = typeof MEMORY_CATEGORIES[number]
+
 export interface MemoryFactDraft {
   scope: 'user' | 'character'
   content: string
   importance: number
+  category?: MemoryCategory
 }
 
 export interface MemoryTurnMessage {
@@ -17,9 +22,16 @@ const MAX_TURN_CHARACTERS = 2_000
 const EXTRACTION_SYSTEM = [
   'You store durable facts from one conversation turn.',
   'Return a JSON array of at most 3 objects.',
-  'Each object has scope, content, and importance.',
+  'Each object has scope, content, importance, and category.',
   'scope is "user" when the fact is about the person and any character should know it.',
   'scope is "character" when the fact is about this character and this person together.',
+  'category is "name", "background", "allergy", "concern", or "other" when scope is "user".',
+  'Use "name" for what to call the person.',
+  'Use "background" for stable facts such as family or medical history.',
+  'Use "allergy" for allergies and medicines.',
+  'Use "concern" for the person\'s current problems.',
+  'Use "other" when none of those fit.',
+  'Omit category when scope is "character".',
   'content is one short sentence in the language of the conversation.',
   'importance is an integer from 1 to 10. A name, allergy, or preference is 8 or more. A passing detail is 3 or less.',
   'Skip greetings, questions, and instructions to the character.',
@@ -70,6 +82,12 @@ export function userTextFromTurn(messages: readonly MemoryTurnMessage[]): string
   return ''
 }
 
+function readCategory(value: unknown): MemoryCategory {
+  if (typeof value === 'string' && (MEMORY_CATEGORIES as readonly string[]).includes(value))
+    return value as MemoryCategory
+  return 'other'
+}
+
 function unwrapFence(raw: string): string {
   const trimmed = raw.trim()
   if (!trimmed.startsWith('```'))
@@ -90,8 +108,8 @@ function unwrapFence(raw: string): string {
  * returns no facts.
  *
  * @example
- * parseMemoryFacts('```json\n[{"scope":"user","content":"用户对花生过敏","importance":9}]\n```')
- * // => [{ scope: 'user', content: '用户对花生过敏', importance: 9 }]
+ * parseMemoryFacts('```json\n[{"scope":"user","content":"用户对花生过敏","importance":9,"category":"allergy"}]\n```')
+ * // => [{ scope: 'user', content: '用户对花生过敏', importance: 9, category: 'allergy' }]
  */
 export function parseMemoryFacts(raw: string): MemoryFactDraft[] {
   const payload = unwrapFence(raw)
@@ -117,7 +135,7 @@ export function parseMemoryFacts(raw: string): MemoryFactDraft[] {
     if (item == null || typeof item !== 'object')
       continue
 
-    const record = item as { scope?: unknown, content?: unknown, importance?: unknown }
+    const record = item as { scope?: unknown, content?: unknown, importance?: unknown, category?: unknown }
     const scope = record.scope === 'user' || record.scope === 'character' ? record.scope : null
     const content = typeof record.content === 'string' ? record.content.trim().replace(/\s+/g, ' ') : ''
     if (!scope || content.length < MIN_CONTENT_LENGTH)
@@ -129,6 +147,7 @@ export function parseMemoryFacts(raw: string): MemoryFactDraft[] {
       scope,
       content: content.slice(0, MAX_CONTENT_LENGTH),
       importance,
+      ...(scope === 'user' ? { category: readCategory(record.category) } : {}),
     })
   }
   return facts

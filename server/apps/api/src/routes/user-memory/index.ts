@@ -6,7 +6,7 @@ import { safeParse } from 'valibot'
 
 import { authGuard } from '../../middlewares/auth'
 import { createBadRequestError, createNotFoundError } from '../../utils/error'
-import { MemoryIdSchema, RememberMemoriesSchema, SearchMemoriesQuerySchema } from './schema'
+import { MemoryIdSchema, RememberMemoriesSchema, RollupMemoriesSchema, SearchMemoriesQuerySchema, UpdateMemorySchema } from './schema'
 
 export function createUserMemoryRoutes(userMemoryService: UserMemoryService) {
   return new Hono<HonoEnv>()
@@ -17,6 +17,7 @@ export function createUserMemoryRoutes(userMemoryService: UserMemoryService) {
       const parsed = safeParse(SearchMemoriesQuerySchema, {
         characterId: c.req.query('characterId') ?? '',
         query: c.req.query('query') ?? '',
+        timeZone: c.req.query('timeZone'),
       })
       if (!parsed.success)
         throw createBadRequestError('Invalid Request', 'INVALID_REQUEST', parsed.issues)
@@ -25,6 +26,8 @@ export function createUserMemoryRoutes(userMemoryService: UserMemoryService) {
         user.id,
         parsed.output.characterId,
         parsed.output.query,
+        new Date(),
+        parsed.output.timeZone ?? 'UTC',
       )
       return c.json({ memories })
     })
@@ -46,6 +49,44 @@ export function createUserMemoryRoutes(userMemoryService: UserMemoryService) {
         throw createNotFoundError('Memory not found')
 
       return c.body(null, 204)
+    })
+
+    .patch('/:memoryId', async (c) => {
+      const user = c.get('user')!
+      const parsedId = safeParse(MemoryIdSchema, c.req.param('memoryId'))
+      if (!parsedId.success)
+        throw createBadRequestError('Invalid Request', 'INVALID_REQUEST', parsedId.issues)
+
+      const body = await c.req.json()
+      const parsed = safeParse(UpdateMemorySchema, body)
+      if (!parsed.success)
+        throw createBadRequestError('Invalid Request', 'INVALID_REQUEST', parsed.issues)
+
+      const memory = await userMemoryService.update(user.id, parsedId.output, parsed.output)
+      if (!memory)
+        throw createNotFoundError('Memory not found')
+
+      return c.json({ memory })
+    })
+
+    .post('/rollup', async (c) => {
+      const user = c.get('user')!
+      const body = await c.req.json()
+      const parsed = safeParse(RollupMemoriesSchema, body)
+      if (!parsed.success)
+        throw createBadRequestError('Invalid Request', 'INVALID_REQUEST', parsed.issues)
+
+      const profileUpdatedAt = new Date(parsed.output.profileUpdatedAt)
+      if (Number.isNaN(profileUpdatedAt.getTime()))
+        throw createBadRequestError('Invalid Request', 'INVALID_REQUEST')
+
+      const result = await userMemoryService.rollup(user.id, {
+        timeZone: parsed.output.timeZone,
+        profileContent: parsed.output.profileContent,
+        profileUpdatedAt,
+        replayIds: parsed.output.replayIds ?? [],
+      })
+      return c.json(result)
     })
 
     .post('/', async (c) => {

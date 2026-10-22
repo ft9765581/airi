@@ -67,20 +67,14 @@ const {
 } = storeToRefs(live2d)
 
 const expressionStore = useExpressionStore()
-const { expressions, expressionGroups } = storeToRefs(expressionStore)
+const { expressionGroups } = storeToRefs(expressionStore)
 
-/**
- * Check if an expression group is currently active.
- * Only considers non-zero exp3 params (zero-valued params are "reset" instructions).
- * A group is active when at least one of its activation params matches the exp3 value.
- */
-function isGroupActive(group: { parameters: { parameterId: string, value: number }[] }): boolean {
-  return group.parameters.some((p) => {
-    if (p.value === 0)
-      return false // Skip reset params
-    const entry = expressions.value.get(p.parameterId)
-    return entry != null && entry.currentValue === p.value
-  })
+function isGroupActive(groupName: string): boolean {
+  return expressionStore.isGroupActive(groupName)
+}
+
+function onGroupActiveChange(groupName: string, active: boolean | undefined) {
+  expressionStore.setGroupActive(groupName, active === true)
 }
 
 const selectedRuntimeMotion = ref<string>('')
@@ -771,14 +765,14 @@ function handleMotionSelect(selectedMotionPath: string | number | undefined) {
       <!-- Expression preview toggles -->
       <div flex flex-col gap-2>
         <div
-          v-for="[groupName, group] in expressionGroups"
+          v-for="[groupName] in expressionGroups"
           :key="groupName"
           flex items-center justify-between
         >
           <span text-sm text-neutral-700 dark:text-neutral-300>{{ groupName }}</span>
           <Checkbox
-            :model-value="isGroupActive(group)"
-            @update:model-value="expressionStore.toggle(groupName)"
+            :model-value="isGroupActive(groupName)"
+            @update:model-value="(value) => onGroupActiveChange(groupName, value)"
           />
         </div>
       </div>

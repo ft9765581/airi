@@ -90,6 +90,9 @@ async function main(): Promise<void> {
             {
               id: 'deepseek',
               baseURL,
+              // The router id stays an internal name. DeepSeek's public API
+              // expects its own model id, so the outbound request uses that.
+              overrideModel: process.env.GATEWAY_UPSTREAM_MODEL?.trim() || 'deepseek-chat',
               keys: [{ id: KEY_ENTRY_ID, ciphertext }],
             },
           ],

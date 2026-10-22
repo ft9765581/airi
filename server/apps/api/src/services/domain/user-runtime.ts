@@ -1,7 +1,10 @@
 import type { Database } from '../../libs/db'
+import type { AccountSections } from './account-sections'
 
 import { useLogger } from '@guiiai/logg'
 import { and, eq } from 'drizzle-orm'
+
+import { mergeAccountSections } from './account-sections'
 
 import * as schema from '../../schemas/user-runtime'
 
@@ -22,6 +25,7 @@ export interface RuntimeSettingsRecord {
   activeCardUpdatedAt: Date
   profileContent: string
   profileUpdatedAt: Date
+  sections: AccountSections
   deletedAt: Date | null
 }
 
@@ -35,6 +39,7 @@ export interface SaveRuntimeSettingsInput {
   activeCardUpdatedAt: Date
   profileContent: string
   profileUpdatedAt: Date
+  sections?: AccountSections
 }
 
 export interface SaveRuntimeCardResult {
@@ -58,6 +63,25 @@ function isCurrentOrNewer(incoming: Date, stored: Date): boolean {
   return incoming.getTime() >= stored.getTime()
 }
 
+function sectionSaveTimes(sections: AccountSections): number[] {
+  const times: number[] = []
+  for (const section of [sections.modules, sections.knowledgeBase, sections.connection, sections.system, sections.modelView]) {
+    if (section)
+      times.push(new Date(section.updatedAt).getTime())
+  }
+  for (const override of sections.cardOverrides ?? []) {
+    for (const part of [override.speech, override.scene, override.displayModel]) {
+      if (part)
+        times.push(new Date(part.updatedAt).getTime())
+    }
+  }
+  for (const scene of sections.scenes ?? [])
+    times.push(new Date(scene.updatedAt).getTime())
+  for (const expression of sections.modelExpressions ?? [])
+    times.push(new Date(expression.updatedAt).getTime())
+  return times.filter(time => Number.isFinite(time))
+}
+
 function toCardRecord(row: typeof schema.userRuntimeCards.$inferSelect): RuntimeCardRecord {
   return {
     cardId: row.cardId,
@@ -73,15 +97,17 @@ function toSettingsRecord(row: typeof schema.userRuntimeSettings.$inferSelect): 
     activeCardUpdatedAt: row.activeCardUpdatedAt,
     profileContent: row.profileContent,
     profileUpdatedAt: row.profileUpdatedAt,
+    sections: (row.sections ?? {}) as AccountSections,
     deletedAt: row.deletedAt,
   }
 }
 
 /**
- * Stores the signed-in user's runtime character cards, active card, and profile text.
+ * Stores the signed-in user's selected card, profile text, and settings blocks.
  *
  * Each field keeps the save with the newer timestamp. An older save leaves the
- * stored row in place so two devices converge on the later edit.
+ * stored row in place so two devices converge on the later edit. Whole character
+ * cards stay out of this snapshot's settings.
  */
 export function createUserRuntimeService(db: Database) {
   return {
@@ -101,6 +127,9 @@ export function createUserRuntimeService(db: Database) {
 
       return await db.transaction(async (tx) => {
         const [existing] = await tx.select().from(schema.userRuntimeSettings).where(eq(schema.userRuntimeSettings.ownerId, ownerId))
+        const existingSections = (existing?.sections ?? {}) as AccountSections
+        const sections = mergeAccountSections(existingSections, input.sections, now)
+        const sectionTimes = sectionSaveTimes(sections)
 
         if (!existing) {
           const [created] = await tx.insert(schema.userRuntimeSettings).values({
@@ -109,6 +138,7 @@ export function createUserRuntimeService(db: Database) {
             activeCardUpdatedAt,
             profileContent: input.profileContent,
             profileUpdatedAt,
+            sections,
             deletedAt: null,
           }).returning()
           return toSettingsRecord(created!)
@@ -120,11 +150,17 @@ export function createUserRuntimeService(db: Database) {
         const nextProfile = isCurrentOrNewer(profileUpdatedAt, existing.profileUpdatedAt)
           ? { profileContent: input.profileContent, profileUpdatedAt }
           : { profileContent: existing.profileContent, profileUpdatedAt: existing.profileUpdatedAt }
-        const revive = existing.deletedAt != null && (nextActive.activeCardUpdatedAt.getTime() > existing.deletedAt.getTime() || nextProfile.profileUpdatedAt.getTime() > existing.deletedAt.getTime())
+        const newestSection = sectionTimes.reduce((latest, time) => time > latest ? time : latest, 0)
+        const revive = existing.deletedAt != null && (
+          nextActive.activeCardUpdatedAt.getTime() > existing.deletedAt.getTime()
+          || nextProfile.profileUpdatedAt.getTime() > existing.deletedAt.getTime()
+          || newestSection > existing.deletedAt.getTime()
+        )
 
         const [updated] = await tx.update(schema.userRuntimeSettings).set({
           ...nextActive,
           ...nextProfile,
+          sections,
           deletedAt: revive ? null : existing.deletedAt,
         }).where(eq(schema.userRuntimeSettings.ownerId, ownerId)).returning()
 

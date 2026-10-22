@@ -7,9 +7,9 @@ import { defineStore } from 'pinia'
  * The chat runtime reads this store on every request and injects the content as
  * side context, so an edit reaches the next turn without a reload.
  *
- * The content is author-owned: only the settings page writes it. The runtime
- * never derives or appends to it, because AIRI has no automatic memory
- * extraction yet.
+ * The settings page writes it. Once a day, memory rollup also writes it:
+ * a fact from an earlier local day replaces an overlapping line, or is
+ * appended under its category heading.
  */
 export const useSettingsUserProfile = defineStore('settings-user-profile', () => {
   const content = useLocalStorageManualReset<string>('settings/user-profile/content', '')
