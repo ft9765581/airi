@@ -92,8 +92,12 @@ export default defineConfig({
       // removed, and Vite exits because nothing handles the watcher's `error` event.
       // Observed on 2026-10-14: pid 18712 wrote `apps/stage-web/index.html` and killed `vite --host`.
       // Ignore the temporary directories so a concurrent writer cannot crash the dev server.
-      // Removal condition: only when file writers stop creating temp directories inside the project tree.
-      ignored: ['**/.*.tmpdir', '**/.*.tmpdir/**'],
+      // Observed again on 2026-10-23: a deploy package being written to `apps/stage-web/dist-<date>.zip`
+      // raised the same error, because the watcher descends into the app directory and the archive is
+      // still open while it is written. A browser never loads a zip as a module in dev, so ignoring the
+      // extension costs nothing and stops a package build from killing the server.
+      // Removal condition: only when file writers stop creating temp directories or archives inside the project tree.
+      ignored: ['**/.*.tmpdir', '**/.*.tmpdir/**', '**/*.zip'],
     },
     warmup: {
       clientFiles: [
