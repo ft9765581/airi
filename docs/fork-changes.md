@@ -159,9 +159,26 @@
 | `docs/airi-cards/xiaoqing-prenatal-v2.json` | 旧孕期卡留档（已从构建移除，只剩这一份） |
 | `apps/stage-web/public/models/live2d/chun-nurse-white.zip` | 护士 Live2D 模型（6.4 MB） |
 | `apps/stage-web/deploy/` | 部署方案 |
-| `docs/scripts/sync-gitee.ps1` + `.md` | 同步已提交内容到 Gitee |
 | `docs/scripts/create-local-account.ps1` | 本地建验证过的账号 |
 | `docs/design-harness/`、`docs/canvas.html`、`.design-harness/` | 并行工作的设计文档 |
+
+## 6.1 Gitee 现在和本仓库共享历史（2026-10-23）
+
+以前用 `docs/scripts/sync-gitee.ps1` 同步：它用 `git read-tree` + `commit-tree` 造一条
+「快照链」推到 `gitee/main`，父提交是上一条快照而不是本仓库的提交。结果是内容一致、**祖先不同**，
+`git pull gitee main` 永远报 unrelated histories，只能靠补丁搬代码。
+
+2026-10-23 处理：
+
+- 用 `git merge -s ours --allow-unrelated-histories gitee/main` 做了一次**嫁接合并**（`dd1d2a7b6`）：
+  树取本地这一侧，镜像链成为第二父提交。两边的提交、署名都保留。
+- 之后 `gitee/main` 与 `origin/ft9765581/feat/user-profile-settings` 指向同一个提交，两边都是普通
+  fast-forward 推送，协作者**不需要 reset**，`git pull` 即可。
+- 同一次操作里重写了历史，删掉 `docs/**/*.{mp4,MP4,gif,avif}` 共 510 个文件、317 MB：工作树
+  572 MB → 132 MB，历史 553 MB → 249 MB。因此 **2026-10-23 之前的提交 SHA 全部变化**；
+  旧历史在本地备份 `../airi-mirror-backup.git`（不入库）。
+- `sync-gitee.ps1` / `sync-gitee.md` 已删除。**不要再用 `commit-tree` 造提交**，否则又会出现
+  无共同祖先的分支；要同步就是普通 `git push gitee <分支>:main`。
 
 ## 7. 上线前必须改回的两处
 
