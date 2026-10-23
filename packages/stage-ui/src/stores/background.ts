@@ -313,6 +313,14 @@ export const useBackgroundStore = defineStore('background-entries', () => {
     }
   }
 
+  async function importBackground(entry: BackgroundEntry) {
+    await localforage.setItem(entry.id, entry)
+    ensureObjectUrl(entry.id, entry.blob)
+    const nextEntries = new Map(entries.value)
+    nextEntries.set(entry.id, entry)
+    entries.value = nextEntries
+  }
+
   async function removeBackground(id: string) {
     try {
       await localforage.removeItem(id)
@@ -353,6 +361,7 @@ export const useBackgroundStore = defineStore('background-entries', () => {
     journalRecentEntries,
     addBackground,
     removeBackground,
+    importBackground,
     getBackgroundUrl: (id: string) => backgroundUrls[id] ?? null,
     initializeStore,
   }

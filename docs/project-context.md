@@ -57,7 +57,7 @@
 | 备用聊天来源 | `openai-compatible` + `https://airi.bestmings.com/v1`（保留可切换） |
 | 语音来源 / 模型 / 音色 | `mimo-audio-speech` / `mimo-v2.5-tts` / 冰糖 |
 | 形象 | `preset-live2d-chun-nurse`（春 · 护士白裤子版，包在 `apps/stage-web/public/models/live2d/`） |
-| 角色卡 | `xiaoqing`（`apps/stage-web/src/assets/airi-cards/xiaoqing.json`） |
+| 角色卡 | 只下发一张 `xiaoqing`（小清），构建强制覆盖；早期构建的 `xiaoqing-prenatal` / `xiaoqing-prenatal-v2` 会被一次性删除 |
 | 用户画像 | 空 |
 | 舞台缩放 / 位置 | `0.75` / `y=20` |
 

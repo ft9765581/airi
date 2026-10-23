@@ -117,6 +117,28 @@
 
 `providers.ts` 清空影响三处 UI：登录页、账户设置、个人资料页。撤回条件：启用任一社交登录。
 
+### C1. 角色卡由构建强制覆盖
+
+- 文件：`apps/stage-web/src/modules/defaults.ts`、`apps/stage-web/src/assets/airi-cards/`
+- 改动：只下发一张卡 `xiaoqing`（源文件 `src/assets/airi-cards/xiaoqing.json`）。
+  `VITE_DEFAULT_CONFIG_VERSION` 每变一次，这张卡就**整份覆盖**到浏览器：描述、性格、场景、问候语、系统提示词、
+  历史提示指令、模块绑定全部按构建内容重写；访客删掉的卡也会加回来。默认激活 `xiaoqing`。
+- 丢弃旧卡：`DROPPED_CARD_IDS`（`xiaoqing-prenatal`、`xiaoqing-prenatal-v2`）在版本号检查**之前**做一次性删除，
+  否则早期构建下发的那两张会永远留在别人的列表里。`settings/defaults/dropped-cards` 标记让它只跑一次，
+  这样访客以后用同一个 id 重新导入的卡不会再被删。
+- 为什么：角色卡是产品内容，不属于访客。护士机不会自己点「恢复默认配置」，所以文案改动只能靠版本号下发。
+- 与上游的差异：上游只在卡不存在时插入，之后仅刷新 `extensions.airi.modules`，且删过的卡保持删除。
+- 内置卡（上游叫 ReLU，id `default`）不换文案，但**模块绑定会被改成构建的这一套**。它的模块是创建时从全局
+  store 冻结下来的，留着旧的 provider/model 会在用户重新选中它时把老的聊天来源再写回全局设置。
+- `SHIPPED_VALUES` 补了 `settings/consciousness/active-provider = openai-compatible` 与
+  `active-model = Qwen3-8B` 这两条旧默认值，否则浏览器里那对值会被当成"用户自己选的"而永远不被纠正
+  （现象就是聊天报 `The model Qwen3-8B does not exist` 404）。
+- 边界：访客自建的卡（nanoid id）永远不动，仍可自己编辑、删除。
+- 开关：`VITE_SHIP_CHARACTER_CARDS=off` 时整个角色卡下发与修复都跳过，浏览器里已有的卡（包括旧构建下发的）
+  原样保留；其它值（或留空）保持上面的覆盖行为。注意开关只管角色卡，provider / 显示模型 / 用户画像默认值照常下发。
+- 副作用：访客对**部署卡**的修改会在下次版本号变化时被回滚，这是有意的。
+- 撤回条件：角色卡改回「用户自己管、部署只提供初始值」，把 `writeCharacterDefault` 恢复成上游形状。
+
 ## 5. D. 开发体验
 
 | 文件 | 改动 | 原因 |
@@ -132,7 +154,9 @@
 | --- | --- |
 | `apps/stage-web/src/modules/defaults.ts` | 构建期默认值下发（见 C） |
 | `apps/stage-web/src/pages/nurse.vue` | 护士页 |
-| `apps/stage-web/src/assets/airi-cards/xiaoqing.json` | 小清角色卡 |
+| `apps/stage-web/src/assets/airi-cards/xiaoqing.json` | 下发的小清角色卡（孕期陪检，v2.0.0，ACT 情绪标签，id 固定为 `xiaoqing`） |
+| `docs/airi-cards/xiaoqing-prenatal.json` | 旧孕期卡留档（已从构建移除，只剩这一份） |
+| `docs/airi-cards/xiaoqing-prenatal-v2.json` | 旧孕期卡留档（已从构建移除，只剩这一份） |
 | `apps/stage-web/public/models/live2d/chun-nurse-white.zip` | 护士 Live2D 模型（6.4 MB） |
 | `apps/stage-web/deploy/` | 部署方案 |
 | `docs/scripts/sync-gitee.ps1` + `.md` | 同步已提交内容到 Gitee |

@@ -125,7 +125,10 @@ vi.mock('../composables/use-io-tracer', () => ({
 }))
 
 vi.mock('./chat/context-providers', () => ({
+  createKnowledgeBaseContext: () => undefined,
+  createLongTermMemoryContext: () => undefined,
   createMinecraftContext: () => createMinecraftContextMock(),
+  createUserProfileContext: () => undefined,
 }))
 
 vi.mock('./chat/context-store', () => ({

@@ -16,6 +16,8 @@ import type { ProviderService } from './services/domain/providers'
 import type { RequestLogService } from './services/domain/request-log'
 import type { StripeService } from './services/domain/stripe'
 import type { UserDeletionService } from './services/domain/user-deletion'
+import type { UserMemoryService } from './services/domain/user-memory'
+import type { UserRuntimeService } from './services/domain/user-runtime'
 import type { VoicePackService } from './services/domain/voice-packs'
 import type { HonoEnv } from './types/hono'
 import type { EnvelopeCrypto } from './utils/envelope-crypto'
@@ -58,6 +60,8 @@ import { createKnowledgeBaseRoutes } from './routes/knowledge-base'
 import { createV1Routes } from './routes/openai/v1'
 import { createProviderRoutes } from './routes/providers'
 import { createStripeRoutes } from './routes/stripe'
+import { createUserMemoryRoutes } from './routes/user-memory'
+import { createUserRuntimeRoutes } from './routes/user-runtime'
 import { createVoicePackRoutes } from './routes/voice-packs'
 import { createConfigKVService } from './services/adapters/config-kv'
 import { createConfigKVStore } from './services/adapters/config-kv/store'
@@ -76,6 +80,8 @@ import { createProviderService } from './services/domain/providers'
 import { createRequestLogService } from './services/domain/request-log'
 import { createStripeService } from './services/domain/stripe'
 import { createUserDeletionService } from './services/domain/user-deletion'
+import { createUserMemoryService } from './services/domain/user-memory'
+import { createUserRuntimeService } from './services/domain/user-runtime'
 import { createVoicePackService } from './services/domain/voice-packs'
 import { createEnvelopeCrypto } from './utils/envelope-crypto'
 import { ApiError, createInternalError } from './utils/error'
@@ -101,6 +107,8 @@ interface AppDeps {
   env: Env
   otel: OtelInstance | null
   userDeletionService: UserDeletionService
+  userMemoryService: UserMemoryService
+  userRuntimeService: UserRuntimeService
   llmRouter: LlmRouterService
   providerCatalogService: ProviderCatalogService
 }
@@ -369,6 +377,18 @@ export async function buildApp(deps: AppDeps) {
     .route('/api/v1/characters', createCharacterRoutes(deps.characterService))
 
     /**
+     * Runtime character cards, the active card, and the handwritten user profile.
+     * These rows follow the signed-in user. They are not the public character catalog.
+     */
+    .route('/api/v1/runtime-profile', createUserRuntimeRoutes(deps.userRuntimeService))
+
+    /**
+     * Long-term memory for the signed-in user.
+     * A few facts are written after a chat turn and read before the next send.
+     */
+    .route('/api/v1/memories', createUserMemoryRoutes(deps.userMemoryService))
+
+    /**
      * Provider routes are handled by the provider service.
      */
     .route('/api/v1/providers', createProviderRoutes(deps.providerService))
@@ -607,8 +627,18 @@ export async function createApp() {
   //   2. add one `service.register(...)` line below
   // Domain knowledge stays inside each service instead of being copied into
   // a parallel handler file. See `server/apps/api/docs/ai-context/account-deletion.md`.
+  const userMemoryService = injeca.provide('services:userMemory', {
+    dependsOn: { db },
+    build: ({ dependsOn }) => createUserMemoryService(dependsOn.db),
+  })
+
+  const userRuntimeService = injeca.provide('services:userRuntime', {
+    dependsOn: { db },
+    build: ({ dependsOn }) => createUserRuntimeService(dependsOn.db),
+  })
+
   const userDeletionService = injeca.provide('services:userDeletion', {
-    dependsOn: { stripeService, fluxService, providerService, characterService, chatService },
+    dependsOn: { stripeService, fluxService, providerService, characterService, chatService, userRuntimeService, userMemoryService },
     build: ({ dependsOn }) => {
       const service = createUserDeletionService()
       // priority: 10 = external side-effects (Stripe API cancel — unrollable),
@@ -619,6 +649,8 @@ export async function createApp() {
       service.register({ name: 'providers', priority: 30, softDelete: ({ userId }) => dependsOn.providerService.deleteAllForUser(userId) })
       service.register({ name: 'characters', priority: 30, softDelete: ({ userId }) => dependsOn.characterService.deleteAllForUser(userId) })
       service.register({ name: 'chats', priority: 30, softDelete: ({ userId }) => dependsOn.chatService.deleteAllForUser(userId) })
+      service.register({ name: 'runtime-profile', priority: 30, softDelete: ({ userId }) => dependsOn.userRuntimeService.deleteAllForUser(userId) })
+      service.register({ name: 'memories', priority: 30, softDelete: ({ userId }) => dependsOn.userMemoryService.deleteAllForUser(userId) })
       return service
     },
   })
@@ -713,6 +745,8 @@ export async function createApp() {
     env: parsedEnv,
     otel,
     userDeletionService,
+    userMemoryService,
+    userRuntimeService,
     llmRouter,
     providerCatalogService,
     ttsConcurrencyLedger,
@@ -741,6 +775,8 @@ export async function createApp() {
     env: resolved.env,
     otel: resolved.otel,
     userDeletionService: resolved.userDeletionService,
+    userMemoryService: resolved.userMemoryService,
+    userRuntimeService: resolved.userRuntimeService,
     llmRouter: resolved.llmRouter,
     providerCatalogService: resolved.providerCatalogService,
   }

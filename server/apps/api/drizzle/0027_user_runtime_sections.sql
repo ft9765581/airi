@@ -1,0 +1,1 @@
+ALTER TABLE "user_runtime_settings" ADD COLUMN "sections" jsonb DEFAULT '{}'::jsonb NOT NULL;

@@ -9,6 +9,15 @@ animations:
       transitions
     title: Use Page Specific Transitions
 dialogs:
+  runtime-profile-import:
+    title: Save this device's settings to your account?
+    description: >-
+      The selected character card, the voice on that card, and the settings
+      on this device stay here until you save them. After that, this account
+      loads them on each sign-in. Character card files stay on this device.
+      Live2D and VRM files stay on this device.
+    import: Save to this account
+    dismiss: Not now
   onboarding:
     official:
       title: AIRI Official Provider
@@ -478,8 +487,8 @@ pages:
     upload: Upload
     upload_desc: Click or drag an AIRI card package to import
   memory:
-    description: Where memories got stored, and organized
-    title: Memory
+    description: View, edit, and delete long-term memory stored for this account
+    title: Long-Term Memory
   user-profile:
     title: User Profile
     description: Tell AIRI who the conversation is with
@@ -867,6 +876,31 @@ pages:
     memory-long-term:
       description: Long-term memory specific settings and management
       title: Long-Term Memory
+      intro: These facts belong to the signed-in account. A fact about you follows every character. A fact about a character stays on that character.
+      sign-in: Sign in to view Long-Term Memory for this account.
+      loading: Loading facts…
+      empty: This account has no stored facts yet.
+      load-error: The facts could not be loaded.
+      delete: Delete
+      confirm-delete: Delete this fact
+      delete-error: The fact could not be deleted.
+      add: Add
+      edit: Edit
+      save: Save
+      cancel: Cancel
+      save-error: The fact could not be saved.
+      content-label: Fact
+      content-placeholder: Write one fact about the user.
+      category-label: Category
+      categories:
+        name: Name
+        background: Background
+        allergy: Allergy
+        concern: Concerns
+        other: Other
+      scope-user: About you
+      scope-character: About {name}
+      recall: Recalled {count} times
     memory-short-term:
       description: Short-term memory specific settings and management
       title: Short-Term Memory

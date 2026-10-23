@@ -41,10 +41,10 @@ export interface ExpressionControllerOptions {
   internalModel: Ref<PixiLive2DInternalModel | undefined>
 
   /**
-   * An optional model identifier used for persistence scoping.
-   * Falls back to `'unknown'` if not provided.
+   * Display-model id used for persistence scoping.
+   * Read at initialise time so a model switch keeps the correct storage key.
    */
-  modelId?: string
+  getModelId?: () => string | undefined
 }
 
 /**
@@ -59,6 +59,10 @@ export function useExpressionController(options: ExpressionControllerOptions) {
   // Track which parameter IDs were written in the previous frame so we can
   // detect active→inactive transitions and explicitly reset them.
   const activeLastFrame = new Set<string>()
+
+  function resolveModelId(): string {
+    return options.getModelId?.() || 'unknown'
+  }
 
   // ---- Initialisation (called once after model load) ----------------------
 
@@ -126,7 +130,7 @@ export function useExpressionController(options: ExpressionControllerOptions) {
     }
 
     store.registerExpressions(
-      options.modelId ?? 'unknown',
+      resolveModelId(),
       groups,
       Array.from(entryMap.values()),
     )
@@ -231,7 +235,12 @@ export function useExpressionController(options: ExpressionControllerOptions) {
   // ---- Cleanup -------------------------------------------------------------
 
   function dispose() {
-    store.dispose()
+    // Two Live2D canvases share one expression store (stage + settings preview).
+    // Only the owner may clear it, otherwise a remount wipes mid-edit toggles
+    // and persistCurrentSettings no-ops with an empty modelId.
+    const ownedId = resolveModelId()
+    if (!store.modelId || store.modelId === ownedId || store.modelId === 'unknown')
+      store.dispose()
   }
 
   // ---- Private helpers -----------------------------------------------------

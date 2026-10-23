@@ -3,6 +3,7 @@ import type { Session, User } from 'better-auth'
 import { createPinia, setActivePinia } from 'pinia'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { nextTick } from 'vue'
+import { toast } from 'vue-sonner'
 
 import { triggerSignIn } from '../libs/auth'
 import { requestAuthSession } from '../libs/auth-client'
@@ -10,6 +11,12 @@ import { useAuthStore } from './auth'
 
 vi.mock('../libs/auth', () => ({
   triggerSignIn: vi.fn(),
+}))
+
+vi.mock('vue-sonner', () => ({
+  toast: {
+    error: vi.fn(),
+  },
 }))
 
 vi.mock('../libs/auth-client', () => ({
@@ -105,6 +112,18 @@ describe('auth store sign-in requests', () => {
     await nextTick()
 
     expect(triggerSignIn).toHaveBeenCalledTimes(2)
+    expect(authStore.needsLogin).toBe(false)
+  })
+
+  it('shows an error when sign-in cannot reach the auth service', async () => {
+    vi.mocked(triggerSignIn).mockRejectedValueOnce(new Error('Auth server is unreachable at http://localhost:6112'))
+    const authStore = useAuthStore()
+
+    authStore.needsLogin = true
+    await nextTick()
+    await Promise.resolve()
+
+    expect(toast.error).toHaveBeenCalledWith('Auth server is unreachable at http://localhost:6112')
     expect(authStore.needsLogin).toBe(false)
   })
 

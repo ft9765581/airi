@@ -189,7 +189,7 @@ const live2dShadowEnabled = toRef(() => props.live2dShadowEnabled)
 const internalModelRef = shallowRef<PixiLive2DInternalModel>()
 const expressionController = useExpressionController({
   internalModel: internalModelRef,
-  modelId: props.modelId,
+  getModelId: () => props.modelId,
 })
 // Saved SDK manager references for runtime expression toggle (restore on disable)
 const savedEyeBlink = shallowRef<any>(null)
@@ -479,17 +479,18 @@ async function performModelLoad() {
  * expression loading does not prevent the model itself from rendering.
  */
 async function initExpressionController(internalModel?: PixiLive2DInternalModel) {
-  // Dispose any previous state (handles model reloads)
-  expressionController.dispose()
-
   const settings = internalModel?.settings as any
-  if (!settings)
+  if (!settings) {
+    expressionController.dispose()
     return
+  }
 
   // model3.json stores expressions as { Name, File }[] under settings.expressions
   const expressionRefs: { Name: string, File: string }[] = settings.expressions ?? []
-  if (expressionRefs.length === 0)
+  if (expressionRefs.length === 0) {
+    expressionController.dispose()
     return
+  }
 
   // Build a function that can read exp3 files relative to the model root.
   // For URL-loaded models, resolveURL gives us the full URL. For ZIP-loaded
@@ -502,6 +503,8 @@ async function initExpressionController(internalModel?: PixiLive2DInternalModel)
     return response.text()
   }
 
+  // Initialise replaces the previous registration. Dispose only after we know
+  // this model has expression files, so a failed probe cannot clear a good store.
   await expressionController.initialise(expressionRefs, readExpFile)
 }
 

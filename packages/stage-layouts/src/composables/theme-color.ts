@@ -42,6 +42,26 @@ export function themeColorFromValue(value: string | { light: string, dark: strin
   }
 }
 
+/**
+ * Parses a CSS color for the document theme-color meta tag.
+ *
+ * An empty string throws inside colorjs.io (`Empty color reference`). The wave
+ * background reads a computed style before the widgets mount, so that empty
+ * value must not reach `new Color(...)`.
+ */
+function themeColorHex(value: string): string | null {
+  const trimmed = value.trim()
+  if (!trimmed || trimmed === 'none')
+    return null
+
+  try {
+    return new Color(trimmed).to('srgb').toString({ format: 'hex' })
+  }
+  catch {
+    return null
+  }
+}
+
 export function useThemeColor(colorFrom: () => string | Promise<string>) {
   async function updateThemeColor() {
     if (!('document' in globalThis) || globalThis.document == null)
@@ -49,7 +69,21 @@ export function useThemeColor(colorFrom: () => string | Promise<string>) {
     if (!('window' in globalThis) || globalThis.window == null)
       return
 
-    document.querySelector('meta[name="theme-color"]')?.setAttribute('content', new Color(await colorFrom()).to('srgb').toString({ format: 'hex' }))
+    let raw: string
+    try {
+      raw = await colorFrom()
+    }
+    catch {
+      // The wave sampler retries until widgets exist. A failed read must not
+      // tear down the page while the stage is still mounting.
+      return
+    }
+
+    const hex = themeColorHex(raw)
+    if (!hex)
+      return
+
+    document.querySelector('meta[name="theme-color"]')?.setAttribute('content', hex)
   }
 
   return {
@@ -167,32 +201,37 @@ export function useBackgroundThemeColor({
   }
 
   async function syncBackgroundTheme() {
-    if (selectedOption.value?.kind === BackgroundKind.Wave) {
-      await updateThemeColor()
+    try {
+      if (selectedOption.value?.kind === BackgroundKind.Wave) {
+        await updateThemeColor()
+      }
+      else if (themeColorHex(sampledColor.value)) {
+        await updateThemeColor()
+      }
+      else {
+        await sampleBackgroundColor()
+      }
     }
-    else if (sampledColor.value) {
-      await updateThemeColor()
-    }
-    else {
-      await sampleBackgroundColor()
+    catch (error) {
+      console.warn('[theme-color] background theme sync failed', error)
     }
   }
 
   watch([selectedOption], () => {
-    syncBackgroundTheme()
+    void syncBackgroundTheme()
   }, { immediate: true })
 
   watch(sampledColor, () => {
-    syncBackgroundTheme()
+    void syncBackgroundTheme()
   })
 
   watch(() => backgroundSurface.value?.surfaceEl, (el) => {
     if (el)
-      syncBackgroundTheme()
+      void syncBackgroundTheme()
   })
 
   watch(isDark, () => {
-    syncBackgroundTheme()
+    void syncBackgroundTheme()
   })
 
   return {

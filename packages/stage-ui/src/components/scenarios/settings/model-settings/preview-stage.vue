@@ -6,11 +6,13 @@ import { MMDScene } from '@proj-airi/stage-ui-mmd'
 import { SpineScene } from '@proj-airi/stage-ui-spine'
 import { TachieScene } from '@proj-airi/stage-ui-tachie'
 import { ThreeScene, useModelStore } from '@proj-airi/stage-ui-three'
+import { Callout, ErrorBoundary } from '@proj-airi/ui'
 import { useMouse } from '@vueuse/core'
 import { storeToRefs } from 'pinia'
 import { computed, ref, watch } from 'vue'
 
 import { useSettings } from '../../../../stores/settings'
+import { isWebGLAvailable, stageRendererNeedsWebGL } from '../../../../utils/webgl-available'
 import {
   createEmptyModelSettingsRuntimeSnapshot,
   resolveComponentStateToRuntimePhase,
@@ -40,6 +42,7 @@ const spineComponentState = ref<'pending' | 'loading' | 'mounted'>('pending')
 const tachieComponentState = ref<'pending' | 'loading' | 'mounted'>('pending')
 const mmdComponentState = ref<'pending' | 'loading' | 'mounted'>('pending')
 const vrmPreviewStageInstanceId = `model-settings-preview-stage:${Math.random().toString(36).slice(2, 10)}`
+const webglAvailable = isWebGLAvailable()
 
 const {
   stageModelSelected,
@@ -57,6 +60,7 @@ const {
   spineRenderScale,
 } = storeToRefs(settingsStore)
 const { sceneMutationLocked, scenePhase } = storeToRefs(modelStore)
+const webglPreviewBlocked = computed(() => stageRendererNeedsWebGL(stageModelRenderer.value) && !webglAvailable)
 
 const live2dSceneClassList = computed(() => normalizeClassList(props.live2dSceneClass))
 const vrmSceneClassList = computed(() => normalizeClassList(props.vrmSceneClass))
@@ -217,7 +221,17 @@ const cursorPosition = computed(() => ({
   </template>
   <template v-if="stageModelRenderer === 'vrm'">
     <div :class="vrmSceneClassList">
-      <ThreeScene ref="vrmSceneRef" :cursor-position="cursorPosition" :model-src="stageModelSelectedUrl" />
+      <Callout v-if="webglPreviewBlocked" label="WebGL unavailable">
+        <p>VRM preview needs WebGL. This browser cannot create a WebGL context.</p>
+      </Callout>
+      <ErrorBoundary v-else :retryable="false">
+        <template #fallback>
+          <Callout label="VRM preview failed">
+            <p>WebGL context creation failed. Try a Live2D model, or open the app in Chrome or Edge.</p>
+          </Callout>
+        </template>
+        <ThreeScene ref="vrmSceneRef" :cursor-position="cursorPosition" :model-src="stageModelSelectedUrl" />
+      </ErrorBoundary>
     </div>
   </template>
   <template v-if="stageModelRenderer === 'spine'">
@@ -237,14 +251,24 @@ const cursorPosition = computed(() => ({
   </template>
   <template v-if="stageModelRenderer === 'mmd'">
     <div :class="mmdSceneClassList">
-      <MMDScene
-        ref="mmdSceneRef"
-        v-model:state="mmdComponentState"
-        :model-src="stageModelSelectedUrl"
-        :model-id="stageModelSelected"
-        :cursor-position="cursorPosition"
-        :enable-orbit-controls="true"
-      />
+      <Callout v-if="webglPreviewBlocked" label="WebGL unavailable">
+        <p>MMD preview needs WebGL. This browser cannot create a WebGL context.</p>
+      </Callout>
+      <ErrorBoundary v-else :retryable="false">
+        <template #fallback>
+          <Callout label="MMD preview failed">
+            <p>WebGL context creation failed. Try a Live2D model, or open the app in Chrome or Edge.</p>
+          </Callout>
+        </template>
+        <MMDScene
+          ref="mmdSceneRef"
+          v-model:state="mmdComponentState"
+          :model-src="stageModelSelectedUrl"
+          :model-id="stageModelSelected"
+          :cursor-position="cursorPosition"
+          :enable-orbit-controls="true"
+        />
+      </ErrorBoundary>
     </div>
   </template>
   <template v-if="stageModelRenderer === 'tachie'">

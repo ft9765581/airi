@@ -1,6 +1,8 @@
 import type { WebFontMeta } from '@unocss/preset-web-fonts'
 import type { Preset, PresetOrFactoryAwaitable } from 'unocss'
 
+import process from 'node:process'
+
 import { setDefaultAutoSelectFamilyAttemptTimeout } from 'node:net'
 
 import { createExternalPackageIconLoader } from '@iconify/utils/lib/loader/external-pkg'
@@ -9,6 +11,15 @@ import { colorToString } from '@unocss/preset-mini/utils'
 import { defineConfig, mergeConfigs, presetAttributify, presetIcons, presetTypography, presetWind3, transformerDirectives, transformerVariantGroup } from 'unocss'
 import { presetScrollbar } from 'unocss-preset-scrollbar'
 import { parseColor } from 'unocss/preset-mini'
+
+// NOTICE:
+// Icon buttons render as empty squares when this config loads inside Cursor or VS Code.
+// preset-icons skips the on-disk @iconify-json loader whenever VSCODE_CWD is set,
+// and that variable is present on every integrated terminal. Only the custom
+// collection loader remains, so classes such as i-solar:* and i-ph:* produce no CSS.
+// Source: @unocss/preset-icons dist/index.mjs, getEnvFlags().
+// Removal condition: preset-icons loads installed icon packages even when VSCODE_CWD is set.
+delete process.env.VSCODE_CWD
 
 // On Netlify, building will result in when fetching metadata and fonts from @unocss/preset-web-fonts plugin:
 //

@@ -27,8 +27,55 @@ import {
 
 import xiaoqingCard from '../assets/airi-cards/xiaoqing.json'
 
-/** Id of the character card that this build ships. */
+/**
+ * The character cards that this build ships, in list order.
+ *
+ * A deployment serves one product, so these cards belong to the build and not
+ * to the visitor: every load that applies a new defaults version replaces their
+ * content with the content below. That content is the persona, the greetings,
+ * the system prompt, and the module bindings. A card that the visitor creates
+ * keeps its own content and is never rewritten.
+ *
+ * The id decides which stored card is replaced: a browser that holds a card of
+ * the same id gets this content, and a browser without it gets a new card.
+ */
+const SHIPPED_CARDS: readonly { id: string, card: unknown }[] = [
+  { id: 'xiaoqing', card: xiaoqingCard },
+]
+
+/**
+ * Ids of the character cards that earlier builds shipped and this build drops.
+ *
+ * The card pass only adds or replaces the cards of `SHIPPED_CARDS`, so a browser
+ * that holds one of these keeps it forever. The stored card map mixes the cards
+ * that the deployment wrote with the cards that the visitor created, so the
+ * deployment can delete only the ids it knows.
+ */
+const DROPPED_CARD_IDS = ['xiaoqing-prenatal', 'xiaoqing-prenatal-v2']
+
+/**
+ * Id of the card that a visitor without a usable choice starts with.
+ *
+ * Must name one entry of `SHIPPED_CARDS`.
+ */
 const DEFAULT_CARD_ID = 'xiaoqing'
+
+/**
+ * Id of the card that the runtime creates for a browser that holds none.
+ *
+ * `packages/stage-ui/src/stores/modules/airi-card.ts` creates it as soon as the
+ * card store initializes, so this module cannot write it. It is listed here
+ * because the module bindings of that card are corrected below.
+ */
+const BUILTIN_CARD_ID = 'default'
+
+/**
+ * Module bindings that every card of this build names, taken from the shipped
+ * card files so the values live in one place.
+ */
+const SHIPPED_MODULES = (xiaoqingCard as {
+  extensions?: { airi?: { modules?: unknown } }
+}).extensions?.airi?.modules
 
 /** Marks the defaults version that a browser already applied. */
 const APPLIED_VERSION_KEY = 'settings/defaults/version'
@@ -39,11 +86,11 @@ const PROVIDER_PURGE_KEY = 'settings/defaults/provider-purge'
 const PROVIDERS_KEY = 'settings/providers/configured'
 const ADDED_PROVIDERS_KEY = 'settings/providers/added'
 
-/** Character card ids that an earlier build already offered to this browser. */
-const SEEDED_CARDS_KEY = 'settings/defaults/seeded-cards'
-
 const CARDS_KEY = 'airi-cards'
 const ACTIVE_CARD_KEY = 'airi-card-active-id'
+
+/** Marks the one-time removal of the cards that this build drops. */
+const DROPPED_CARDS_KEY = 'settings/defaults/dropped-cards'
 
 /** Active card ids that mean "the user has not picked a character yet". */
 const UNCHOSEN_CARD_IDS = ['', 'default']
@@ -52,6 +99,7 @@ const STAGE_MODEL_KEY = 'settings/stage/model'
 const USER_PROFILE_KEY = 'settings/user-profile/content'
 const LIVE2D_SCALE_KEY = 'settings/live2d/scale'
 const LIVE2D_POSITION_KEY = 'settings/live2d/position'
+const LIVE2D_EXPRESSION_ENABLED_KEY = 'settings/live2d/expression-enabled'
 
 /**
  * The person that this product talks to.
@@ -112,6 +160,13 @@ const SHIPPED_VALUES: Record<string, readonly string[]> = {
   [USER_PROFILE_KEY]: [
     '称呼：小雅\n产后三周，顺产，男孩\n青霉素过敏\n主要困扰：涨奶、夜里睡不好',
   ],
+  // The chat source that the first builds of this deployment shipped. That
+  // source named a model id the endpoint no longer holds, so every request from
+  // a browser that stored it failed with 404. The card of the deployment does
+  // not carry these values, so a browser that keeps them keeps the failure even
+  // after the cards are rewritten.
+  [CONSCIOUSNESS_PROVIDER_KEY]: ['openai-compatible'],
+  [CONSCIOUSNESS_MODEL_KEY]: ['Qwen3-8B'],
 }
 
 interface ProviderDefault {
@@ -164,37 +219,43 @@ function envValue(value: string | undefined): string {
   return value?.trim() ?? ''
 }
 
-function readStringList(key: string): string[] {
-  const raw = window.localStorage.getItem(key)
-  if (!raw)
-    return []
-
-  try {
-    const parsed = JSON.parse(raw)
-    if (Array.isArray(parsed))
-      return parsed.filter(item => typeof item === 'string')
-  }
-  catch {
-    // A damaged value is replaced by the defaults below.
-  }
-
-  return []
-}
-
 /**
  * Adds the provider record and marks the provider as added.
  *
  * The record carries the credentials that the endpoint needs, and the character
  * card names the provider, so the runtime fails without it. A record that
- * already exists stays, because the user can change its values there. The
- * status is `configured` because the module pages read any other status as a
- * failed health check, and this build points at the endpoint that the operator
- * ships. The application validates the provider again when the user opens its
- * settings page, so a broken endpoint corrects the status.
+ * already has a key stays, because the user can change its values there. A
+ * record with an empty key receives the key from this build. The status is
+ * `configured` because the module pages read any other status as a failed
+ * health check, and this build points at the endpoint that the operator ships.
+ * The application validates the provider again when the user opens its settings
+ * page, so a broken endpoint corrects the status.
  */
+/**
+ * Reads the API key out of a stored provider record.
+ *
+ * The provider store and the storage use the same record shape, so the
+ * credential repair of `credential-repair.ts` reads a record through this
+ * helper instead of a second copy of the shape.
+ *
+ * @example
+ * storedApiKey({ config: { apiKey: ' sk-test ' } })
+ * // => 'sk-test'
+ */
+export function storedApiKey(record: unknown): string {
+  const config = (record as { config?: { apiKey?: unknown } } | undefined)?.config
+  return typeof config?.apiKey === 'string' ? config.apiKey.trim() : ''
+}
+
 function writeProviderRecord(record: ProviderDefault): void {
   const records = readObject(PROVIDERS_KEY)
-  if (!records[record.id]) {
+  const existing = records[record.id] as {
+    config?: Record<string, unknown>
+    status?: string
+  } | undefined
+  const incomingKey = typeof record.config.apiKey === 'string' ? record.config.apiKey.trim() : ''
+
+  if (!existing) {
     records[record.id] = {
       id: record.id,
       definitionId: record.definitionId,
@@ -202,6 +263,17 @@ function writeProviderRecord(record: ProviderDefault): void {
       status: 'configured',
       configuredBy: 'user',
     }
+    window.localStorage.setItem(PROVIDERS_KEY, JSON.stringify(records))
+  }
+  else if (incomingKey && !storedApiKey(existing)) {
+    // The character card names this provider before a key exists, and the
+    // runtime then stores a blank record. A later start must fill that key: an
+    // existing record is otherwise left untouched, so chat keeps failing.
+    const config = existing.config && typeof existing.config === 'object' ? existing.config : {}
+    existing.config = { ...config, apiKey: incomingKey }
+    if (!existing.status || existing.status === 'unconfigured')
+      existing.status = 'configured'
+    records[record.id] = existing
     window.localStorage.setItem(PROVIDERS_KEY, JSON.stringify(records))
   }
 
@@ -421,6 +493,46 @@ function readCardPairs(): Array<[string, unknown]> | undefined {
 }
 
 /**
+ * Deletes the cards that this build drops from the stored card map.
+ *
+ * NOTICE:
+ * Why: an earlier build shipped two extra persona cards and stopped doing so.
+ * {@link syncShippedCard} only adds or replaces the cards of `SHIPPED_CARDS`, so
+ * every browser that loaded the earlier build keeps them forever, and the
+ * visitor cannot tell such a copy apart from a card they created themselves.
+ * Root cause: the stored card map mixes entries the deployment wrote with
+ * entries the visitor created, and no entry records which of the two it is.
+ * Removal condition: the card map records the owner of each entry, or this
+ * deployment ships those personas again.
+ *
+ * Runs before the defaults version check, so a browser that already applied the
+ * version that shipped the cards loses them too. The marker makes the pass
+ * once-ever: a card that the visitor imports later under a dropped id must
+ * survive the next start.
+ */
+function dropDroppedCardsOnce(): void {
+  if (window.localStorage.getItem(DROPPED_CARDS_KEY))
+    return
+
+  const pairs = readCardPairs()
+  if (!pairs)
+    return
+
+  const kept = pairs.filter(([id]) => !DROPPED_CARD_IDS.includes(id))
+  if (kept.length !== pairs.length) {
+    window.localStorage.setItem(CARDS_KEY, JSON.stringify(kept))
+
+    // The runtime keeps applying the active card on start, and the dropped card
+    // is no longer in the map. An empty id makes it fall back: to the shipped
+    // card when the defaults pass below runs, and to the built-in card otherwise.
+    if (DROPPED_CARD_IDS.includes(window.localStorage.getItem(ACTIVE_CARD_KEY) ?? ''))
+      window.localStorage.setItem(ACTIVE_CARD_KEY, '')
+  }
+
+  window.localStorage.setItem(DROPPED_CARDS_KEY, 'true')
+}
+
+/**
  * Reports whether a card points at modules that this build cannot run.
  *
  * A card can carry the choices of another deployment. The runtime then fails on
@@ -461,21 +573,55 @@ function cardNeedsShippedCard(card: unknown, served: ServedModules): boolean {
 }
 
 /**
- * Points the stored copy of the shipped card at the module choices of this
- * build.
+ * Makes the stored copy of one shipped card equal to the card of this build.
  *
- * The runtime applies the active card when it starts, so a stored copy that
- * still names an older provider or model overrides the choices that this module
- * writes. The card also carries author content, such as the persona and the
- * greeting; those fields stay as the user left them.
+ * A build that changes a persona, a greeting, or a system prompt must reach a
+ * browser that already holds the older copy of that card. The card map is a
+ * VueUse `Map` serialized as `[id, card]` pairs, so a stored copy that is absent
+ * is appended and a stored copy that differs is replaced whole.
+ *
+ * A card whose id is not shipped is never passed here, so the visitor's own
+ * cards keep their content.
  *
  * @returns whether the card map must be written back
  */
-function refreshShippedCardModules(card: unknown): boolean {
-  const shipped = (xiaoqingCard as {
-    extensions?: { airi?: { modules?: Record<string, unknown> } }
-  }).extensions?.airi?.modules
-  if (!shipped || typeof card !== 'object' || card === null)
+function syncShippedCard(shipped: { id: string, card: unknown }, pairs: Array<[string, unknown]>): boolean {
+  const index = pairs.findIndex(([id]) => id === shipped.id)
+
+  if (index === -1) {
+    pairs.push([shipped.id, shipped.card])
+    return true
+  }
+
+  // Comparing the serialized form keeps a browser from rewriting the map on
+  // every load, because the stored copy is the same content from an earlier
+  // version.
+  if (JSON.stringify(pairs[index][1]) === JSON.stringify(shipped.card))
+    return false
+
+  pairs[index][1] = shipped.card
+  return true
+}
+
+/**
+ * Points the stored copy of the built-in card at the modules of this build.
+ *
+ * The runtime creates that card (upstream names it ReLU) with the module
+ * choices of the moment it was created, and it keeps them until someone
+ * rewrites the card. A browser that created it while this deployment still
+ * served another chat source therefore re-applies that source to the global
+ * stores as soon as the visitor selects the card again.
+ *
+ * The card keeps its own persona: only `extensions.airi.modules` changes.
+ *
+ * @returns whether the card map must be written back
+ */
+function refreshBuiltinCardModules(pairs: Array<[string, unknown]>): boolean {
+  if (!SHIPPED_MODULES)
+    return false
+
+  const card = pairs.find(([id]) => id === BUILTIN_CARD_ID)?.[1]
+  if (typeof card !== 'object' || card === null)
     return false
 
   const extensions = (card as { extensions?: unknown }).extensions
@@ -487,46 +633,63 @@ function refreshShippedCardModules(card: unknown): boolean {
     return false
 
   const record = airi as { modules?: unknown }
-  if (JSON.stringify(record.modules) === JSON.stringify(shipped))
+  if (JSON.stringify(record.modules) === JSON.stringify(SHIPPED_MODULES))
     return false
 
-  record.modules = shipped
+  record.modules = SHIPPED_MODULES
   return true
 }
 
 /**
- * Adds the character card that this build ships, and keeps a working card
- * active.
+ * Whether this build manages the character cards of a browser.
  *
- * A card that an earlier build offered and the user then removed stays removed.
- * The active card changes while it is absent, still the built-in card, or bound
- * to modules that this build does not serve. A user who picked a usable
- * character keeps that choice.
+ * `VITE_SHIP_CHARACTER_CARDS=off` leaves the stored card map untouched, so each
+ * browser keeps the cards it holds — its own cards, the cards that an earlier
+ * build shipped, and the built-in card — as they are. It gates both card passes:
+ * shipping the cards of `SHIPPED_CARDS` and dropping the cards of
+ * `DROPPED_CARD_IDS`.
+ *
+ * Shipping a card replaces the content that the visitor may have edited under
+ * the same id, so a deployment that hands the persona back to its visitors must
+ * be able to stop shipping without a code change.
+ */
+function shipsCharacterCards(): boolean {
+  return envValue(import.meta.env.VITE_SHIP_CHARACTER_CARDS) !== 'off'
+}
+
+/**
+ * Makes every card of this build present with this build's content, and keeps a
+ * working card active.
+ *
+ * NOTICE:
+ * Why this deviates from upstream: upstream offers a card once, keeps author
+ * content that a later build wrote, and leaves a card that the visitor removed
+ * removed. This deployment ships the product personas, so a persona change must
+ * reach every browser even when the visitor edited or deleted that card.
+ * Removal condition: this deployment stops owning the personas.
+ *
+ * The active card changes while it is absent, the built-in card, or bound to
+ * modules that this build does not serve. A visitor who picked a card that this
+ * build can run keeps that choice.
  */
 function writeCharacterDefault(served: ServedModules): void {
-  const seeded = readStringList(SEEDED_CARDS_KEY)
   const pairs = readCardPairs()
   if (!pairs)
     return
 
-  const shippedIndex = pairs.findIndex(([id]) => id === DEFAULT_CARD_ID)
   let cardsChanged = false
-
-  if (shippedIndex === -1) {
-    if (!seeded.includes(DEFAULT_CARD_ID)) {
-      pairs.push([DEFAULT_CARD_ID, xiaoqingCard])
+  for (const shipped of SHIPPED_CARDS) {
+    if (syncShippedCard(shipped, pairs))
       cardsChanged = true
-    }
   }
-  else if (refreshShippedCardModules(pairs[shippedIndex][1])) {
+
+  // The built-in card is not ours, but its stale module bindings can put the
+  // browser back on a chat source this build cannot serve.
+  if (refreshBuiltinCardModules(pairs))
     cardsChanged = true
-  }
 
   if (cardsChanged)
     window.localStorage.setItem(CARDS_KEY, JSON.stringify(pairs))
-
-  if (!seeded.includes(DEFAULT_CARD_ID))
-    window.localStorage.setItem(SEEDED_CARDS_KEY, JSON.stringify([...seeded, DEFAULT_CARD_ID]))
 
   const activeCardId = window.localStorage.getItem(ACTIVE_CARD_KEY) ?? ''
   if (activeCardId === DEFAULT_CARD_ID)
@@ -563,6 +726,11 @@ export function applyBuildDefaults(): void {
   // removes their records and leaves the defaults version alone, so a pass that
   // waits for a new version would never repair that browser.
   const served = ensureDeploymentProviders()
+
+  // Dropping a card and shipping one are the same concern: a deployment that
+  // hands the cards to its visitors does neither.
+  if (shipsCharacterCards())
+    dropDroppedCardsOnce()
 
   const version = envValue(import.meta.env.VITE_DEFAULT_CONFIG_VERSION)
   if (!version)
@@ -613,7 +781,17 @@ export function applyBuildDefaults(): void {
     SHIPPED_LIVE2D_POSITION_YS.map(y => JSON.stringify({ x: 0, y })),
   )
 
-  writeCharacterDefault(served)
+  // The stage sends emotions to Live2D through the expression controller. That
+  // controller replaces the SDK expression manager and the SDK eye blink, and
+  // it writes parameters only while this setting is on. `false` is the plain
+  // application default, so the write stays inside the versioned block: a
+  // visitor who turns it off keeps that choice until this version changes.
+  writeJsonChoice(LIVE2D_EXPRESSION_ENABLED_KEY, true, ['false'])
+
+  // A deployment that has handed the persona to its visitors keeps every stored
+  // card as it is, including the cards that an earlier build shipped.
+  if (shipsCharacterCards())
+    writeCharacterDefault(served)
 
   window.localStorage.setItem(APPLIED_VERSION_KEY, version)
 }

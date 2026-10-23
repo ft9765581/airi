@@ -14,23 +14,24 @@ import { sleep } from '@moeru/std'
 import { createLive2DLipSync } from '@proj-airi/model-driver-lipsync'
 import { wlipsyncProfile } from '@proj-airi/model-driver-lipsync/shared/wlipsync'
 import { createPlaybackManager, createSpeechPipeline, normalizeActPayload } from '@proj-airi/pipelines-audio'
-import { defaultLive2DMotionControlDynamics, Live2DScene, useLive2DMotionControl, useLive2dParams, useSettingsLive2d } from '@proj-airi/stage-ui-live2d'
+import { defaultLive2DMotionControlDynamics, Live2DScene, useLive2DEmotionExpression, useLive2DMotionControl, useLive2dParams, useSettingsLive2d } from '@proj-airi/stage-ui-live2d'
 import { MMDScene } from '@proj-airi/stage-ui-mmd'
 import { SpineScene } from '@proj-airi/stage-ui-spine'
 import { TachieScene } from '@proj-airi/stage-ui-tachie'
 import { ThreeScene } from '@proj-airi/stage-ui-three'
 import { animations } from '@proj-airi/stage-ui-three/assets/vrm'
 import { createQueue } from '@proj-airi/stream-kit'
-import { Callout } from '@proj-airi/ui'
+import { Callout, ErrorBoundary } from '@proj-airi/ui'
 import { useBroadcastChannel } from '@vueuse/core'
 // import { createTransformers } from '@xsai-transformers/embed'
 // import embedWorkerURL from '@xsai-transformers/embed/worker?worker&url'
 // import { embed } from '@xsai/embed'
 import { storeToRefs } from 'pinia'
-import { computed, nextTick, onUnmounted, ref, shallowRef, watch } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, shallowRef, watch } from 'vue'
 
 import StageRenderError from './stage-render-error.vue'
 
+import { useDuckDb } from '../../composables/use-duck-db'
 import { useIOTraceBridge } from '../../composables/use-io-trace-bridge'
 import { initIOTracer } from '../../composables/use-io-tracer'
 import { Emotion, EMOTION_EmotionMotionName_value, EMOTION_VRMExpressionName_value, EmotionThinkMotionName } from '../../constants/emotions'
@@ -51,6 +52,7 @@ import { useProviderStore } from '../../stores/providers/provider'
 import { useSettings } from '../../stores/settings'
 import { useSpeechOutputControlStore } from '../../stores/speech-output-control'
 import { useSpeechRuntimeStore } from '../../stores/speech-runtime'
+import { isWebGLAvailable, stageRendererNeedsWebGL } from '../../utils/webgl-available'
 
 const props = withDefaults(defineProps<{
   cursorPosition?: { x: number, y: number }
@@ -63,6 +65,7 @@ const props = withDefaults(defineProps<{
 
 const componentState = defineModel<'pending' | 'loading' | 'mounted'>('state', { default: 'pending' })
 
+const { getDb } = useDuckDb()
 // const transformersProvider = createTransformers({ embedWorkerURL })
 
 const vrmViewerRef = ref<InstanceType<typeof ThreeScene>>()
@@ -179,10 +182,17 @@ const providerStore = useProviderConfigStore()
 const live2dStore = useLive2dParams()
 const showStage = ref(true)
 const stageRenderError = shallowRef<Error>()
+const webglAvailable = isWebGLAvailable()
 const viewUpdateCleanups: Array<() => void> = []
 
-function handleStageRenderError(error: Error) {
-  stageRenderError.value = error
+const WEBGL_UNAVAILABLE_MESSAGE = 'WebGL is not available in this browser. VRM and MMD models need WebGL. Choose a Live2D model instead.'
+
+function handleStageRenderError(error: unknown) {
+  stageRenderError.value = error instanceof Error ? error : new Error(String(error))
+}
+
+function handleSceneBoundaryError(error: unknown) {
+  handleStageRenderError(error)
 }
 
 async function retryStageRenderer() {
@@ -192,9 +202,17 @@ async function retryStageRenderer() {
   showStage.value = true
 }
 
-watch([stageModelRenderer, stageModelSelected, stageModelSelectedUrl], () => {
+function refreshWebGLStageGate() {
+  if (stageRendererNeedsWebGL(stageModelRenderer.value) && !webglAvailable) {
+    stageRenderError.value = new Error(WEBGL_UNAVAILABLE_MESSAGE)
+    return
+  }
   stageRenderError.value = undefined
-})
+}
+
+watch([stageModelRenderer, stageModelSelected, stageModelSelectedUrl], () => {
+  refreshWebGLStageGate()
+}, { immediate: true })
 
 // Caption + Presentation broadcast channels
 const { post: postCaption } = useBroadcastChannel<CaptionChannelEvent, CaptionChannelEvent>({ name: 'airi-caption-overlay' })
@@ -248,12 +266,24 @@ const backgroundStore = useBackgroundStore()
 const { activeBackgroundUrl } = storeToRefs(backgroundStore)
 
 const { currentMotion } = storeToRefs(useLive2dParams())
+const live2dParams = useLive2dParams()
+const live2dEmotionExpression = useLive2DEmotionExpression()
+
+/**
+ * Returns whether the loaded Live2D model declares a motion group.
+ *
+ * The emotion names do not match the group names of every model. Haru, the
+ * shipped nurse preset, declares `Idle` and `Tap` only, so it reacts through
+ * expressions and never starts a missing motion group.
+ */
+function hasLive2DMotionGroup(groupName: string) {
+  return live2dParams.availableMotions.some(motion => motion.motionName === groupName)
+}
 
 const emotionsQueue = createQueue<EmotionPayload>({
   handlers: [
     async (ctx) => {
       if (stageModelRenderer.value === 'vrm') {
-        // console.debug('VRM emotion anime: ', ctx.data)
         const value = EMOTION_VRMExpressionName_value[ctx.data.name]
         if (!value)
           return
@@ -261,7 +291,14 @@ const emotionsQueue = createQueue<EmotionPayload>({
         await vrmViewerRef.value!.setExpression(value, ctx.data.intensity)
       }
       else if (stageModelRenderer.value === 'live2d') {
-        currentMotion.value = { group: EMOTION_EmotionMotionName_value[ctx.data.name] }
+        live2dEmotionExpression.applyEmotion(ctx.data.name, ctx.data.intensity)
+
+        // Expressions and motions use different naming. A model that ships
+        // `Happy`/`Sad`/… motion groups keeps the motion reaction. A model that
+        // ships only `Idle`/`Tap` shows the expression instead.
+        const motionGroup = EMOTION_EmotionMotionName_value[ctx.data.name]
+        if (hasLive2DMotionGroup(motionGroup))
+          currentMotion.value = { group: motionGroup }
       }
       else if (stageModelRenderer.value === 'spine') {
         spineSceneRef.value?.setEmotion(ctx.data.name, ctx.data.intensity)
@@ -307,7 +344,10 @@ chatHookCleanups.push(streamingControl.onSignal(async (signal) => {
   if (signal.type === 'act') {
     const act = normalizeActPayload(signal.payload)
     if (act.motion && stageModelRenderer.value === 'live2d') {
-      currentMotion.value = { group: act.motion }
+      // For Live2D the `motion` field is a motion group name, so a model that
+      // does not declare the group must not receive the request.
+      if (hasLive2DMotionGroup(act.motion))
+        currentMotion.value = { group: act.motion }
       return
     }
     if (act.emotion) {
@@ -315,8 +355,6 @@ chatHookCleanups.push(streamingControl.onSignal(async (signal) => {
       if (!emotion)
         return
 
-      // eslint-disable-next-line no-console
-      console.debug('emotion detected', emotion)
       emotionsQueue.enqueue(emotion)
     }
     return
@@ -856,7 +894,8 @@ chatHookCleanups.push(onBeforeMessageComposed(async (_message, context) => {
 }))
 
 chatHookCleanups.push(onBeforeSend(async () => {
-  currentMotion.value = { group: EmotionThinkMotionName }
+  if (hasLive2DMotionGroup(EmotionThinkMotionName))
+    currentMotion.value = { group: EmotionThinkMotionName }
 }))
 
 chatHookCleanups.push(onTokenLiteral(async (literal) => {
@@ -939,6 +978,10 @@ if (typeof window !== 'undefined') {
     window.addEventListener(event, resumeAudioContextOnInteraction, { once: true, passive: true })
   })
 }
+
+onMounted(async () => {
+  await getDb() // stub for future update
+})
 
 watch([stageModelRenderer, () => props.paused], ([renderer]) => {
   if (renderer === 'godot') {
@@ -1097,21 +1140,29 @@ defineExpose({
         :live2d-render-scale="live2dRenderScale"
         @error="handleStageRenderError"
       />
-      <ThreeScene
-        v-if="stageModelRenderer === 'vrm' && showStage"
-        ref="vrmViewerRef"
-        v-model:state="componentState"
-        min-w="50% <lg:full" min-h="100 sm:100" h-full w-full flex-1
-        :model-src="stageModelSelectedUrl"
-        :cursor-position="cursorPosition"
-        :idle-animation="animations.idleLoop.toString()"
-        :paused="paused"
-        :show-axes="stageViewControlsEnabled"
-        :enable-orbit-controls="props.enableOrbitControls"
-        :current-audio-source="currentAudioSource"
-        @error="console.error"
-        @vrm-interact="onVRMInteract"
-      />
+      <ErrorBoundary
+        v-if="stageModelRenderer === 'vrm' && showStage && webglAvailable && !stageRenderError"
+        :retryable="false"
+        @error="handleSceneBoundaryError"
+      >
+        <template #fallback>
+          <div />
+        </template>
+        <ThreeScene
+          ref="vrmViewerRef"
+          v-model:state="componentState"
+          min-w="50% <lg:full" min-h="100 sm:100" h-full w-full flex-1
+          :model-src="stageModelSelectedUrl"
+          :cursor-position="cursorPosition"
+          :idle-animation="animations.idleLoop.toString()"
+          :paused="paused"
+          :show-axes="stageViewControlsEnabled"
+          :enable-orbit-controls="props.enableOrbitControls"
+          :current-audio-source="currentAudioSource"
+          @error="handleStageRenderError"
+          @vrm-interact="onVRMInteract"
+        />
+      </ErrorBoundary>
       <SpineScene
         v-if="stageModelRenderer === 'spine' && showStage"
         ref="spineSceneRef"
@@ -1140,20 +1191,28 @@ defineExpose({
         :theme-colors-hue-dynamic="themeColorsHueDynamic"
         @error="console.error"
       />
-      <MMDScene
-        v-if="stageModelRenderer === 'mmd' && showStage"
-        ref="mmdSceneRef"
-        v-model:state="componentState"
-        min-w="50% <lg:full" min-h="100 sm:100"
-        h-full w-full flex-1
-        :model-src="stageModelSelectedUrl"
-        :model-id="stageModelSelected"
-        :paused="paused"
-        :cursor-position="cursorPosition"
-        :enable-orbit-controls="props.enableOrbitControls"
-        :current-audio-source="currentAudioSource"
-        @error="console.error"
-      />
+      <ErrorBoundary
+        v-if="stageModelRenderer === 'mmd' && showStage && webglAvailable && !stageRenderError"
+        :retryable="false"
+        @error="handleSceneBoundaryError"
+      >
+        <template #fallback>
+          <div />
+        </template>
+        <MMDScene
+          ref="mmdSceneRef"
+          v-model:state="componentState"
+          min-w="50% <lg:full" min-h="100 sm:100"
+          h-full w-full flex-1
+          :model-src="stageModelSelectedUrl"
+          :model-id="stageModelSelected"
+          :paused="paused"
+          :cursor-position="cursorPosition"
+          :enable-orbit-controls="props.enableOrbitControls"
+          :current-audio-source="currentAudioSource"
+          @error="handleStageRenderError"
+        />
+      </ErrorBoundary>
       <div
         v-if="stageModelRenderer === 'godot'"
         :class="[
@@ -1178,7 +1237,7 @@ defineExpose({
       <StageRenderError
         v-if="stageRenderError"
         :error="stageRenderError"
-        renderer="Live2D"
+        :renderer="stageModelRenderer || 'stage'"
         :model-id="stageModelSelected"
         @retry="retryStageRenderer"
       />

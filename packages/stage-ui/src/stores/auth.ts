@@ -6,6 +6,7 @@ import { isStageTamagotchi } from '@proj-airi/stage-shared'
 import { useTimeoutFn, whenever } from '@vueuse/core'
 import { defineStore } from 'pinia'
 import { computed, ref, watch } from 'vue'
+import { toast } from 'vue-sonner'
 
 import { client } from '../composables/api'
 import { useBreakpoints } from '../composables/use-breakpoints'
@@ -108,7 +109,17 @@ export const useAuthStore = defineStore('auth', () => {
     // mounted when the user cancels there, so leaving this true would make
     // the next button click a no-op instead of starting a new OIDC flow.
     needsLogin.value = false
-    await triggerSignIn()
+    try {
+      await triggerSignIn()
+    }
+    catch (error) {
+      // NOTICE:
+      // Sign-in navigates to the auth service. A dead local backend used to
+      // leave the browser waiting on that URL with no feedback.
+      // Removal condition: the auth edge always answers /api/auth/ok quickly
+      // when the app points at a local VITE_SERVER_URL.
+      toast.error(errorMessageFrom(error) ?? 'Sign-in failed')
+    }
   })
 
   // Reset the flag if the viewport class flips, so a stale needsLogin from a

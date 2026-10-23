@@ -68,6 +68,14 @@ flatpak-repo/
 # must stay in version control.
 /*.zip
 
+# The deploy archive that the build step writes next to the app. Same size
+# problem as the archive above, and the build rewrites it on every run.
+/apps/stage-web/dist-*.zip
+
+# Scratch files used while taking over the commits of a remote whose history
+# shares no ancestor with this branch (the Gitee mirror chain).
+/.patches/
+
 # Vite
 dist
 # Nuxt

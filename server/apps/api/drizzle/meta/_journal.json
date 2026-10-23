@@ -169,6 +169,41 @@
       "when": 1792466054777,
       "tag": "0023_lethal_lizard",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1792564927324,
+      "tag": "0024_user_runtime_profile",
+      "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1792566972954,
+      "tag": "0025_user_memories",
+      "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1792568142229,
+      "tag": "0026_user_memory_recall",
+      "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1792638253707,
+      "tag": "0027_user_runtime_sections",
+      "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1792704000000,
+      "tag": "0028_user_memory_day",
+      "breakpoints": true
     }
   ]
 }

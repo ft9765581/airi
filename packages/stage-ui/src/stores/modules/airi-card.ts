@@ -345,8 +345,10 @@ export const useAiriCardStore = defineStore('airi-card', () => {
           : [],
         tags: ccv3Card.data.tags ?? [],
         extensions: {
-          airi: resolveAiriExtension(ccv3Card),
           ...ccv3Card.data.extensions,
+          // Resolved modules must win. A later spread used to restore an older
+          // scene and display model and drop the account copy on this browser.
+          airi: resolveAiriExtension(ccv3Card),
         },
       }
     }
@@ -354,8 +356,8 @@ export const useAiriCardStore = defineStore('airi-card', () => {
     return {
       ...card,
       extensions: {
-        airi: resolveAiriExtension(card),
         ...card.extensions,
+        airi: resolveAiriExtension(card),
       },
     }
   }

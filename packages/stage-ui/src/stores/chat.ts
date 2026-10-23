@@ -28,8 +28,9 @@ import { useLLM } from './ai/chat-llm/llm'
 import { resolveLlmTools } from './ai/chat-llm/tool-resolver'
 import { useLlmToolsStore } from './ai/chat-llm/tools'
 import { useLlmToolsetPromptsStore } from './ai/chat-llm/toolset-prompts'
-import { createKnowledgeBaseContext, createMinecraftContext, createUserProfileContext } from './chat/context-providers'
+import { createKnowledgeBaseContext, createLongTermMemoryContext, createMinecraftContext, createUserProfileContext } from './chat/context-providers'
 import { useChatContextStore } from './chat/context-store'
+import { rememberTurn } from './chat/remember-turn'
 import { useChatSessionStore } from './chat/session-store'
 import { useChatStreamStore } from './chat/stream-store'
 import { useContextObservabilityStore } from './devtools/context-observability'
@@ -300,6 +301,7 @@ export const useChatStore = defineStore('chat', () => {
     runtimeContextProviders: [
       createMinecraftContext,
       createUserProfileContext,
+      createLongTermMemoryContext,
       createKnowledgeBaseContext,
     ],
     createId: nanoid,
@@ -346,6 +348,7 @@ export const useChatStore = defineStore('chat', () => {
       const artistry = cardStore.activeCard?.extensions?.airi?.modules?.artistry
       if (artistry?.autonomousEnabled && artistry?.autonomousTarget === 'assistant')
         void artistryAutonomousStore.runArtistTask(messageText, toProviderHistory(sessionMessages))
+      rememberTurn({ assistantText: messageText, sessionMessages })
     },
   })
 

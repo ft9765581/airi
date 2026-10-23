@@ -400,9 +400,9 @@
 - id: long-term-memory
   subject: memory
   translatable: true
-  # TODO: confirm this definition. The module has a settings page and a route, but no
-  # implementation that describes the behavior.
-  definition: The module that holds what the character keeps across many conversations.
+  definition: Facts a signed-in account keeps and can use again in a later conversation.
+  note: >
+    Not the computer's RAM, and not the chat transcript. The person can view and delete these facts.
   terms:
     - text: Long-Term Memory
       part-of-speech: noun

@@ -38,6 +38,20 @@ function createTestDeps() {
     } as never,
     otel: null,
     userDeletionService: { register: vi.fn(), softDeleteAll: vi.fn() },
+    userMemoryService: {
+      search: vi.fn(),
+      remember: vi.fn(),
+      list: vi.fn(),
+      remove: vi.fn(),
+      deleteAllForUser: vi.fn(),
+    } as never,
+    userRuntimeService: {
+      getSnapshot: vi.fn(),
+      saveSettings: vi.fn(),
+      saveCard: vi.fn(),
+      deleteCard: vi.fn(),
+      deleteAllForUser: vi.fn(),
+    } as never,
     llmRouter: {
       route: vi.fn(async () => new Response('{}', { status: 200 })),
       invalidateConfig: vi.fn(),
