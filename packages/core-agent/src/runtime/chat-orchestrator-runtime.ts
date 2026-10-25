@@ -3,7 +3,7 @@ import type { CommonContentPart, Message, ToolMessage } from '@xsai/shared-chat'
 
 import type { AgentContextPort } from '../contracts/context-port'
 import type { AgentForegroundStreamPort } from '../contracts/stream-port'
-import type { ChatAssistantMessage, ChatHistoryItem, ChatSlices, ChatStreamEventContext, ChatToolReference, ContextMessage, ErrorMessage, StreamingAssistantMessage } from '../types/chat'
+import type { ChatAssistantMessage, ChatHistoryItem, ChatSlices, ChatStreamEventContext, ChatToolReference, ContextMessage, ErrorMessage, StreamingAssistantMessage, TurnRouteResult } from '../types/chat'
 import type { LlmUsage, StreamEvent, StreamOptions } from '../types/llm'
 
 import { createQueue } from '@proj-airi/stream-kit'
@@ -69,14 +69,18 @@ function cloneStreamingMessage(message: StreamingAssistantMessage): StreamingAss
   }
 }
 
-/**
- * Options accepted by the chat orchestrator runtime for one user send.
- */
-export interface ChatOrchestratorSendOptions {
-  /** Provider model identifier used for the outbound LLM request. */
-  model: string
-  /** Concrete chat provider implementation selected by the caller. */
-  chatProvider: ChatProvider
+/** Resolves the provider of one send, whether it arrived ready or as a resolver. */
+async function resolveSendChat(
+  options: ChatOrchestratorSendOptions,
+): Promise<{ model: string, chatProvider: ChatProvider }> {
+  if ('resolveChat' in options)
+    return await options.resolveChat()
+
+  return { model: options.model, chatProvider: options.chatProvider }
+}
+
+/** The parts of one send that do not depend on a resolved chat provider. */
+export interface ChatOrchestratorCommonSendOptions {
   /** Provider-specific request options, currently used for headers. */
   providerConfig?: Record<string, unknown>
   /** Image attachments appended to the user message content parts. */
@@ -88,6 +92,21 @@ export interface ChatOrchestratorSendOptions {
   /** Original transport input metadata used by bridge/devtools observers. */
   input?: ChatStreamEventContext['input']
 }
+
+/** One chat provider and model, either resolved or resolvable later. */
+export type ChatProviderTarget
+  = | { model: string, chatProvider: ChatProvider }
+    | { resolveChat: () => Promise<{ model: string, chatProvider: ChatProvider }> }
+
+/**
+ * Options accepted by the chat orchestrator runtime for one user send.
+ *
+ * A send can arrive with its provider already resolved, or with a resolver. The
+ * resolver runs after the queued turn is routed, because a turn that answers
+ * without the model (urgent guidance, a fixed reply) must work with no provider
+ * configured.
+ */
+export type ChatOrchestratorSendOptions = ChatOrchestratorCommonSendOptions & ChatProviderTarget
 
 interface QueuedSend {
   sendingMessage: string
@@ -215,6 +234,20 @@ export interface ChatOrchestratorRuntimeDeps {
   getActiveProvider: () => string | undefined
   /** Returns optional prompt text appended to the provider system message for this send. */
   getSystemPromptSupplement?: () => string | undefined
+  /**
+   * Decides the branch for one dequeued turn.
+   *
+   * It runs after the send leaves the queue and before the prompt is assembled,
+   * so the router reads the session as it stands after every earlier turn. A
+   * result with `reply` ends the turn without a model request, which is why the
+   * provider is resolved only when no reply is returned.
+   */
+  routeTurn?: (context: {
+    sessionId: string
+    message: string
+    /** Turns before this one, oldest first, as a snapshot. The current message is separate. */
+    history: ChatHistoryItem[]
+  }) => Promise<TurnRouteResult | undefined>
   /** Runtime context providers ingested immediately before prompt composition. */
   runtimeContextProviders?: RuntimeContextProvider[]
   /** Clock used for persisted message timestamps. @default Date.now */
@@ -464,7 +497,9 @@ export function createChatOrchestratorRuntime(deps: ChatOrchestratorRuntimeDeps)
     const nowTs = now()
 
     return sessionMessagesForSend.flatMap<Message | ErrorMessage>((msg) => {
-      const { context: _context, id: _id, createdAt: _createdAt, tools: _tools, ...withoutContext } = msg
+      // `route` is local bookkeeping for the chat UI. Stripping it here keeps it
+      // out of every provider request, including replays of stored history.
+      const { context: _context, id: _id, createdAt: _createdAt, tools: _tools, route: _route, ...withoutContext } = msg
       const rawMessage = unwrapMessage(withoutContext)
 
       if (rawMessage.role === 'user') {
@@ -509,13 +544,36 @@ export function createChatOrchestratorRuntime(deps: ChatOrchestratorRuntimeDeps)
     // must not inflate the one-time activation milestones.
     const isActivationAttempt = !existingSessionMessages.some(message => message.role === 'assistant')
 
+    const isStaleGeneration = () => deps.session.getSessionGeneration(sessionId) !== generation
+    const shouldAbort = () => isStaleGeneration()
+
+    // Route before the runtime contexts are read. An urgent turn and the fixed
+    // reply must not depend on a source that only a model answer needs, and an
+    // isolated turn must not carry the general chat context into its prompt.
+    const routeResult = deps.routeTurn
+      ? await deps.routeTurn({
+          sessionId,
+          message: sendingMessage,
+          // A snapshot, because the session keeps appending to its own array
+          // and the router may hold this list while it classifies.
+          history: existingSessionMessages.slice(),
+        })
+      : undefined
+    const replied = routeResult?.reply !== undefined
+    const isolated = replied || routeResult?.isolate === true
+
+    if (shouldAbort())
+      return
+
     // Datetime is no longer injected through the side-channel context store.
     // It is applied at message-assembly time (see below) as a system-prompt
     // date anchor + per-message [HH:MM] prefixes, which is more KV-cache
     // friendly and less prone to weak models echoing timestamps verbatim.
-    await ingestRuntimeContexts({ message: sendingMessage, sessionId })
+    if (!isolated)
+      await ingestRuntimeContexts({ message: sendingMessage, sessionId })
 
     const sendingCreatedAt = now()
+    const contextsSnapshot = isolated ? {} : deps.context.snapshot()
 
     // TODO: Expire or prune stale runtime contexts from disconnected services before composing.
     // Allocate the three per-round ids in their historical order so callers
@@ -526,7 +584,7 @@ export function createChatOrchestratorRuntime(deps: ChatOrchestratorRuntimeDeps)
     const streamingMessageContext: ChatStreamEventContext = {
       turnId: roundId,
       message: { role: 'user', content: sendingMessage, createdAt: sendingCreatedAt, id: streamContextMessageId },
-      contexts: deps.context.snapshot(),
+      contexts: contextsSnapshot,
       composedMessage: [],
       input: options.input,
     }
@@ -540,8 +598,6 @@ export function createChatOrchestratorRuntime(deps: ChatOrchestratorRuntimeDeps)
       },
     })
 
-    const isStaleGeneration = () => deps.session.getSessionGeneration(sessionId) !== generation
-    const shouldAbort = () => isStaleGeneration()
     if (shouldAbort())
       return
 
@@ -552,6 +608,7 @@ export function createChatOrchestratorRuntime(deps: ChatOrchestratorRuntimeDeps)
       tool_results: [],
       createdAt: now(),
       id: assistantMessageId,
+      ...(routeResult ? { route: routeResult.route } : {}),
     }
     beginStream(sessionId, buildingMessage)
     const hasVoice = options.input?.type === 'input:voice'
@@ -566,23 +623,36 @@ export function createChatOrchestratorRuntime(deps: ChatOrchestratorRuntimeDeps)
       turnIndex,
     }
     deps.onTrackFirstMessage?.()
-    if (isActivationAttempt) {
-      deps.onChatActivationStarted?.({
-        ...correlation,
-        source: sendSource,
-        model: options.model,
-        provider: activeProvider,
-      })
-    }
-    deps.onMessageSendStarted?.({
-      ...correlation,
-      source: sendSource,
-      model: options.model,
-    })
     const roundStartedAt = monotonicNow()
+    // An empty model name means no model took part in the turn. Telemetry keeps
+    // the field so one shape covers both branches, and the failure path can
+    // still name it when resolution itself throws.
+    let modelName = ''
 
     try {
       await hooks.emitBeforeMessageComposedHooks(sendingMessage, streamingMessageContext)
+
+      // The provider is resolved only for a turn that reaches the model, so the
+      // reply branch works on a deployment that has no chat provider.
+      const resolvedChat = replied ? undefined : await resolveSendChat(options)
+      modelName = resolvedChat?.model ?? ''
+
+      if (shouldAbort())
+        return
+
+      if (isActivationAttempt) {
+        deps.onChatActivationStarted?.({
+          ...correlation,
+          source: sendSource,
+          model: modelName,
+          provider: activeProvider,
+        })
+      }
+      deps.onMessageSendStarted?.({
+        ...correlation,
+        source: sendSource,
+        model: modelName,
+      })
 
       const contentParts: CommonContentPart[] = [{ type: 'text', text: sendingMessage }]
 
@@ -628,7 +698,7 @@ export function createChatOrchestratorRuntime(deps: ChatOrchestratorRuntimeDeps)
         message: userMessage,
         messageText: sendingMessage,
         source: sendSource,
-        model: options.model,
+        model: modelName,
         provider: activeProvider,
         roundId,
         turnIndex,
@@ -715,7 +785,23 @@ export function createChatOrchestratorRuntime(deps: ChatOrchestratorRuntimeDeps)
       })
 
       const newMessages = buildProviderMessages(sessionMessagesForSend)
-      const systemPromptSupplement = deps.getSystemPromptSupplement?.()?.trim()
+
+      // The router owns the whole system message of a routed turn, because only
+      // the caller knows which part of the stored message is character prompt.
+      // A plain routed turn still receives the supplement below, so shared
+      // format instructions survive a replacement.
+      const systemPromptOverride = routeResult?.systemPrompt?.trim()
+      if (systemPromptOverride) {
+        const systemIndex = newMessages.findIndex(message => message.role === 'system')
+        if (systemIndex === -1)
+          newMessages.unshift({ role: 'system', content: systemPromptOverride })
+        else
+          newMessages[systemIndex] = { role: 'system', content: systemPromptOverride }
+      }
+
+      // An isolated turn carries a complete system message and no general chat
+      // tools, so the toolset supplement would describe tools it cannot use.
+      const systemPromptSupplement = isolated ? undefined : deps.getSystemPromptSupplement?.()?.trim()
       if (systemPromptSupplement) {
         const systemMessage = newMessages.find(message => message.role === 'system')
         if (systemMessage) {
@@ -729,7 +815,6 @@ export function createChatOrchestratorRuntime(deps: ChatOrchestratorRuntimeDeps)
         }
       }
 
-      const contextsSnapshot = deps.context.snapshot()
       const contextPromptText = formatContextPromptText(contextsSnapshot)
       if (contextPromptText) {
         const lastMessage = newMessages.at(-1)
@@ -783,115 +868,131 @@ export function createChatOrchestratorRuntime(deps: ChatOrchestratorRuntimeDeps)
         return
 
       const llmRequestStartedAt = monotonicNow()
-      let llmFirstTokenEmitted = false
       let generationUsage: LlmUsage = { source: 'unavailable' }
       let providerTranscript: Message[] | undefined
-      const providerInputMessageCount = newMessages.length
-      deps.onLlmRequestStarted?.({
-        ...correlation,
-        model: options.model,
-        provider: deps.getActiveProvider() || 'unknown',
-        hasVoice,
-      })
 
-      await deps.llm.stream(options.model, options.chatProvider, newMessages as Message[], {
-        headers,
-        requestCorrelation: {
-          conversationId: correlation.conversationId,
-          roundId: correlation.roundId,
-        },
-        tools: options.tools,
-        waitForTools: true,
-        onMessages: (messages) => {
-          const currentTurnMessages = messages.slice(providerInputMessageCount)
-          const hasToolRound = currentTurnMessages.some(message =>
-            message.role === 'tool'
-            || (message.role === 'assistant' && Boolean(message.tool_calls?.length)),
-          )
+      const replyText = routeResult?.reply
+      if (replyText !== undefined) {
+        // A replied turn writes its text through the same parser a streamed
+        // answer uses, so the stored message, the slices, the hooks and the
+        // telemetry keep one shape.
+        fullText = replyText
+        await parser.consume(fullText)
+      }
+      else {
+        if (!resolvedChat)
+          throw new Error('Chat provider was not resolved for a model turn')
 
-          if (hasToolRound)
-            providerTranscript = structuredClone(currentTurnMessages)
-        },
-        onUsage: (usage) => {
-          if (shouldAbort())
-            return
+        let llmFirstTokenEmitted = false
+        const providerInputMessageCount = newMessages.length
+        deps.onLlmRequestStarted?.({
+          ...correlation,
+          model: modelName,
+          provider: deps.getActiveProvider() || 'unknown',
+          hasVoice,
+        })
 
-          generationUsage = usage
-          deps.onLlmGeneration?.({
-            ...correlation,
-            model: options.model,
-            provider: activeProvider,
-            inputTokens: usage.inputTokens,
-            outputTokens: usage.outputTokens,
-            totalTokens: usage.totalTokens,
-            usageSource: usage.source,
-          })
-        },
-        onStreamEvent: async (event: StreamEvent) => {
-          if (shouldAbort())
-            return
+        await deps.llm.stream(modelName, resolvedChat.chatProvider, newMessages as Message[], {
+          headers,
+          requestCorrelation: {
+            conversationId: correlation.conversationId,
+            roundId: correlation.roundId,
+          },
+          // An isolated turn carries no general chat tools. Its prompt holds the
+          // same-session history and the routed system message only.
+          tools: isolated ? undefined : options.tools,
+          waitForTools: true,
+          onMessages: (messages) => {
+            const currentTurnMessages = messages.slice(providerInputMessageCount)
+            const hasToolRound = currentTurnMessages.some(message =>
+              message.role === 'tool'
+              || (message.role === 'assistant' && Boolean(message.tool_calls?.length)),
+            )
 
-          switch (event.type) {
-            case 'tool-call':
-              toolCallQueue.enqueue({
-                type: 'tool-call',
-                toolCall: event,
-              })
+            if (hasToolRound)
+              providerTranscript = structuredClone(currentTurnMessages)
+          },
+          onUsage: (usage) => {
+            if (shouldAbort())
+              return
 
-              break
-            case 'tool-result':
-              toolCallQueue.enqueue({
-                type: 'tool-call-result',
-                id: event.toolCallId,
-                result: event.result,
-              })
+            generationUsage = usage
+            deps.onLlmGeneration?.({
+              ...correlation,
+              model: modelName,
+              provider: activeProvider,
+              inputTokens: usage.inputTokens,
+              outputTokens: usage.outputTokens,
+              totalTokens: usage.totalTokens,
+              usageSource: usage.source,
+            })
+          },
+          onStreamEvent: async (event: StreamEvent) => {
+            if (shouldAbort())
+              return
 
-              break
-            case 'tool-error':
-              toolCallQueue.enqueue({
-                type: 'tool-call-result',
-                id: event.toolCallId,
-                isError: true,
-                result: event.result,
-              })
-
-              break
-            case 'text-delta':
-              if (!llmFirstTokenEmitted) {
-                llmFirstTokenEmitted = true
-                deps.onLlmFirstToken?.({
-                  ...correlation,
-                  model: options.model,
-                  ttfbMs: Math.round(monotonicNow() - llmRequestStartedAt),
+            switch (event.type) {
+              case 'tool-call':
+                toolCallQueue.enqueue({
+                  type: 'tool-call',
+                  toolCall: event,
                 })
-              }
-              fullText += event.text
-              await parser.consume(event.text)
-              break
-            case 'reasoning-delta': {
-              if (shouldAbort())
-                return
 
-              const { reasoning = '' } = buildingMessage.categorization ?? {}
-              const nextReasoning = reasoning + event.text
-              buildingMessage.categorization = {
-                speech: typeof buildingMessage.content === 'string' ? buildingMessage.content : '',
-                reasoning: nextReasoning,
+                break
+              case 'tool-result':
+                toolCallQueue.enqueue({
+                  type: 'tool-call-result',
+                  id: event.toolCallId,
+                  result: event.result,
+                })
+
+                break
+              case 'tool-error':
+                toolCallQueue.enqueue({
+                  type: 'tool-call-result',
+                  id: event.toolCallId,
+                  isError: true,
+                  result: event.result,
+                })
+
+                break
+              case 'text-delta':
+                if (!llmFirstTokenEmitted) {
+                  llmFirstTokenEmitted = true
+                  deps.onLlmFirstToken?.({
+                    ...correlation,
+                    model: modelName,
+                    ttfbMs: Math.round(monotonicNow() - llmRequestStartedAt),
+                  })
+                }
+                fullText += event.text
+                await parser.consume(event.text)
+                break
+              case 'reasoning-delta': {
+                if (shouldAbort())
+                  return
+
+                const { reasoning = '' } = buildingMessage.categorization ?? {}
+                const nextReasoning = reasoning + event.text
+                buildingMessage.categorization = {
+                  speech: typeof buildingMessage.content === 'string' ? buildingMessage.content : '',
+                  reasoning: nextReasoning,
+                }
+                const crossesBoundary
+                  = Math.floor(nextReasoning.length / REASONING_UI_FLUSH_CHUNK_SIZE)
+                    > Math.floor(reasoning.length / REASONING_UI_FLUSH_CHUNK_SIZE)
+                if (!reasoning || crossesBoundary)
+                  updateStream(sessionId, buildingMessage)
+                break
               }
-              const crossesBoundary
-                = Math.floor(nextReasoning.length / REASONING_UI_FLUSH_CHUNK_SIZE)
-                  > Math.floor(reasoning.length / REASONING_UI_FLUSH_CHUNK_SIZE)
-              if (!reasoning || crossesBoundary)
-                updateStream(sessionId, buildingMessage)
-              break
+              case 'finish':
+                break
+              case 'error':
+                throw event.error ?? new Error('Stream error')
             }
-            case 'finish':
-              break
-            case 'error':
-              throw event.error ?? new Error('Stream error')
-          }
-        },
-      })
+          },
+        })
+      }
 
       // Session generation is the lifecycle correlation key. Re-check it
       // after every awaited completion boundary so deleting a session while a
@@ -906,7 +1007,7 @@ export function createChatOrchestratorRuntime(deps: ChatOrchestratorRuntimeDeps)
       buildingMessage.providerTranscript = providerTranscript
       deps.onAssistantResponseRendered?.({
         ...correlation,
-        model: options.model,
+        model: modelName,
         latencyMs: Math.round(monotonicNow() - llmRequestStartedAt),
       })
 
@@ -954,7 +1055,7 @@ export function createChatOrchestratorRuntime(deps: ChatOrchestratorRuntimeDeps)
         ...correlation,
         durationMs,
         hasVoice,
-        model: options.model,
+        model: modelName,
         inputTokens: generationUsage.inputTokens,
         outputTokens: generationUsage.outputTokens,
         totalTokens: generationUsage.totalTokens,
@@ -965,7 +1066,7 @@ export function createChatOrchestratorRuntime(deps: ChatOrchestratorRuntimeDeps)
           ...correlation,
           durationMs,
           source: sendSource,
-          model: options.model,
+          model: modelName,
           provider: activeProvider,
         })
       }
@@ -978,7 +1079,7 @@ export function createChatOrchestratorRuntime(deps: ChatOrchestratorRuntimeDeps)
       deps.onMessageRoundFailed?.({
         ...correlation,
         source: sendSource,
-        model: options.model,
+        model: modelName,
         provider: activeProvider,
         failureStage: 'llm_response',
         errorCode: 'llm_response_failed',
@@ -987,7 +1088,7 @@ export function createChatOrchestratorRuntime(deps: ChatOrchestratorRuntimeDeps)
         deps.onChatActivationFailed?.({
           ...correlation,
           source: sendSource,
-          model: options.model,
+          model: modelName,
           provider: activeProvider,
           failureStage: 'llm_response',
           errorCode: 'llm_response_failed',

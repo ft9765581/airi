@@ -1,7 +1,7 @@
 import type { ChatProvider } from '@xsai-ext/providers/utils'
 import type { Message } from '@xsai/shared-chat'
 
-import type { ChatHistoryItem, ContextMessage, StreamingAssistantMessage } from '../types/chat'
+import type { ChatHistoryItem, ContextMessage, StreamingAssistantMessage, TurnRouteResult } from '../types/chat'
 import type { StreamEvent, StreamOptions } from '../types/llm'
 
 import { ContextUpdateStrategy } from '@proj-airi/server-shared/types'
@@ -13,7 +13,14 @@ const provider = {
   chat: () => ({ baseURL: 'https://example.com/' }),
 } as unknown as ChatProvider
 
-function createHarness() {
+/** The router a test installs, with the context the runtime hands it. */
+type RouteTurn = (context: {
+  sessionId: string
+  message: string
+  history: ChatHistoryItem[]
+}) => Promise<TurnRouteResult | undefined>
+
+function createHarness(runtimeOptions: { routeTurn?: RouteTurn } = {}) {
   const sessionMessages: Record<string, ChatHistoryItem[]> = {
     'session-1': [
       {
@@ -25,6 +32,7 @@ function createHarness() {
     ],
   }
   const contextSnapshot: Record<string, ContextMessage[]> = {}
+  const contextIngest = vi.fn()
   const foregroundPatches: StreamingAssistantMessage[] = []
   const foregroundResets: StreamingAssistantMessage[] = []
   const lifecycleRecords: unknown[] = []
@@ -51,6 +59,8 @@ function createHarness() {
     await options?.onStreamEvent?.({ type: 'finish', finishReason: 'stop' })
   })
   const ids = ['stream-context', 'assistant-id', 'user-id', 'fallback-id']
+  const routeTurnCalls: Parameters<RouteTurn>[0][] = []
+  const routeTurnOption = runtimeOptions.routeTurn
   let systemPromptSupplement: string | undefined
   let nowValue = new Date(2026, 3, 25, 18, 47).getTime()
   let monotonicNowValues = [1000]
@@ -69,7 +79,7 @@ function createHarness() {
       getSessionGeneration: () => generation,
     },
     context: {
-      ingest: vi.fn(),
+      ingest: contextIngest,
       snapshot: () => structuredClone(contextSnapshot),
     },
     foregroundStream: {
@@ -82,6 +92,14 @@ function createHarness() {
     getActiveSessionId: () => 'session-1',
     getActiveProvider: () => 'mock-provider',
     getSystemPromptSupplement: () => systemPromptSupplement,
+    ...(routeTurnOption
+      ? {
+          routeTurn: async (context: Parameters<RouteTurn>[0]) => {
+            routeTurnCalls.push(context)
+            return await routeTurnOption(context)
+          },
+        }
+      : {}),
     now: () => nowValue,
     monotonicNow: () => monotonicNowValues.shift() ?? 1000,
     createId: () => ids.shift() ?? 'generated-id',
@@ -107,6 +125,7 @@ function createHarness() {
   return {
     assistantAppended,
     assistantTurns,
+    contextIngest,
     contextSnapshot,
     foregroundPatches,
     foregroundResets,
@@ -127,6 +146,7 @@ function createHarness() {
       },
     },
     promptProjections,
+    routeTurnCalls,
     runtime,
     sessionMessages,
     stateChanges,
@@ -1018,5 +1038,144 @@ describe('createChatOrchestratorRuntime', () => {
     ])
     expect(harness.assistantAppended).toHaveLength(1)
     expect(harness.foregroundResets).toHaveLength(1)
+  })
+
+  it('keeps the plain send path when no router is installed', async () => {
+    const harness = createHarness()
+
+    await harness.runtime.ingest('hello', {
+      model: 'gpt-test',
+      chatProvider: provider,
+    })
+
+    expect(harness.stream).toHaveBeenCalledTimes(1)
+    expect(harness.sessionMessages['session-1']?.at(-1)).not.toHaveProperty('route')
+  })
+
+  it('answers a routed reply without a model request or a provider', async () => {
+    const resolveChat = vi.fn(async () => ({ model: 'never-used', chatProvider: provider }))
+    const harness = createHarness({
+      routeTurn: async () => ({ route: { kind: 'urgent', reason: 'red_flag' }, reply: '请立即就医' }),
+    })
+
+    await harness.runtime.ingest('大量出血，头晕', { resolveChat })
+
+    // The urgent branch must work on a deployment with no chat provider set up.
+    expect(resolveChat).not.toHaveBeenCalled()
+    expect(harness.stream).not.toHaveBeenCalled()
+    // A fixed reply reads no source that only a model answer would need.
+    expect(harness.contextIngest).not.toHaveBeenCalled()
+    const assistant = harness.sessionMessages['session-1']?.at(-1) as StreamingAssistantMessage
+    expect(assistant.content).toBe('请立即就医')
+    expect(assistant.route).toEqual({ kind: 'urgent', reason: 'red_flag' })
+    expect(harness.sessionMessages['session-1']?.filter(message => message.role === 'user')).toHaveLength(1)
+    expect(harness.sessionMessages['session-1']?.filter(message => message.role === 'assistant')).toHaveLength(1)
+    // The same finalize hooks run, so cloud sync and turn cleanup still happen.
+    expect(harness.assistantAppended).toHaveLength(1)
+  })
+
+  it('keeps an isolated turn away from chat contexts and tools', async () => {
+    const harness = createHarness({
+      routeTurn: async () => ({ route: { kind: 'medical' }, isolate: true, systemPrompt: 'medical system' }),
+    })
+    harness.contextSnapshot['system:weather'] = [
+      {
+        id: 'weather',
+        contextId: 'system:weather',
+        strategy: ContextUpdateStrategy.ReplaceSelf,
+        text: 'sunny',
+        createdAt: 1,
+      },
+    ]
+
+    await harness.runtime.ingest('宝宝黄疸怎么看', {
+      model: 'gpt-test',
+      chatProvider: provider,
+      tools: [],
+    })
+
+    expect(harness.contextIngest).not.toHaveBeenCalled()
+    expect(harness.stream.mock.calls[0]?.[3]?.tools).toBeUndefined()
+    const providerMessages = harness.stream.mock.calls[0]?.[2]
+    expect(JSON.stringify(providerMessages?.at(-1))).not.toContain('sunny')
+  })
+
+  it('routes against the history of the session that owns the turn', async () => {
+    const harness = createHarness({ routeTurn: async () => ({ route: { kind: 'medical' } }) })
+
+    await harness.runtime.ingest('那这个呢', {
+      model: 'gpt-test',
+      chatProvider: provider,
+    })
+
+    const context = harness.routeTurnCalls[0]
+    expect(context?.sessionId).toBe('session-1')
+    expect(context?.message).toBe('那这个呢')
+    // The history holds earlier turns only; the current message is separate.
+    expect(context?.history.some(message => message.role === 'system')).toBe(true)
+    expect(context?.history.some(message => message.content === '那这个呢')).toBe(false)
+  })
+
+  it('replaces the system message of a routed turn and keeps the supplement', async () => {
+    const harness = createHarness({
+      routeTurn: async () => ({ route: { kind: 'medical' }, systemPrompt: 'medical system' }),
+    })
+    harness.systemPromptSupplement.set('toolset prompt')
+
+    await harness.runtime.ingest('宝宝黄疸怎么看', {
+      model: 'gpt-test',
+      chatProvider: provider,
+    })
+
+    const providerMessages = harness.stream.mock.calls[0]?.[2]
+    expect(providerMessages?.[0]).toEqual({ role: 'system', content: 'medical system\n\ntoolset prompt' })
+    expect(providerMessages?.some(message => JSON.stringify(message).includes('system prompt'))).toBe(false)
+  })
+
+  it('drops the character prompt and the toolset supplement on an isolated turn', async () => {
+    const harness = createHarness({
+      routeTurn: async () => ({ route: { kind: 'medical' }, isolate: true, systemPrompt: 'medical system' }),
+    })
+    harness.systemPromptSupplement.set('toolset prompt')
+
+    await harness.runtime.ingest('宝宝黄疸怎么看', {
+      model: 'gpt-test',
+      chatProvider: provider,
+    })
+
+    // The medical turn gets one complete system message. A toolset supplement
+    // would describe tools this turn cannot call.
+    const providerMessages = harness.stream.mock.calls[0]?.[2]
+    expect(providerMessages?.[0]).toEqual({ role: 'system', content: 'medical system' })
+    expect(providerMessages?.some(message => JSON.stringify(message).includes('toolset prompt'))).toBe(false)
+  })
+
+  it('keeps the route out of every provider message', async () => {
+    const harness = createHarness({ routeTurn: async () => ({ route: { kind: 'medical' } }) })
+
+    await harness.runtime.ingest('宝宝黄疸怎么看', {
+      model: 'gpt-test',
+      chatProvider: provider,
+    })
+    await harness.runtime.ingest('那这个呢', {
+      model: 'gpt-test',
+      chatProvider: provider,
+    })
+
+    const providerMessages = harness.stream.mock.calls[1]?.[2]
+    expect(providerMessages?.every(message => !('route' in message))).toBe(true)
+    const storedAssistant = harness.sessionMessages['session-1']?.find(message => message.role === 'assistant')
+    expect(storedAssistant?.route).toEqual({ kind: 'medical' })
+  })
+
+  it('uses the provider a resolver returns', async () => {
+    const harness = createHarness()
+
+    await harness.runtime.ingest('hello', {
+      resolveChat: async () => ({ model: 'resolved-model', chatProvider: provider }),
+    })
+
+    expect(harness.stream.mock.calls[0]?.[0]).toBe('resolved-model')
+    expect(harness.telemetry.messageSendStarted[0]).toMatchObject({ model: 'resolved-model' })
   })
 })

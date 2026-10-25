@@ -48,6 +48,48 @@ export interface ChatToolReference {
   name: string
 }
 
+/** Which branch answered one user turn. */
+export type TurnRouteKind = 'urgent' | 'medical' | 'chat' | 'fallback'
+
+/**
+ * The branch record kept on the assistant message of one turn.
+ *
+ * It stays on the local session message. `buildProviderMessages` removes it
+ * before composition, so a provider never sees it, and cloud sync keeps sending
+ * only `role` and `content`.
+ */
+export interface TurnRoute {
+  kind: TurnRouteKind
+  /** Why a branch other than `chat` answered, such as a degraded classifier. */
+  reason?: string
+}
+
+/**
+ * What the router decides for one turn, before the model request is assembled.
+ *
+ * The caller owns both texts. The runtime does not know which part of a system
+ * message is character prompt and which part is a shared format constraint, so
+ * it replaces the message instead of editing it.
+ */
+export interface TurnRouteResult {
+  route: TurnRoute
+  /** The complete system message for this turn. Replaces the stored one. */
+  systemPrompt?: string
+  /** When present, the turn ends with this text and no model request. */
+  reply?: string
+  /**
+   * Runs the turn without the general chat context.
+   *
+   * An isolated turn skips the registered runtime context providers and sends no
+   * caller tools, so its prompt holds the same-session history, the routed
+   * system message and the time information only. A `reply` turn is always
+   * isolated.
+   *
+   * @default false
+   */
+  isolate?: boolean
+}
+
 export interface ErrorMessage {
   role: 'error'
   content: string
@@ -66,6 +108,8 @@ export type ChatHistoryItem = (ChatMessage | ErrorMessage) & {
   id?: string
   /** Tools selected for this message. The runtime rebuilds executors from these names. */
   tools?: ChatToolReference[]
+  /** Which branch produced this assistant turn. Local only; never sent to a provider. */
+  route?: TurnRoute
 }
 
 export interface ChatStreamEventContext {
@@ -88,4 +132,4 @@ export type ChatStreamEvent
     | { type: 'assistant-end', message: string, sessionId: string, context: ChatStreamEventContext }
     | { type: 'assistant-message', message: ChatAssistantMessage, sessionId: string, messageText: string, context: ChatStreamEventContext }
 
-export type StreamingAssistantMessage = ChatAssistantMessage & { context?: ContextMessage } & { createdAt?: number, id?: string }
+export type StreamingAssistantMessage = ChatAssistantMessage & { context?: ContextMessage } & { createdAt?: number, id?: string } & { route?: TurnRoute }

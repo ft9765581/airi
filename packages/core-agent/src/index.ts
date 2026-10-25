@@ -61,6 +61,9 @@ export type {
   ContextMessage,
   ErrorMessage,
   StreamingAssistantMessage,
+  TurnRoute,
+  TurnRouteKind,
+  TurnRouteResult,
 } from './types/chat'
 
 export type {
