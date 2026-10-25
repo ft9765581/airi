@@ -69,6 +69,31 @@ const reportAt = useLocalStorage<number>('devtools/intent-routing/last-report-at
 const records = ref<TestRecord[]>([])
 
 /**
+ * Tells a stored report apart from anything else the key may hold.
+ *
+ * A value written by an older build, or by a person in the console, would
+ * otherwise reach the template and crash the page during its first render,
+ * because the field it reads is simply absent.
+ */
+function isEvaluationReport(value: unknown): value is EvaluationReport {
+  if (!value || typeof value !== 'object')
+    return false
+
+  const candidate = value as Partial<EvaluationReport>
+  return typeof candidate.total === 'number'
+    && !!candidate.rules
+    && typeof candidate.rules.medicalRecall === 'number'
+    && Array.isArray(candidate.rules.groups)
+    && Array.isArray(candidate.unmatched)
+    && !!candidate.durationMs
+}
+
+// Runs during setup, not on mount: a bad value must be gone before the first
+// render, and the first render happens before any lifecycle hook.
+if (!isEvaluationReport(report.value))
+  report.value = undefined
+
+/**
  * The prompt under test.
  *
  * Kept in local storage so a tuning session survives a reload. An edited copy
@@ -219,7 +244,9 @@ onMounted(() => {
 
 function overviewMetrics() {
   const current = report.value
-  if (!current)
+  // A second guard: the setup check already rejects a malformed stored value,
+  // but a render must never depend on that check having run first.
+  if (!current?.rules)
     return []
 
   return [
