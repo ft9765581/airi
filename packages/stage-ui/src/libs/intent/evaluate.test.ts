@@ -6,10 +6,15 @@ import { evaluateSamples } from './evaluate'
 import { intentSampleGroupLabels, intentSamples } from './fixtures'
 
 const options = {
-  baseURL: 'https://provider.invalid/v1',
-  apiKey: 'test-key',
-  model: 'test-model',
+  request: {
+    baseURL: 'https://provider.invalid/v1',
+    apiKey: 'test-key',
+    model: 'test-model',
+  },
 }
+
+/** A version the samples do not use, so carrying it through is visible. */
+const setVersion = 7
 
 /** Repeats the labels a test wants, so metrics are arithmetic, not luck. */
 function labelFetch(labelFor: (text: string) => 'medical' | 'chat'): typeof globalThis.fetch {
@@ -49,7 +54,7 @@ const sampleSet: IntentSample[] = [
 
 describe('evaluateSamples', () => {
   it('scores the rules without touching the model', async () => {
-    const report = await evaluateSamples({ samples: sampleSet, mode: 'rules' })
+    const report = await evaluateSamples({ samples: sampleSet, sampleSetVersion: setVersion, mode: 'rules' })
 
     expect(report.model).toBeUndefined()
     // Only `宝宝黄疸怎么看` carries a rule signal, so recall is 1 of 2.
@@ -59,11 +64,18 @@ describe('evaluateSamples', () => {
     expect(report.unmatched.map(item => item.sample.id)).toEqual(['b'])
   })
 
+  it('keeps the version of the labelled set it scored', async () => {
+    const report = await evaluateSamples({ samples: sampleSet, sampleSetVersion: setVersion, mode: 'rules' })
+
+    expect(report.sampleSetVersion).toBe(setVersion)
+  })
+
   it('scores the model and reports its disagreements', async () => {
     const report = await evaluateSamples({
       samples: sampleSet,
+      sampleSetVersion: setVersion,
       mode: 'compare',
-      model: { ...options, fetch: labelFetch(() => 'medical') },
+      model: { ...options, request: { ...options.request, fetch: labelFetch(() => 'medical') } },
     })
 
     expect(report.model?.medicalRecall).toBe(1)
@@ -76,29 +88,100 @@ describe('evaluateSamples', () => {
     expect(report.unmatched).toEqual([])
   })
 
-  it('scores a total model failure as fallback rather than as an answer', async () => {
+  /**
+   * ROOT CAUSE:
+   *
+   * A side report used to fill `rules` and `model` of an error row from the same
+   * decision, so "did the model fix this sample" could not be read off the row.
+   *
+   * Each row now carries the decision of each side.
+   */
+  it('keeps both decisions in an error row', async () => {
     const report = await evaluateSamples({
       samples: sampleSet,
+      sampleSetVersion: setVersion,
+      mode: 'compare',
+      model: { ...options, request: { ...options.request, fetch: labelFetch(() => 'medical') } },
+    })
+
+    const missed = report.rules.falseNegatives[0]
+    expect(missed.sample.id).toBe('b')
+    expect(missed.rules.decision).toBe('chat')
+    expect(missed.model?.decision).toBe('medical')
+  })
+
+  it('keeps both decisions when the model is the wrong side', async () => {
+    const report = await evaluateSamples({
+      samples: sampleSet,
+      sampleSetVersion: setVersion,
+      mode: 'compare',
+      model: { ...options, request: { ...options.request, fetch: labelFetch(() => 'chat') } },
+    })
+
+    const missed = report.model?.falseNegatives[0]
+    expect(missed?.sample.id).toBe('a')
+    expect(missed?.rules.decision).toBe('medical')
+    expect(missed?.model?.decision).toBe('chat')
+  })
+
+  /**
+   * ROOT CAUSE:
+   *
+   * A failed classification returns `medical` so that routing fails safe. The
+   * report used to score that label, so a provider that answered nothing showed
+   * 100% medical recall and 100% chat false positives.
+   *
+   * A fallback is now a failure: it never counts as a hit, it stays in the
+   * denominator, and it never makes the two sides "disagree".
+   */
+  it('scores a total model failure as failure rather than as an answer', async () => {
+    const report = await evaluateSamples({
+      samples: sampleSet,
+      sampleSetVersion: setVersion,
       mode: 'model',
-      model: { ...options, fetch: async () => Promise.reject(new TypeError('fetch failed')) },
+      model: { ...options, request: { ...options.request, fetch: async () => Promise.reject(new TypeError('fetch failed')) } },
     })
 
     expect(report.model?.fallbackRate).toBe(1)
-    // Every failure degrades to medical, so the chat sample shows as a false positive.
-    expect(report.model?.chatFalsePositiveRate).toBe(1)
+    expect(report.model?.medicalRecall).toBe(0)
+    expect(report.model?.chatFalsePositiveRate).toBe(0)
+    expect(report.model?.falseNegatives.map(item => item.sample.id)).toEqual(['a', 'b'])
+    expect(report.model?.falsePositives).toEqual([])
+    expect(report.model?.failures).toHaveLength(3)
+    expect(report.model?.failures[0].model?.evidenceCodes).toEqual(['fallback:network'])
+  })
+
+  it('does not let a failure look like a disagreement', async () => {
+    const report = await evaluateSamples({
+      samples: sampleSet,
+      sampleSetVersion: setVersion,
+      mode: 'compare',
+      model: { ...options, request: { ...options.request, fetch: async () => Promise.reject(new TypeError('fetch failed')) } },
+    })
+
+    // The rules answer `c` with chat and the model degraded to medical, which is
+    // not a second opinion.
+    expect(report.disagreements).toEqual([])
+    expect(report.unmatched.map(item => item.sample.id)).toEqual(['b'])
   })
 
   it('groups the samples so one slice cannot hide inside the average', async () => {
-    const report = await evaluateSamples({ samples: sampleSet, mode: 'rules' })
+    const report = await evaluateSamples({
+      samples: sampleSet,
+      sampleSetVersion: setVersion,
+      mode: 'model',
+      model: { ...options, request: { ...options.request, fetch: async () => Promise.reject(new TypeError('fetch failed')) } },
+    })
 
-    expect(report.rules.groups.map(group => group.group).sort()).toEqual([
+    expect(report.model?.groups.map(group => group.group).sort()).toEqual([
       'chitchat',
       'medical-explicit',
       'medical-implicit',
     ])
-    const explicit = report.rules.groups.find(group => group.group === 'medical-explicit')
-    expect(explicit?.medicalHits).toBe(1)
+    const explicit = report.model?.groups.find(group => group.group === 'medical-explicit')
     expect(explicit?.total).toBe(1)
+    expect(explicit?.medicalHits).toBe(0)
+    expect(explicit?.failures).toBe(1)
   })
 })
 

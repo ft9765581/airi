@@ -9,7 +9,7 @@
  */
 
 /** Bumped when a rule, a prompt or the model changes enough to invalidate old logs. */
-export const classifierVersion = 2
+export const classifierVersion = 3
 
 /** Which classifier answers one request. */
 export type IntentClassifierMode = 'rules' | 'model' | 'compare'
@@ -54,6 +54,7 @@ export const intentEvidenceCodes = [
   // Failure side.
   'fallback:timeout',
   'fallback:parse',
+  'fallback:truncated',
   'fallback:network',
   'fallback:not_configured',
   'fallback:error',

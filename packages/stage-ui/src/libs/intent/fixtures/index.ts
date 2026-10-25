@@ -14,6 +14,14 @@ import type { IntentSample, IntentSampleGroup } from '../evaluate'
  * larger set from real de-identified messages.
  */
 
+/**
+ * Version of this labelled set.
+ *
+ * Every report keeps it, so numbers from an older set are not read as a
+ * comparison with a newer run. Raise it when a label or a sample changes.
+ */
+export const intentSampleSetVersion = 1
+
 /** Human-readable name for each slice, used by the report table. */
 export const intentSampleGroupLabels: Record<IntentSampleGroup, string> = {
   'medical-explicit': '明确医学问题',

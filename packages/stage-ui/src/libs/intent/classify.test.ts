@@ -3,9 +3,11 @@ import { describe, expect, it } from 'vitest'
 import { classifyMessage } from './classify'
 
 const options = {
-  baseURL: 'https://provider.invalid/v1',
-  apiKey: 'test-key',
-  model: 'test-model',
+  request: {
+    baseURL: 'https://provider.invalid/v1',
+    apiKey: 'test-key',
+    model: 'test-model',
+  },
 }
 
 function completion(content: string) {
@@ -43,8 +45,10 @@ describe('classifyMessage', () => {
       message: '宝宝黄疸怎么看',
       mode: 'model',
       model: {
-        ...options,
-        fetch: respondWith('{"decision":"medical","scene":"health-consultation","evidenceCodes":["model:symptom"]}'),
+        request: {
+          ...options.request,
+          fetch: respondWith('{"decision":"medical","scene":"health-consultation","evidenceCodes":["model:symptom"]}'),
+        },
       },
     })
 
@@ -68,8 +72,10 @@ describe('classifyMessage', () => {
       message: '宝宝黄疸怎么看',
       mode: 'compare',
       model: {
-        ...options,
-        fetch: respondWith('{"decision":"medical","scene":"health-consultation","evidenceCodes":["model:symptom"]}'),
+        request: {
+          ...options.request,
+          fetch: respondWith('{"decision":"medical","scene":"health-consultation","evidenceCodes":["model:symptom"]}'),
+        },
       },
     })
 
@@ -89,8 +95,10 @@ describe('classifyMessage', () => {
       message: '她今天特别没精神',
       mode: 'compare',
       model: {
-        ...options,
-        fetch: respondWith('{"decision":"medical","scene":"health-consultation","evidenceCodes":["model:symptom"]}'),
+        request: {
+          ...options.request,
+          fetch: respondWith('{"decision":"medical","scene":"health-consultation","evidenceCodes":["model:symptom"]}'),
+        },
       },
     })
 

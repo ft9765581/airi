@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { ClassifyResult } from '@proj-airi/stage-ui/libs/intent/classify'
+import type { ClassifyHistoryTurn, IntentModelOptions } from '@proj-airi/stage-ui/libs/intent/classify-model'
 import type { IntentClassifierMode, IntentDecision } from '@proj-airi/stage-ui/libs/intent/contract'
 import type { EvaluationCase, EvaluationReport, IntentSampleGroup } from '@proj-airi/stage-ui/libs/intent/evaluate'
 
@@ -7,9 +8,9 @@ import { errorMessageFrom } from '@moeru/std'
 import { classifyMessage } from '@proj-airi/stage-ui/libs/intent/classify'
 import { defaultClassifierSystemPrompt } from '@proj-airi/stage-ui/libs/intent/classify-model'
 import { evaluateSamples } from '@proj-airi/stage-ui/libs/intent/evaluate'
-import { intentSampleGroupLabels, intentSamples } from '@proj-airi/stage-ui/libs/intent/fixtures'
+import { intentSampleGroupLabels, intentSamples, intentSampleSetVersion } from '@proj-airi/stage-ui/libs/intent/fixtures'
 import { useConsciousnessStore } from '@proj-airi/stage-ui/stores/modules/consciousness'
-import { useProviderConfigStore } from '@proj-airi/stage-ui/stores/providers/config'
+import { useProviderStore } from '@proj-airi/stage-ui/stores/providers/provider'
 import { BasicTextarea, Button } from '@proj-airi/ui'
 import { useLocalStorage } from '@vueuse/core'
 import { computed, onMounted, ref } from 'vue'
@@ -47,7 +48,7 @@ interface TestRecord {
 const maxRecords = 50
 
 const consciousnessStore = useConsciousnessStore()
-const providerConfigStore = useProviderConfigStore()
+const providerStore = useProviderStore()
 
 const mode = ref<IntentClassifierMode>('rules')
 const message = ref('宝宝黄疸怎么看')
@@ -68,12 +69,19 @@ const report = useLocalStorage<EvaluationReport | undefined>('devtools/intent-ro
 const reportAt = useLocalStorage<number>('devtools/intent-routing/last-report-at', 0)
 const records = ref<TestRecord[]>([])
 
+/** Stable empty list, so the computed below never hands out a new array. */
+const noFailures: EvaluationCase[] = []
+
+/** The samples the model could not classify, which no score counts as a hit. */
+const modelFailures = computed(() => report.value?.model?.failures ?? noFailures)
+
 /**
  * Tells a stored report apart from anything else the key may hold.
  *
  * A value written by an older build, or by a person in the console, would
  * otherwise reach the template and crash the page during its first render,
- * because the field it reads is simply absent.
+ * because the field it reads is simply absent. `sampleSetVersion` is required
+ * here as well: a report from another set must not read as a comparison.
  */
 function isEvaluationReport(value: unknown): value is EvaluationReport {
   if (!value || typeof value !== 'object')
@@ -81,6 +89,7 @@ function isEvaluationReport(value: unknown): value is EvaluationReport {
 
   const candidate = value as Partial<EvaluationReport>
   return typeof candidate.total === 'number'
+    && typeof candidate.sampleSetVersion === 'number'
     && !!candidate.rules
     && typeof candidate.rules.medicalRecall === 'number'
     && Array.isArray(candidate.rules.groups)
@@ -103,21 +112,45 @@ if (!isEvaluationReport(report.value))
 const systemPrompt = useLocalStorage('devtools/intent-routing/system-prompt', defaultClassifierSystemPrompt)
 const promptIsCustom = computed(() => systemPrompt.value !== defaultClassifierSystemPrompt)
 
-function resolveModelOptions() {
+/**
+ * Asks the chat provider for the request one classification needs.
+ *
+ * The provider instance owns the address, the key, the auth wrapper and the
+ * reasoning mode, so this is the request the chat path sends. Reading `baseUrl`
+ * out of the stored config instead loses every value that only the provider
+ * definition supplies: this deployment stores a DeepSeek key without an
+ * address, so that run answered `fallback:not_configured` and sent nothing while
+ * still showing a full table of numbers.
+ *
+ * Reasoning is off because a classifier that thinks can spend its whole output
+ * budget before it writes the JSON, which ends the answer at `length`.
+ */
+async function resolveModelOptions(): Promise<IntentModelOptions> {
   const providerId = consciousnessStore.activeProvider
-  const config = providerId ? providerConfigStore.getProviderConfig(providerId) : undefined
-  const baseURL = typeof config?.baseUrl === 'string' ? config.baseUrl : ''
+  const model = consciousnessStore.activeModel
+
+  if (!providerId || !model)
+    throw new Error('未配置聊天 provider 或模型，无法调用分类模型')
+
+  const provider = await providerStore.getChatProviderInstance(providerId, { reasoning: 'disabled' })
 
   return {
-    baseURL,
-    apiKey: typeof config?.apiKey === 'string' ? config.apiKey : undefined,
-    model: consciousnessStore.activeModel,
+    request: provider.chat(model),
     systemPrompt: systemPrompt.value,
   }
 }
 
-function currentContext() {
-  return contextText.value.split('\n').map(line => line.trim()).filter(Boolean)
+/**
+ * The earlier turns the classifier reads, one per line.
+ *
+ * The page has no roles to offer, so a line counts as something the user said.
+ */
+function currentContext(): ClassifyHistoryTurn[] {
+  return contextText.value
+    .split('\n')
+    .map(line => line.trim())
+    .filter(Boolean)
+    .map(line => ({ role: 'user' as const, content: line }))
 }
 
 function percent(value: number) {
@@ -128,16 +161,25 @@ function modelGroup(group: IntentSampleGroup) {
   return report.value?.model?.groups.find(item => item.group === group)
 }
 
+/**
+ * True when the model answered and that answer matches the label.
+ *
+ * A degraded answer carries `medical` so routing can fail safe. It carries no
+ * judgement, so it cannot win a row here.
+ */
+function modelIsRight(item: EvaluationCase) {
+  return !!item.model && item.model.source !== 'fallback' && item.model.decision === item.sample.expected
+}
+
 /** Names the side that matched the label, so a row needs no reading to judge. */
 function verdictOf(item: EvaluationCase) {
   const rulesRight = item.rules.decision === item.sample.expected
-  const modelRight = item.model ? item.model.decision === item.sample.expected : false
 
-  if (rulesRight && modelRight)
+  if (rulesRight && modelIsRight(item))
     return '都对'
   if (rulesRight)
     return '规则对'
-  if (modelRight)
+  if (modelIsRight(item))
     return '模型对'
 
   return '都不对'
@@ -159,6 +201,34 @@ function labelText(decision: 'medical' | 'chat') {
   return decision === 'medical' ? '医学' : '闲聊'
 }
 
+/** One label per row. A degraded answer gets its own name, not a label. */
+function modelLabel(item: EvaluationCase) {
+  if (!item.model)
+    return '—'
+
+  return item.model.source === 'fallback' ? '失败' : labelText(item.model.decision)
+}
+
+/** Names what the model did with a sample the rules missed. */
+function modelRecovery(item: EvaluationCase) {
+  if (!item.model)
+    return '—'
+  if (item.model.source === 'fallback')
+    return '模型失败'
+
+  return item.model.decision === 'medical' ? '补上了' : '没补上'
+}
+
+/** Colours the recovery cell: only a real medical answer counts as fixed. */
+function modelRecoveryClass(item: EvaluationCase) {
+  if (!item.model || item.model.source === 'fallback')
+    return 'text-neutral-500 dark:text-neutral-400'
+
+  return item.model.decision === 'medical'
+    ? 'text-green-700 dark:text-green-400'
+    : 'text-red-600 dark:text-red-400'
+}
+
 function pushRecord(entry: TestRecord) {
   records.value = [entry, ...records.value].slice(0, maxRecords)
 }
@@ -178,8 +248,8 @@ async function run() {
     const outcome = await classifyMessage({
       message: message.value,
       mode: mode.value,
-      recentMessages: currentContext(),
-      model: resolveModelOptions(),
+      history: currentContext(),
+      model: mode.value === 'rules' ? undefined : await resolveModelOptions(),
     })
     result.value = outcome
 
@@ -217,8 +287,9 @@ async function runEvaluation() {
   try {
     report.value = await evaluateSamples({
       samples: intentSamples,
+      sampleSetVersion: intentSampleSetVersion,
       mode: mode.value,
-      model: resolveModelOptions(),
+      model: mode.value === 'rules' ? undefined : await resolveModelOptions(),
     })
     reportAt.value = Date.now()
   }
@@ -254,6 +325,7 @@ function overviewMetrics() {
     { label: '规则误判', value: percent(current.rules.chatFalsePositiveRate) },
     { label: '模型召回', value: current.model ? percent(current.model.medicalRecall) : '未运行' },
     { label: '模型误判', value: current.model ? percent(current.model.chatFalsePositiveRate) : '未运行' },
+    { label: '模型失败', value: current.model ? `${current.model.failures.length} 条` : '未运行' },
     { label: '模型失败率', value: current.model ? percent(current.model.fallbackRate) : '未运行' },
     { label: '规则耗时', value: `${current.durationMs.rules.toFixed(0)} ms` },
     { label: '模型耗时', value: current.durationMs.model === undefined ? '未运行' : `${current.durationMs.model.toFixed(0)} ms` },
@@ -501,7 +573,7 @@ function overviewMetrics() {
 
       <template v-if="report">
         <h2 :class="['text-base font-600']">
-          测试集结果 · {{ report.total }} 条 · 模式 {{ report.mode }}
+          测试集结果 · {{ report.total }} 条 · 模式 {{ report.mode }} · 样本集 v{{ report.sampleSetVersion }}
           <span :class="['text-xs font-400 text-neutral-500 dark:text-neutral-400']">
             · 上次运行 {{ reportAt ? new Date(reportAt).toLocaleTimeString() : '未知' }}
           </span>
@@ -556,6 +628,9 @@ function overviewMetrics() {
                 <th :class="['px-3 py-2 font-500']">
                   模型误判
                 </th>
+                <th :class="['px-3 py-2 font-500']">
+                  模型失败
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -584,6 +659,9 @@ function overviewMetrics() {
                 </td>
                 <td :class="['px-3 py-2']">
                   {{ modelGroup(group.group)?.falsePositives ?? '—' }}
+                </td>
+                <td :class="['px-3 py-2']">
+                  {{ modelGroup(group.group)?.failures ?? '—' }}
                 </td>
               </tr>
             </tbody>
@@ -637,7 +715,7 @@ function overviewMetrics() {
                     {{ labelText(item.rules.decision) }}
                   </td>
                   <td :class="['px-3 py-2']">
-                    {{ item.model ? labelText(item.model.decision) : '—' }}
+                    {{ modelLabel(item) }}
                   </td>
                   <td :class="['px-3 py-2 font-500', verdictClass(item)]">
                     {{ verdictOf(item) }}
@@ -695,17 +773,66 @@ function overviewMetrics() {
                     {{ labelText(item.rules.decision) }}
                   </td>
                   <td :class="['px-3 py-2']">
-                    {{ item.model ? labelText(item.model.decision) : '—' }}
+                    {{ modelLabel(item) }}
                   </td>
-                  <td
-                    :class="[
-                      'px-3 py-2 font-500',
-                      item.model?.decision === 'medical'
-                        ? 'text-green-700 dark:text-green-400'
-                        : 'text-red-600 dark:text-red-400',
-                    ]"
-                  >
-                    {{ item.model ? (item.model.decision === 'medical' ? '补上了' : '没补上') : '—' }}
+                  <td :class="['px-3 py-2 font-500', modelRecoveryClass(item)]">
+                    {{ modelRecovery(item) }}
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </template>
+
+        <template v-if="modelFailures.length">
+          <h2 :class="['text-base font-600']">
+            模型失败 · {{ modelFailures.length }} 条
+          </h2>
+
+          <p :class="['text-xs text-neutral-500 dark:text-neutral-400']">
+            失败不产生标签，所以不进召回和误判的分子，但仍留在分母里。
+          </p>
+
+          <div
+            :class="[
+              'overflow-x-auto rounded-2xl border',
+              'border-neutral-200 dark:border-neutral-700',
+            ]"
+          >
+            <table :class="['w-full text-left text-sm']">
+              <thead :class="['bg-neutral-50 dark:bg-neutral-900']">
+                <tr>
+                  <th :class="['px-3 py-2 font-500']">
+                    输入
+                  </th>
+                  <th :class="['px-3 py-2 font-500']">
+                    分组
+                  </th>
+                  <th :class="['px-3 py-2 font-500']">
+                    失败原因
+                  </th>
+                  <th :class="['px-3 py-2 font-500']">
+                    规则
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr
+                  v-for="item in modelFailures"
+                  :key="item.sample.id"
+                  :class="['border-t border-neutral-200 dark:border-neutral-800']"
+                >
+                  <td :class="['px-3 py-2']">
+                    {{ item.sample.input }}
+                  </td>
+                  <td :class="['px-3 py-2']">
+                    {{ intentSampleGroupLabels[item.sample.group] }}
+                  </td>
+                  <td :class="['px-3 py-2']">
+                    {{ item.model?.evidenceCodes.join(', ') ?? '—' }}
+                  </td>
+                  <td :class="['px-3 py-2']">
+                    {{ labelText(item.rules.decision) }}
                   </td>
                 </tr>
               </tbody>

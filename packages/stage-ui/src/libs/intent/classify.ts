@@ -1,4 +1,4 @@
-import type { IntentModelOptions } from './classify-model'
+import type { ClassifyHistoryTurn, IntentModelOptions } from './classify-model'
 import type { IntentClassifierMode, IntentComparison, IntentDecision } from './contract'
 
 import { classifyWithModel } from './classify-model'
@@ -28,7 +28,7 @@ export interface ClassifyRequest {
   /** Which classifier answers. */
   mode: IntentClassifierMode
   /** Older turns first. The model classifier uses at most the last two. */
-  recentMessages?: string[]
+  history?: ClassifyHistoryTurn[]
   /** Provider settings. Required unless `mode` is `rules`. */
   model?: IntentModelOptions
 }
@@ -43,7 +43,7 @@ function measure<T>(run: () => T): { value: T, durationMs: number } {
  * Runs the classifier the request asks for.
  *
  * @example
- * const { decision } = await classifyMessage({ message: '黄疸怎么看', mode: 'rules' })
+ * const { decision } = await classifyMessage({ message: '榛勭柛鎬庝箞鐪?, mode: 'rules' })
  * // => decision.decision === 'medical'
  */
 export async function classifyMessage(request: ClassifyRequest): Promise<ClassifyResult> {
@@ -51,11 +51,13 @@ export async function classifyMessage(request: ClassifyRequest): Promise<Classif
     return { mode: 'rules', decision: measure(() => classifyRules(request.message)).value }
   }
 
-  const modelOptions: IntentModelOptions = request.model ?? { baseURL: '', model: '' }
+  // A request without a provider still degrades instead of throwing, so a caller
+  // that forgot the settings gets a reported failure rather than a broken page.
+  const modelOptions: IntentModelOptions = request.model ?? { request: { baseURL: '', model: '' } }
 
   if (request.mode === 'model') {
     const decision = await classifyWithModel(
-      { message: request.message, recentMessages: request.recentMessages },
+      { message: request.message, history: request.history },
       modelOptions,
     )
     return { mode: 'model', decision }
@@ -68,7 +70,7 @@ export async function classifyMessage(request: ClassifyRequest): Promise<Classif
 
   const modelStartedAt = performance.now()
   const modelDecision = await classifyWithModel(
-    { message: request.message, recentMessages: request.recentMessages },
+    { message: request.message, history: request.history },
     modelOptions,
   )
   const modelDurationMs = performance.now() - modelStartedAt

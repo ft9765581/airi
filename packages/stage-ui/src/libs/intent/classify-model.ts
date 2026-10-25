@@ -1,3 +1,5 @@
+import type { CommonRequestOptions } from '@xsai/shared'
+
 import type { IntentDecision, IntentEvidenceCode } from './contract'
 
 import { errorMessageFrom } from '@moeru/std'
@@ -19,11 +21,23 @@ import { classifierVersion } from './contract'
  * it before reading.
  */
 
-/** How long one classification may take before it degrades. */
-const defaultTimeoutMs = 1800
+/**
+ * How long one classification may take before it degrades.
+ *
+ * A reasoning model spends most of this budget thinking, and a provider under
+ * load answers slower than its median. The earlier 1800 ms cut off answers that
+ * arrived at 1500-2200 ms, and each cut counted as a failure.
+ */
+const defaultTimeoutMs = 4000
 
-/** Output cap. The answer is one small object, so this stays tight. */
-const maxOutputTokens = 200
+/**
+ * Output cap.
+ *
+ * The answer is one small object, but a reasoning model writes its thinking
+ * first from the same budget. At 200 tokens the thinking alone could fill it,
+ * which ended the answer at `finish_reason: length` with no JSON at all.
+ */
+const maxOutputTokens = 512
 
 /** Codes the model may return. Rules own their own codes. */
 const modelEvidenceCodes = [
@@ -77,10 +91,23 @@ const modelResultSchema = z.object({
 
 /** One provider configuration a classification needs. */
 export interface IntentModelOptions {
-  baseURL: string
-  apiKey?: string
-  model: string
-  /** @default 1800 */
+  /**
+   * Request options for the chosen model, exactly as the chat provider returns
+   * them from `chat(model)`.
+   *
+   * The provider definition owns the address, the API key, the authentication
+   * headers, the `fetch` wrapper that adds credentials, and provider-specific
+   * fields such as DeepSeek `thinking`. Copying them by hand out of the stored
+   * provider config loses every value that only the definition supplies: a
+   * deployment that stores a DeepSeek key without an address then produces
+   * `fallback:not_configured` and never sends a request.
+   */
+  request: CommonRequestOptions
+  /**
+   * Replaces the default wait. The caller lowers it only in tests.
+   *
+   * @default 4000
+   */
   timeoutMs?: number
   /**
    * Replaces the default prompt. Only the evaluation page sets this, so a
@@ -89,18 +116,25 @@ export interface IntentModelOptions {
    * @default defaultClassifierSystemPrompt
    */
   systemPrompt?: string
-  /**
-   * Replaces the network call. Tests pass a fake here, so an automated run
-   * never reaches a real provider.
-   */
-  fetch?: typeof globalThis.fetch
+}
+
+/** One earlier turn the classifier may read. */
+export interface ClassifyHistoryTurn {
+  role: 'user' | 'assistant'
+  content: string
 }
 
 /** One message to classify, plus the turns it depends on. */
 export interface ClassifyModelInput {
   message: string
-  /** Older turns first. At most the last two are used. */
-  recentMessages?: string[]
+  /**
+   * Older turns first, at most the last two are used.
+   *
+   * The role matters: "那这个呢" only becomes a medical question because the
+   * turn before it described a symptom, and an answer the assistant gave is not
+   * the user's own complaint.
+   */
+  history?: ClassifyHistoryTurn[]
 }
 
 type FailureCode = Extract<IntentEvidenceCode, `fallback:${string}`>
@@ -177,44 +211,67 @@ function toDecision(input: z.infer<typeof modelResultSchema>): IntentDecision {
 }
 
 /**
+ * Formats the earlier turns so the model can tell who said what.
+ *
+ * The labels are part of the classifier contract, not decoration: a symptom the
+ * assistant described back is not a symptom the user reported.
+ */
+function formatHistory(history: ClassifyHistoryTurn[]): string {
+  return history
+    .map(turn => `${turn.role === 'user' ? '【上文用户】' : '【上文助手】'}${turn.content}`)
+    .join('\n')
+}
+
+/**
  * Classifies one message with the configured provider.
  *
  * Never throws: every failure returns a decision with `source: 'fallback'` and
  * the reason in `evidenceCodes`, so an evaluation run can continue past a bad
- * sample.
+ * sample. A reply that stopped on the output cap is `fallback:truncated`, not
+ * `fallback:parse`, because the JSON never arrived and the request settings
+ * caused it.
  *
  * @example
- * classifyWithModel({ message: '宝宝黄疸怎么看' }, { baseURL, apiKey, model })
+ * const provider = await providerStore.getChatProviderInstance(providerId, { reasoning: 'disabled' })
+ * classifyWithModel({ message: '宝宝黄疸怎么看' }, { request: provider.chat(model) })
  * // => { decision: 'medical', scene: 'health-consultation', source: 'model', … }
  */
 export async function classifyWithModel(
   input: ClassifyModelInput,
   options: IntentModelOptions,
 ): Promise<IntentDecision> {
-  if (!options.baseURL || !options.model)
+  const { request } = options
+
+  if (!request.baseURL || !request.model)
     return fallbackDecision('fallback:not_configured')
 
-  const history = (input.recentMessages ?? []).slice(-2)
+  const history = (input.history ?? []).slice(-2)
   const userText = history.length
-    ? `【前文】\n${history.join('\n')}\n\n【当前用户消息】\n${input.message}`
+    ? `${formatHistory(history)}\n\n【当前用户消息】\n${input.message}`
     : input.message
 
   try {
     const result = await generateText({
-      baseURL: options.baseURL,
-      apiKey: options.apiKey,
-      model: options.model,
+      ...request,
       temperature: 0,
       max_tokens: maxOutputTokens,
       abortSignal: AbortSignal.timeout(options.timeoutMs ?? defaultTimeoutMs),
-      fetch: options.fetch,
       messages: message.messages(
         message.system(options.systemPrompt ?? defaultClassifierSystemPrompt),
         message.user(userText),
       ),
     })
 
-    const parsed = modelResultSchema.parse(JSON.parse(stripCodeFence(result.text ?? '')))
+    const content = result.text ?? ''
+
+    // A reasoning model can spend the whole output budget before it writes the
+    // first JSON character. The provider then reports `length` and the content
+    // is empty or half-written, so a parse failure here would name the wrong
+    // cause and hide a settings problem as a prompt problem.
+    if (result.finishReason === 'length' || !content.trim())
+      return fallbackDecision('fallback:truncated')
+
+    const parsed = modelResultSchema.parse(JSON.parse(stripCodeFence(content)))
     return toDecision(parsed)
   }
   catch (error) {
