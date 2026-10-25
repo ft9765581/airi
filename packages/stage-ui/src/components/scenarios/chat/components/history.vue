@@ -175,6 +175,7 @@ function emitToolCallRerun(
             v-else-if="message.role === 'assistant'"
             :message="message"
             :label="labels.assistant"
+            :route="message.route"
             :show-placeholder="shouldShowPlaceholder(message) && showStreamingPlaceholder"
             :scroll-container="chatHistoryRef"
             :variant="variant"

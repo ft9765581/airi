@@ -12,4 +12,7 @@ export type {
   ContextMessage,
   ErrorMessage,
   StreamingAssistantMessage,
+  TurnRoute,
+  TurnRouteKind,
+  TurnRouteResult,
 } from '@proj-airi/core-agent'
