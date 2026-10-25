@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest'
 
-import { getMedicalGateReply, medicalGateReply, medicalGateUrgentReply } from './medical-gate'
+import { classifyRules } from './classify-rules'
+import { medicalGateReply, medicalGateReplyFor, medicalGateUrgentReply } from './medical-gate'
 
-describe('getMedicalGateReply', () => {
+describe('medicalGateReplyFor', () => {
   it.each([
     // A medical term returns the fixed reply, so the send never reaches the model.
     ['宝宝黄疸怎么看', medicalGateReply],
@@ -25,8 +26,8 @@ describe('getMedicalGateReply', () => {
     ['OK', null],
     ['', null],
     ['   ', null],
-  ])('classifies %j', (message, expected) => {
-    expect(getMedicalGateReply(message)).toBe(expected)
+  ])('maps the decision for %j', (message, expected) => {
+    expect(medicalGateReplyFor(classifyRules(message))).toBe(expected)
   })
 
   it('keeps the urgent reply distinct from the default one', () => {

@@ -12,6 +12,7 @@ import { nanoid } from 'nanoid'
 import { defineStore, storeToRefs } from 'pinia'
 import { computed, ref, watch } from 'vue'
 
+import { chatFormatConstraints } from '../../constants/prompts/chat-format'
 import { chatSessionsRepo } from '../../database/repos/chat-sessions.repo'
 import { captureAnalyticsEvent } from '../../libs/analytics'
 import { authedFetch } from '../../libs/auth-fetch'
@@ -122,14 +123,8 @@ export const useChatSessionStore = defineStore('chat-session', () => {
   let outboxDrainTask: Promise<void> | undefined
 
   // I know this nu uh, better than loading all language on rehypeShiki
-  const codeBlockSystemPrompt = '- For any programming code block, always specify the programming language that supported on @shikijs/rehype on the rendered markdown, eg. ```python ... ```\n'
-  const mathSyntaxSystemPrompt = `${[
-    '- Use $$...$$ for inline math.',
-    '- Use a separate multiline $$ block for each display equation.',
-    '- Use a latex fence for a list of independent one-line equations.',
-    '- Use a math fence for one multiline equation or LaTeX environment.',
-    '- Do not use single dollar signs as math delimiters.',
-  ].join('\n')}\n`
+  // The format constraints are shared with the medical consultation prompt, so
+  // they live in the prompt constants rather than here.
 
   function getCurrentUserId() {
     return userId.value || 'local'
@@ -194,7 +189,7 @@ export const useChatSessionStore = defineStore('chat-session', () => {
   }
 
   function generateInitialMessageFromPrompt(prompt: string) {
-    const content = codeBlockSystemPrompt + mathSyntaxSystemPrompt + prompt
+    const content = chatFormatConstraints + prompt
 
     return {
       role: 'system',
