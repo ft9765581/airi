@@ -1,5 +1,6 @@
 import type { Card, ccv3 } from '@proj-airi/ccc'
 
+import type { MedicalAgentConfig } from '../../libs/intent/route'
 import type { AiriCard, AiriExtension } from '../../types/airiCard'
 
 import { useLocalStorageManualReset } from '@proj-airi/stage-shared/composables'
@@ -12,6 +13,7 @@ import SystemPromptV2 from '../../constants/prompts/system-v2'
 
 import { DEFAULT_ARTISTRY_WIDGET_SPAWNING_PROMPT } from '../../constants/prompts/character-defaults'
 import { captureAnalyticsEvent } from '../../libs/analytics'
+import { normalizeMedicalAgent } from '../../libs/intent/medical-agent'
 import { useSettingsStageModel } from '../settings/stage-model'
 import { useArtistryStore } from './artistry'
 import { useConsciousnessStore } from './consciousness'
@@ -168,6 +170,45 @@ export const useAiriCardStore = defineStore('airi-card', () => {
     if (updated)
       applyActiveCardSettings()
     return updated
+  }
+
+  /**
+   * Writes the medical agent of the active card.
+   *
+   * The value is normalised here as well as on the settings form, because a card
+   * can also arrive from an imported file. `undefined` clears the entry, which
+   * puts the card back on the fixed medical reply.
+   *
+   * This stays a synchronized action, so the leader renderer owns the write and
+   * every caller awaits it.
+   */
+  async function updateActiveCardMedicalAgent(agent: MedicalAgentConfig | undefined) {
+    const cardId = activeCardId.value
+    const card = cards.value.get(cardId)
+    if (!card)
+      return false
+
+    const extension = resolveAiriExtension(card)
+    const agents = { ...extension.agents }
+    const normalized = normalizeMedicalAgent(agent)
+    if (normalized)
+      agents.medical = normalized
+    else
+      delete agents.medical
+
+    cards.value.set(cardId, {
+      ...card,
+      extensions: {
+        ...card.extensions,
+        airi: {
+          ...extension,
+          agents,
+        },
+      },
+    })
+    applyActiveCardSettings()
+
+    return true
   }
 
   /**
@@ -476,6 +517,7 @@ export const useAiriCardStore = defineStore('airi-card', () => {
     updateActiveCardDisplayModel,
     persistActiveCardModuleSelections,
     updateActiveCardSpeech,
+    updateActiveCardMedicalAgent,
     updateActiveCardVision,
     getCard,
     resetState,
@@ -520,6 +562,7 @@ export const useAiriCardStore = defineStore('airi-card', () => {
       'persistActiveCardModuleSelections',
       'updateActiveCardConsciousness',
       'updateActiveCardDisplayModel',
+      'updateActiveCardMedicalAgent',
       'updateActiveCardSpeech',
       'updateActiveCardVision',
       'updateCard',
