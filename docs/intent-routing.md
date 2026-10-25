@@ -270,6 +270,8 @@ compare -> 两者差异
 
 ## 10. 下一阶段
 
+医疗咨询分流、角色卡医疗 agent 与评测页改造的可执行设计见 [medical-consultation-routing.md](./medical-consultation-routing.md)。本文件的“不修改 `core-agent`”等限制仅适用于第二阶段，不约束新设计。下方保留当时的下一阶段设想。
+
 只有当 DeepSeek 的识别效果经过标注集验证后，才进入下一阶段：
 
 ```text
