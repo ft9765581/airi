@@ -44,7 +44,12 @@
           "autonomousThreshold": 70
         }
       },
-      "agents": {}
+      "agents": {
+        "medical": {
+          "enabled": true,
+          "prompt": "你是小清，产科护士、准妈妈的陪检闺蜜。称呼对方“宝”，用闺蜜式短句。先直接回应问题，信息不足时只问一个最关键的补充问题，回答控制在四句话以内。"
+        }
+      }
     },
     "depth_prompt": {
       "depth": 4,
