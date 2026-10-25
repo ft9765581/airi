@@ -1028,4 +1028,57 @@ describe('chat store contract', () => {
     })
     expect(ensureSessionMock).toHaveBeenCalledWith('session-forked')
   })
+
+  // ROOT CAUSE:
+  //
+  // The medical gate ran before `runtime.ingest()`, so it could not see the
+  // queue, and `executeSend()` threw "No active chat provider or model
+  // configured" before the gate was reached. A fixed emergency answer therefore
+  // needed a configured model.
+  //
+  // The branch is now decided inside the queue, after every earlier turn of the
+  // session is stored, and the provider is resolved only for a turn that reaches
+  // the model.
+  it('answers a medical message with fixed copy and no provider request', async () => {
+    const store = useChatStore()
+
+    const result = await store.send({ sessionId: 'session-1', text: '宝宝黄疸怎么看' })
+
+    expect(llmStreamMock).not.toHaveBeenCalled()
+    expect(getChatProviderInstanceMock).not.toHaveBeenCalled()
+    // A replied turn is isolated: it reads no source that only a model answer
+    // would need.
+    expect(ingestContextMessageMock).not.toHaveBeenCalled()
+    const assistant = sessionMessages['session-1']?.at(-1)
+    expect(assistant).toMatchObject({
+      role: 'assistant',
+      route: { kind: 'medical', reason: 'deployment_disabled' },
+    })
+    expect(assistant?.content).toContain('暂时回答不了')
+    expect(result.messages.map(message => message.role)).toEqual(['user', 'assistant'])
+  })
+
+  it('answers an emergency even when no chat provider is configured', async () => {
+    activeProviderRef.value = ''
+    activeModelRef.value = ''
+    const store = useChatStore()
+
+    await store.send({ sessionId: 'session-1', text: '大量出血，头晕' })
+
+    expect(getChatProviderInstanceMock).not.toHaveBeenCalled()
+    expect(llmStreamMock).not.toHaveBeenCalled()
+    const assistant = sessionMessages['session-1']?.at(-1)
+    expect(assistant).toMatchObject({ role: 'assistant', route: { kind: 'urgent', reason: 'red_flag' } })
+    expect(assistant?.content).toContain('120')
+  })
+
+  it('still refuses a plain chat turn without a configured provider', async () => {
+    activeProviderRef.value = ''
+    activeModelRef.value = ''
+    const store = useChatStore()
+
+    await expect(store.send({ sessionId: 'session-1', text: '今天天气不错' }))
+      .rejects
+      .toThrow('No active chat provider or model configured')
+  })
 })

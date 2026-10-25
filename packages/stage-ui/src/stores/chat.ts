@@ -1,9 +1,10 @@
-import type { ChatOrchestratorRuntimeState, ChatOrchestratorSendOptions, StreamEvent, StreamOptions } from '@proj-airi/core-agent'
+import type { ChatOrchestratorRuntimeState, ChatOrchestratorSendOptions, StreamEvent, StreamOptions, TurnRoute, TurnRouteResult } from '@proj-airi/core-agent'
 import type { WebSocketEventInputs } from '@proj-airi/server-sdk'
 import type { ChatProvider } from '@xsai-ext/providers/utils'
 import type { Message } from '@xsai/shared-chat'
 import type { SyncedPiniaRuntime } from 'pinia-plugin-synced'
 
+import type { ClassifyHistoryTurn, IntentModelOptions } from '../libs/intent/classify-model'
 import type { ChatHistoryItem, ChatToolReference, StreamingAssistantMessage } from '../types/chat'
 import type { ToolCallRerunPayload } from './tool-call-rerun'
 
@@ -23,7 +24,11 @@ import {
 } from '../libs/analytics-headers'
 import { createChatAnalyticsHooks, getProviderMode } from '../libs/analytics/events/chat'
 import { extractMessageText, isCloudSyncableMessage } from '../libs/chat-sync'
-import { getMedicalGateReply } from '../libs/intent/medical-gate'
+import { classifyMessage } from '../libs/intent/classify'
+import { classifyRules } from '../libs/intent/classify-rules'
+import { allowsMedicalGeneration, parseMedicalGenerationMode } from '../libs/intent/medical-generation'
+import { summarizePrompt } from '../libs/intent/medical-prompt'
+import { failedTurnReply, routeMedicalTurn } from '../libs/intent/turn'
 import { useLLM } from './ai/chat-llm/llm'
 import { resolveLlmTools } from './ai/chat-llm/tool-resolver'
 import { useLlmToolsStore } from './ai/chat-llm/tools'
@@ -38,6 +43,7 @@ import { useAiriCardStore } from './modules/airi-card'
 import { useAutonomousArtistryStore } from './modules/artistry-autonomous'
 import { useConsciousnessStore } from './modules/consciousness'
 import { useWebSearchStore } from './modules/web-search'
+import { useProviderStore } from './providers/provider'
 import { executeToolCallRerun } from './tool-call-rerun'
 
 interface ForkOptions {
@@ -158,6 +164,27 @@ export const useChatStore = defineStore('chat', () => {
   const { streamingMessage } = storeToRefs(chatStream)
 
   const sending = shallowRef(false)
+  /**
+   * Whether this build may generate medical answers.
+   *
+   * The card opt-in says a card is willing; this switch says the deployment
+   * evaluated the classifier. It defaults to `off`, so an unevaluated build
+   * keeps the fixed reply.
+   */
+  const medicalGenerationEnabled = allowsMedicalGeneration(
+    parseMedicalGenerationMode(import.meta.env.VITE_MEDICAL_GENERATION),
+    { isDevelopment: import.meta.env.DEV },
+  )
+
+  /**
+   * The branch of the turn in flight per session.
+   *
+   * A failed medical generation ends with fixed copy instead of an error bubble,
+   * which needs to know what the turn was. `routeTurn` writes it, `executeSend`
+   * clears it before the next attempt, so a stale branch cannot colour a later
+   * failure.
+   */
+  const lastRouteBySession = new Map<string, TurnRoute>()
   const activeSendSessionId = shallowRef<string>()
   const activeStreamingMessage = shallowRef<StreamingAssistantMessage>()
   const pendingQueuedSendCount = shallowRef(0)
@@ -298,6 +325,7 @@ export const useChatStore = defineStore('chat', () => {
     getActiveSessionId: () => activeSessionId.value,
     getActiveProvider: () => activeProvider.value,
     getSystemPromptSupplement: () => llmToolsetPromptsStore.activeToolsetPrompt,
+    routeTurn,
     runtimeContextProviders: [
       createMinecraftContext,
       createUserProfileContext,
@@ -353,51 +381,106 @@ export const useChatStore = defineStore('chat', () => {
   })
 
   /**
-   * Answers a medical question with a fixed reply instead of a model call.
+   * Resolves the chat provider for one turn that reaches the model.
    *
-   * Returns `true` when the message was answered here, so the caller must stop.
-   * Every send entry shares this helper: the chat text box goes through
-   * `executeSend`, while the voice pipeline and the devtools playground go
-   * through `ingest`. A second copy would let the two paths decide differently.
+   * It runs after the router decided the branch, so an emergency or a fixed
+   * reply still works on a deployment that has no provider configured.
    */
-  function appendMedicalGateReply(sessionId: string, message: string): boolean {
-    const gateReply = getMedicalGateReply(message)
-    if (!gateReply)
-      return false
+  async function resolveActiveChat(): Promise<{ model: string, chatProvider: ChatProvider }> {
+    const providerId = activeProvider.value
+    const model = activeModel.value
+    if (!providerId || !model)
+      throw new Error('No active chat provider or model configured')
 
-    const createdAt = Date.now()
+    const chatProvider = await consciousnessStore.getChatProviderInstance(providerId)
+    if (!chatProvider)
+      throw new Error(`Failed to resolve chat provider "${providerId}"`)
 
-    chatSession.appendSessionMessage(sessionId, {
-      role: 'user',
-      content: message,
-      createdAt,
-      id: nanoid(),
+    return { model, chatProvider }
+  }
+
+  /**
+   * Classifies one turn for routing.
+   *
+   * The request matches the one the evaluation page sends: reasoning off,
+   * because a classifier that thinks can spend its whole output budget before it
+   * writes the label. With no provider the classifier degrades, and the router
+   * turns that into the fallback branch instead of an error.
+   */
+  async function classifyTurnIntent(message: string, history: ChatHistoryItem[]) {
+    const providerId = activeProvider.value
+    const model = activeModel.value
+    const turns: ClassifyHistoryTurn[] = history
+      .filter(item => item.role === 'user' || item.role === 'assistant')
+      .slice(-2)
+      .map(item => ({
+        role: item.role === 'user' ? 'user' as const : 'assistant' as const,
+        content: extractMessageText(item),
+      }))
+
+    let classifier: IntentModelOptions | undefined
+    if (providerId && model) {
+      try {
+        // The provider store is read here, not at setup: a turn that never
+        // reaches the classifier must not pay for it, and the contract tests run
+        // without a DOM.
+        const providerStore = useProviderStore()
+        const provider = await providerStore.getChatProviderInstance(providerId, { reasoning: 'disabled' })
+        classifier = { request: provider.chat(model) }
+      }
+      catch {
+        // A provider that cannot be built is a classifier failure. The caller
+        // records it as a failure and answers with fixed copy.
+        classifier = undefined
+      }
+    }
+
+    const outcome = await classifyMessage({ message, mode: 'model', history: turns, model: classifier })
+    if (outcome.mode !== 'model')
+      throw new Error('The model classifier answered in another mode')
+
+    return outcome.decision
+  }
+
+  /**
+   * Decides the branch of one dequeued turn.
+   *
+   * The rules always run: urgency is a rule decision and the rules are free. The
+   * model classifier runs only when this build may generate medical answers, so
+   * the default deployment adds no request to any turn.
+   */
+  async function routeTurn({ sessionId, message, history }: { sessionId: string, message: string, history: ChatHistoryItem[] }): Promise<TurnRouteResult | undefined> {
+    const result = await routeMedicalTurn({
+      rules: classifyRules(message),
+      classify: () => classifyTurnIntent(message, history),
+      agent: cardStore.activeCard?.extensions?.airi?.agents?.medical,
+      allowGeneration: medicalGenerationEnabled,
     })
-    chatSession.appendSessionMessage(sessionId, {
-      role: 'assistant',
-      content: gateReply,
-      slices: [],
-      tool_results: [],
-      createdAt,
-      id: nanoid(),
+
+    // Kept per session so a failed generation can end with the copy that fits
+    // the branch instead of an error bubble.
+    lastRouteBySession.set(sessionId, result.route)
+
+    // One metadata line per turn. The chat badge arrives in C2, so until then
+    // this is how a tester sees which branch answered: `answer: model` means the
+    // consultation model wrote the reply, `fixed` means fixed copy. No message
+    // text reaches the console.
+    console.info('[medical-consultation] route', {
+      kind: result.route.kind,
+      reason: result.route.reason,
+      answer: result.reply ? 'fixed' : 'model',
+      prompt: result.systemPrompt ? summarizePrompt(result.systemPrompt) : undefined,
     })
 
-    // Length only. This line answers "did the gate fire at all" without
-    // putting a medical question into the console.
-    console.info('[medical-gate] blocked', message.length)
-
-    return true
+    return result
   }
 
   async function ingest(
     sendingMessage: string,
-    options: ChatOrchestratorSendOptions,
+    options?: ChatOrchestratorSendOptions,
     targetSessionId?: string,
   ) {
-    if (appendMedicalGateReply(targetSessionId ?? activeSessionId.value, sendingMessage))
-      return
-
-    return runtime.ingest(sendingMessage, options, targetSessionId)
+    return runtime.ingest(sendingMessage, options ?? { resolveChat: resolveActiveChat }, targetSessionId)
   }
 
   function collectToolReferences(sessionId: string, selectedTools: ChatToolReference[] = []): ChatToolReference[] {
@@ -424,32 +507,49 @@ export const useChatStore = defineStore('chat', () => {
     })
   }
 
+  /**
+   * Ends a failed medical turn with the fixed reply instead of an error bubble.
+   *
+   * A failed consultation is still an answer the user can act on, and the reason
+   * stays in telemetry. Returns undefined for every other branch, so those keep
+   * the error message.
+   */
+  function appendTurnFailureReply(sessionId: string, error: unknown): ChatSendResult | undefined {
+    const route = lastRouteBySession.get(sessionId)
+    const reply = failedTurnReply(route)
+    if (!reply || !chatSession.getSessionMessagesIfLoaded(sessionId))
+      return undefined
+
+    const message: StreamingAssistantMessage = {
+      role: 'assistant',
+      content: reply,
+      slices: [],
+      tool_results: [],
+      createdAt: Date.now(),
+      id: nanoid(),
+      route,
+    }
+    chatSession.appendSessionMessage(sessionId, message)
+
+    // Type and length only. The decision text never reaches the console.
+    console.warn('[medical-consultation] generation failed, wrote the fixed reply', errorMessageFrom(error)?.slice(0, 120))
+
+    return { messages: [structuredClone(toRaw(message))], sessionId }
+  }
+
   async function executeSend(payload: ChatSendPayload): Promise<ChatSendResult> {
-    const providerId = activeProvider.value
-    const modelId = activeModel.value
-    if (!providerId || !modelId)
-      throw new Error('No active chat provider or model configured')
+    // A branch left by an earlier attempt must not colour this one.
+    lastRouteBySession.delete(payload.sessionId)
 
     if (!await chatSession.loadSession(payload.sessionId))
       throw new Error('Failed to load the target chat session')
 
     const messageCount = chatSession.getSessionMessages(payload.sessionId).length
 
-    if (appendMedicalGateReply(payload.sessionId, payload.text)) {
-      const gatedMessages = chatSession.getSessionMessagesIfLoaded(payload.sessionId) ?? []
-      return {
-        messages: gatedMessages.slice(messageCount).map(message => structuredClone(toRaw(message))),
-        sessionId: payload.sessionId,
-      }
-    }
-
-    const chatProvider = await consciousnessStore.getChatProviderInstance(providerId)
-    if (!chatProvider)
-      throw new Error(`Failed to resolve chat provider "${providerId}"`)
-
+    // The provider is resolved inside the queue, after the router decided the
+    // branch, so an emergency answer or a fixed reply needs no model at all.
     await runtime.ingest(payload.text, {
-      model: modelId,
-      chatProvider,
+      resolveChat: resolveActiveChat,
       attachments: payload.attachments,
       input: payload.input,
       toolReferences: payload.tools,
@@ -479,6 +579,10 @@ export const useChatStore = defineStore('chat', () => {
       return await executeSend(payload)
     }
     catch (error) {
+      const failureReply = appendTurnFailureReply(payload.sessionId, error)
+      if (failureReply)
+        return failureReply
+
       appendSendError(payload.sessionId, error)
       throw error
     }
@@ -531,6 +635,7 @@ export const useChatStore = defineStore('chat', () => {
 
   /** Clears one session and stops runtime work that still belongs to it. */
   function cleanup(sessionId: string) {
+    lastRouteBySession.delete(sessionId)
     chatSession.cleanupMessages(sessionId)
     chatContext.resetContexts()
     runtime.cancelPendingSends(sessionId)
@@ -539,6 +644,7 @@ export const useChatStore = defineStore('chat', () => {
 
   /** Cancels queued work before permanently removing its owning session. */
   function deleteSession(sessionId: string): Promise<void> {
+    lastRouteBySession.delete(sessionId)
     runtime.cancelPendingSends(sessionId)
     return chatSession.deleteSession(sessionId)
   }
