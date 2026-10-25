@@ -13,7 +13,6 @@ import { ViewControlSlider, WidgetStage } from '@proj-airi/stage-ui/components/s
 import { useAudioRecorder } from '@proj-airi/stage-ui/composables/audio/audio-recorder'
 import { useVAD } from '@proj-airi/stage-ui/stores/ai/models/vad'
 import { useChatStore } from '@proj-airi/stage-ui/stores/chat'
-import { useConsciousnessStore } from '@proj-airi/stage-ui/stores/modules/consciousness'
 import { useHearingSpeechInputPipeline } from '@proj-airi/stage-ui/stores/modules/hearing'
 import { useSettings, useSettingsAudioDevice } from '@proj-airi/stage-ui/stores/settings'
 import { breakpointsTailwind, useBreakpoints, useMouse } from '@vueuse/core'
@@ -63,8 +62,6 @@ const { discardRecord, startRecord, stopRecord, onStopRecord } = useAudioRecorde
 const hearingPipeline = useHearingSpeechInputPipeline()
 const { removeStreamingTranscriptionConsumer, stopStreamingTranscription, transcribeForMediaStream, transcribeForRecording } = hearingPipeline
 const { supportsStreamInput } = storeToRefs(hearingPipeline)
-const consciousnessStore = useConsciousnessStore()
-const { activeProvider: activeChatProvider, activeModel: activeChatModel } = storeToRefs(consciousnessStore)
 const chatStore = useChatStore()
 
 /** Identifies this page in the shared streaming transcription session. */
@@ -91,14 +88,10 @@ async function sendVoiceInputTextToChat(text: string | undefined) {
     return
 
   try {
-    const providerId = activeChatProvider.value
-    const model = activeChatModel.value
-    if (!providerId || !model)
-      return
-
-    const provider = await consciousnessStore.getChatProviderInstance(providerId)
-
-    await chatStore.ingest(text, { model, chatProvider: provider })
+    // The chat store resolves the provider after the turn is routed. Resolving it
+    // here would make the voice path fail before the router could answer an
+    // emergency with fixed copy.
+    await chatStore.ingest(text)
   }
   catch (error) {
     console.error('Failed to send chat from voice:', error)
