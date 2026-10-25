@@ -12,7 +12,7 @@ import { useConsciousnessStore } from '@proj-airi/stage-ui/stores/modules/consci
 import { useProviderConfigStore } from '@proj-airi/stage-ui/stores/providers/config'
 import { BasicTextarea, Button } from '@proj-airi/ui'
 import { useLocalStorage } from '@vueuse/core'
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 
 /**
  * Internal comparison page for the intent classifiers.
@@ -56,7 +56,16 @@ const running = ref(false)
 const evaluating = ref(false)
 const failure = ref<string>()
 const result = ref<ClassifyResult>()
-const report = ref<EvaluationReport>()
+
+/**
+ * The last report, kept across a reload.
+ *
+ * A run over 62 samples takes half a minute with the model, so losing the table
+ * to a page refresh wastes the run. The timestamp is stored beside it so a
+ * stale table is not read as a fresh one.
+ */
+const report = useLocalStorage<EvaluationReport | undefined>('devtools/intent-routing/last-report', undefined)
+const reportAt = useLocalStorage<number>('devtools/intent-routing/last-report-at', 0)
 const records = ref<TestRecord[]>([])
 
 /**
@@ -186,6 +195,7 @@ async function runEvaluation() {
       mode: mode.value,
       model: resolveModelOptions(),
     })
+    reportAt.value = Date.now()
   }
   catch (error) {
     failure.value = errorMessageFrom(error) ?? '评测失败'
@@ -194,6 +204,18 @@ async function runEvaluation() {
     evaluating.value = false
   }
 }
+
+/**
+ * Fills the table on a first visit.
+ *
+ * Only the rule classifier runs here: it costs nothing, so the page opens on
+ * real numbers instead of an empty panel. A stored report is left alone, so a
+ * model run is not replaced by a rule run just because the page reloaded.
+ */
+onMounted(() => {
+  if (isDevelopment && !report.value)
+    void runEvaluation()
+})
 
 function overviewMetrics() {
   const current = report.value
@@ -453,6 +475,9 @@ function overviewMetrics() {
       <template v-if="report">
         <h2 :class="['text-base font-600']">
           测试集结果 · {{ report.total }} 条 · 模式 {{ report.mode }}
+          <span :class="['text-xs font-400 text-neutral-500 dark:text-neutral-400']">
+            · 上次运行 {{ reportAt ? new Date(reportAt).toLocaleTimeString() : '未知' }}
+          </span>
         </h2>
 
         <div
