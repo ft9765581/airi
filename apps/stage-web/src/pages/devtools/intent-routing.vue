@@ -797,4 +797,12 @@ function overviewMetrics() {
 name: IntentRoutingDevtools
 meta:
   layout: settings
+  # Puts the page on the settings index. `/settings` builds its list from routes
+  # that carry this flag, sorted by `order`, so a large order keeps a development
+  # tool after the real settings sections.
+  settingsEntry: true
+  order: 99
+  title: 意图识别评测
+  description: 对比规则和 DeepSeek 对同一批句子的医学判定
+  icon: i-solar:chart-2-bold-duotone
 </route>
