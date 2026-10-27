@@ -1,6 +1,7 @@
 import type { ContextMessage, RuntimeContextProviderInput } from '@proj-airi/core-agent'
 
 import type { KnowledgeBaseRecord } from '../../../libs/knowledge-base'
+import type { KnowledgeBaseScope } from '../../settings/knowledge-base'
 
 import { ContextUpdateStrategy } from '@proj-airi/server-sdk'
 import { nanoid } from 'nanoid'
@@ -10,17 +11,18 @@ import { useSettingsKnowledgeBase } from '../../settings/knowledge-base'
 
 const KNOWLEDGE_BASE_CONTEXT_ID = 'system:knowledge-base'
 
-/** The maximum records one send carries, across every knowledge base. */
+/** The maximum records one turn carries, across every knowledge base. */
 const maxRecords = 5
-/** The maximum characters one send carries, across every knowledge base. */
+/** The maximum characters one turn carries, across every knowledge base. */
 const maxCharacters = 4000
 /**
- * How long a send waits for one knowledge base.
+ * How long a turn waits for the knowledge bases.
  *
  * The retrieval runs before the prompt is composed, so a slow service delays
- * the answer. A send that waits past this limit proceeds without the records.
+ * the answer. A turn that waits past this limit proceeds without the records
+ * instead of failing.
  */
-const sendTimeoutMs = 3000
+const retrievalTimeoutMs = 3000
 
 /** A record together with the knowledge base that returned it. */
 interface RetrievedRecord {
@@ -89,20 +91,28 @@ function formatContextText(records: RetrievedRecord[]): string {
 }
 
 /**
- * Injects the knowledge base records that match the user question.
+ * Reads the records one flow gets from the knowledge bases it may use.
  *
- * A retrieval failure adds no context and does not stop the send, because the
- * knowledge base is side information. The settings page reports the failure to
- * the user instead.
+ * Each caller names its own flow, so a connection answers exactly one of them.
+ * Ordinary chat asks through the provider below; the medical branch asks from
+ * the router, because an isolated turn has no providers.
+ *
+ * The connection list is read here, not captured earlier, because the settings
+ * page can change it between two turns.
+ *
+ * @example
+ * await retrieveKnowledgeBaseContext('宝宝黄疸怎么看', 'medical')
+ * // => { contextId: 'system:knowledge-base', text: 'The block below holds…' } | null
  */
-export async function createKnowledgeBaseContext(
-  input: RuntimeContextProviderInput,
+export async function retrieveKnowledgeBaseContext(
+  query: string,
+  scope: KnowledgeBaseScope,
 ): Promise<ContextMessage | null> {
-  const query = input.message.trim()
-  if (!query)
+  const trimmed = query.trim()
+  if (!trimmed)
     return null
 
-  const connections = useSettingsKnowledgeBase().enabledConnections
+  const connections = useSettingsKnowledgeBase().connectionsFor(scope)
   if (!connections.length)
     return null
 
@@ -111,9 +121,9 @@ export async function createKnowledgeBaseContext(
       baseUrl: connection.baseUrl,
       apiKey: connection.apiKey,
       knowledgeBaseId: connection.knowledgeBaseId,
-      query,
+      query: trimmed,
       topK: maxRecords,
-      timeoutMs: sendTimeoutMs,
+      timeoutMs: retrievalTimeoutMs,
     })
 
     if (!response.ok && import.meta.env.DEV) {
@@ -143,4 +153,15 @@ export async function createKnowledgeBaseContext(
     text,
     createdAt: Date.now(),
   }
+}
+
+/**
+ * Contributes the ordinary-chat records of one send.
+ *
+ * The runtime runs this for every chat turn. It reads only the connections the
+ * user marked for ordinary chat, so a medical-only knowledge base never adds a
+ * retrieval request to small talk.
+ */
+export function createKnowledgeBaseContext(input: RuntimeContextProviderInput): Promise<ContextMessage | null> {
+  return retrieveKnowledgeBaseContext(input.message, 'chat')
 }

@@ -1,6 +1,8 @@
 import { useLocalStorageManualReset } from '@proj-airi/stage-shared/composables'
 import { defineStore } from 'pinia'
-import { computed } from 'vue'
+
+/** The chat flow a connection answers. */
+export type KnowledgeBaseScope = 'chat' | 'medical'
 
 /** One external knowledge base connection. */
 export interface KnowledgeBaseConnection {
@@ -23,6 +25,16 @@ export interface KnowledgeBaseConnection {
   knowledgeBaseId: string
   /** A disabled connection stays in the list, but no send uses it. */
   enabled: boolean
+  /**
+   * The flow this connection answers.
+   *
+   * NOTICE:
+   * A connection saved before this switch existed has no value. It keeps
+   * answering ordinary chat, which was the only flow that read the list when it
+   * was written. Remove the default in `connectionScope` once the settings page
+   * has written a scope for every stored connection.
+   */
+  scope?: KnowledgeBaseScope
 }
 
 /** The values a user typed in the connection form. */
@@ -31,13 +43,29 @@ export interface KnowledgeBaseDraft {
   baseUrl: string
   apiKey: string
   knowledgeBaseId: string
+  scope: KnowledgeBaseScope
+}
+
+/**
+ * The scope a stored connection answers.
+ *
+ * The default exists for connections written before the switch. Only ordinary
+ * chat read the list then, so that is the flow they were configured for.
+ *
+ * @example
+ * connectionScope({ ...connection, id: '1', name: 'x', baseUrl: 'y', apiKey: '', knowledgeBaseId: 'z', enabled: true })
+ * // => 'chat'
+ */
+export function connectionScope(connection: KnowledgeBaseConnection): KnowledgeBaseScope {
+  return connection.scope ?? 'chat'
 }
 
 /**
  * The knowledge base connections of this browser.
  *
- * The settings page owns the writes. The retrieval context provider reads
- * `enabledConnections` on every send.
+ * The settings page owns the writes. A flow reads `connectionsFor` on the turn
+ * that needs a retrieval: ordinary chat through a runtime context provider, the
+ * medical branch through the router.
  */
 export const useSettingsKnowledgeBase = defineStore('settings-knowledge-base', () => {
   const connections = useLocalStorageManualReset<KnowledgeBaseConnection[]>(
@@ -46,16 +74,19 @@ export const useSettingsKnowledgeBase = defineStore('settings-knowledge-base', (
   )
 
   /**
-   * The connections a send can use.
+   * The connections one flow may use.
    *
    * A connection without an address or a knowledge id cannot answer a
-   * retrieval, so the filter drops it before the send reaches the network.
+   * retrieval, so the filter drops it before the turn reaches the network.
    */
-  const enabledConnections = computed(() => connections.value.filter(connection =>
-    connection.enabled
-    && !!connection.baseUrl.trim()
-    && !!connection.knowledgeBaseId.trim(),
-  ))
+  function connectionsFor(scope: KnowledgeBaseScope): KnowledgeBaseConnection[] {
+    return connections.value.filter(connection =>
+      connection.enabled
+      && connectionScope(connection) === scope
+      && !!connection.baseUrl.trim()
+      && !!connection.knowledgeBaseId.trim(),
+    )
+  }
 
   function resetState() {
     connections.reset()
@@ -63,7 +94,7 @@ export const useSettingsKnowledgeBase = defineStore('settings-knowledge-base', (
 
   return {
     connections,
-    enabledConnections,
+    connectionsFor,
     resetState,
   }
 })

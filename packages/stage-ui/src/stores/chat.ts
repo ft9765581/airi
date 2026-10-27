@@ -25,7 +25,7 @@ import {
 import { createChatAnalyticsHooks, getProviderMode } from '../libs/analytics/events/chat'
 import { extractMessageText, isCloudSyncableMessage } from '../libs/chat-sync'
 import { classifyMessage } from '../libs/intent/classify'
-import { classifyRules } from '../libs/intent/classify-rules'
+import { classifyRules, inheritedRedFlag } from '../libs/intent/classify-rules'
 import { allowsMedicalGeneration, parseMedicalGenerationMode } from '../libs/intent/medical-generation'
 import { summarizePrompt } from '../libs/intent/medical-prompt'
 import { failedTurnReply, routeMedicalTurn } from '../libs/intent/turn'
@@ -33,7 +33,7 @@ import { useLLM } from './ai/chat-llm/llm'
 import { resolveLlmTools } from './ai/chat-llm/tool-resolver'
 import { useLlmToolsStore } from './ai/chat-llm/tools'
 import { useLlmToolsetPromptsStore } from './ai/chat-llm/toolset-prompts'
-import { createKnowledgeBaseContext, createLongTermMemoryContext, createMinecraftContext, createUserProfileContext } from './chat/context-providers'
+import { createKnowledgeBaseContext, createLongTermMemoryContext, createMinecraftContext, createUserProfileContext, retrieveKnowledgeBaseContext } from './chat/context-providers'
 import { useChatContextStore } from './chat/context-store'
 import { rememberTurn } from './chat/remember-turn'
 import { useChatSessionStore } from './chat/session-store'
@@ -367,12 +367,23 @@ export const useChatStore = defineStore('chat', () => {
         })
       }
     },
-    onUserTurnReady: ({ messageText, sessionMessages }) => {
+    onUserTurnReady: ({ sessionId, messageText, sessionMessages }) => {
+      // A routed-away turn belongs to the medical branch, not to the ordinary
+      // chat side effects. Starting the autonomous artistry task here would let a
+      // medical question paint on the stage.
+      if (isRoutedAwayFromChat(sessionId))
+        return
+
       const autonomousTarget = cardStore.activeCard?.extensions?.airi?.modules?.artistry?.autonomousTarget || 'user'
       if (autonomousTarget === 'user')
         void artistryAutonomousStore.runArtistTask(messageText, toProviderHistory(sessionMessages))
     },
-    onAssistantTurnReady: ({ messageText, sessionMessages }) => {
+    onAssistantTurnReady: ({ sessionId, messageText, sessionMessages }) => {
+      // The ordinary long-term memory and the autonomous task both describe what
+      // this character talks about in chat. A medical answer is not that.
+      if (isRoutedAwayFromChat(sessionId))
+        return
+
       const artistry = cardStore.activeCard?.extensions?.airi?.modules?.artistry
       if (artistry?.autonomousEnabled && artistry?.autonomousTarget === 'assistant')
         void artistryAutonomousStore.runArtistTask(messageText, toProviderHistory(sessionMessages))
@@ -450,11 +461,23 @@ export const useChatStore = defineStore('chat', () => {
    * the default deployment adds no request to any turn.
    */
   async function routeTurn({ sessionId, message, history }: { sessionId: string, message: string, history: ChatHistoryItem[] }): Promise<TurnRouteResult | undefined> {
+    // The turn immediately before this one is the only place a danger signal can
+    // carry over from: an alarm raised earlier was already answered. Judged
+    // alone, "现在还是这样" carries no danger word, so without this the reader
+    // would get a consultation answer instead of the emergency instruction.
+    const previousUserTurn = history.filter(item => item.role === 'user').slice(-1)[0]
+    const inherited = inheritedRedFlag(message, previousUserTurn ? extractMessageText(previousUserTurn) : undefined)
+    const rules = inherited ?? classifyRules(message)
+
     const result = await routeMedicalTurn({
-      rules: classifyRules(message),
+      rules,
       classify: () => classifyTurnIntent(message, history),
       agent: cardStore.activeCard?.extensions?.airi?.agents?.medical,
       allowGeneration: medicalGenerationEnabled,
+      // A medical turn is isolated, so it cannot use the runtime providers. It
+      // asks the medical-scoped knowledge bases here instead, and only after the
+      // router decided this turn really generates an answer.
+      retrieveContext: () => retrieveKnowledgeBaseContext(message, 'medical'),
     })
 
     // Kept per session so a failed generation can end with the copy that fits
@@ -475,12 +498,29 @@ export const useChatStore = defineStore('chat', () => {
     return result
   }
 
+  /** True when this turn took a branch other than ordinary chat. */
+  function isRoutedAwayFromChat(sessionId: string) {
+    const kind = lastRouteBySession.get(sessionId)?.kind
+    return kind === 'medical' || kind === 'urgent' || kind === 'fallback'
+  }
+
   async function ingest(
     sendingMessage: string,
     options?: ChatOrchestratorSendOptions,
     targetSessionId?: string,
   ) {
-    return runtime.ingest(sendingMessage, options ?? { resolveChat: resolveActiveChat }, targetSessionId)
+    const sessionId = targetSessionId ?? activeSessionId.value
+    try {
+      return await runtime.ingest(sendingMessage, options ?? { resolveChat: resolveActiveChat }, sessionId)
+    }
+    catch (error) {
+      // The voice pipeline and the devtools playground enter here, so this path
+      // needs the same failure handling as `send`.
+      if (handleSendFailure(sessionId, error))
+        return
+
+      throw error
+    }
   }
 
   function collectToolReferences(sessionId: string, selectedTools: ChatToolReference[] = []): ChatToolReference[] {
@@ -505,6 +545,24 @@ export const useChatStore = defineStore('chat', () => {
       role: 'error',
       content: errorMessageFrom(error) ?? 'Unknown chat operation failure',
     })
+  }
+
+  /**
+   * The one failure path for a turn, whatever entry it came from.
+   *
+   * A routed medical turn ends with the fixed reply, because a failed
+   * consultation is still something the reader can act on. Every other branch
+   * keeps the error message it has always shown.
+   *
+   * @returns the reply written, or undefined when the caller must rethrow
+   */
+  function handleSendFailure(sessionId: string, error: unknown): ChatSendResult | undefined {
+    const reply = appendTurnFailureReply(sessionId, error)
+    if (reply)
+      return reply
+
+    appendSendError(sessionId, error)
+    return undefined
   }
 
   /**
@@ -579,11 +637,10 @@ export const useChatStore = defineStore('chat', () => {
       return await executeSend(payload)
     }
     catch (error) {
-      const failureReply = appendTurnFailureReply(payload.sessionId, error)
+      const failureReply = handleSendFailure(payload.sessionId, error)
       if (failureReply)
         return failureReply
 
-      appendSendError(payload.sessionId, error)
       throw error
     }
   }
@@ -613,7 +670,11 @@ export const useChatStore = defineStore('chat', () => {
       })
     }
     catch (error) {
-      appendSendError(payload.sessionId, error)
+      // A retried medical turn must end the same way a sent one does.
+      const failureReply = handleSendFailure(payload.sessionId, error)
+      if (failureReply)
+        return failureReply
+
       throw error
     }
   }

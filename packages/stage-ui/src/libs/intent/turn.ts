@@ -1,11 +1,11 @@
-import type { TurnRoute, TurnRouteResult } from '@proj-airi/core-agent'
+import type { ContextMessage, TurnRoute, TurnRouteResult } from '@proj-airi/core-agent'
 
 import type { IntentDecision } from './contract'
 import type { MedicalAgentConfig } from './route'
 
 import { medicalGateReply, medicalGateReplyFor, medicalGateUrgentReply } from './medical-gate'
 import { composeMedicalSystemPrompt } from './medical-prompt'
-import { resolveTurnRoute } from './route'
+import { hasUrgentSignal, resolveTurnRoute, urgentReason } from './route'
 
 /**
  * The branch of one sent turn, turned into what the runtime needs.
@@ -31,6 +31,15 @@ export interface MedicalTurnInput {
   agent?: MedicalAgentConfig
   /** Whether the deployment switch allows medical generation. */
   allowGeneration: boolean
+  /**
+   * Looks up the knowledge base records this consultation may quote.
+   *
+   * A medical turn is isolated, so it cannot use a runtime context provider. The
+   * caller supplies the lookup here, and the reply carries the result as the
+   * turn's own context. Called only when the branch really generates an answer,
+   * so a fixed reply never waits for the network.
+   */
+  retrieveContext?: () => Promise<ContextMessage | null>
 }
 
 /**
@@ -48,16 +57,18 @@ export async function routeMedicalTurn(input: MedicalTurnInput): Promise<TurnRou
     if (!reply)
       return { route: { kind: 'chat' } }
 
-    const urgent = input.rules.evidenceCodes.includes('red_flag')
+    const urgent = hasUrgentSignal(input.rules)
     return {
-      route: { kind: urgent ? 'urgent' : 'medical', reason: urgent ? 'red_flag' : 'deployment_disabled' },
+      route: { kind: urgent ? 'urgent' : 'medical', reason: urgent ? urgentReason(input.rules) : 'deployment_disabled' },
       reply,
     }
   }
 
-  // A danger signal must not wait for a classifier that could disagree.
-  if (input.rules.evidenceCodes.includes('red_flag'))
-    return { route: { kind: 'urgent', reason: 'red_flag' }, reply: medicalGateUrgentReply }
+  // A danger signal must not wait for a classifier that could disagree. An
+  // inherited signal counts: the reader already reported the symptom on the
+  // previous turn and is now saying it persists.
+  if (hasUrgentSignal(input.rules))
+    return { route: { kind: 'urgent', reason: urgentReason(input.rules) }, reply: medicalGateUrgentReply }
 
   const decision = await input.classify()
   const routed = resolveTurnRoute({ rules: input.rules, decision, agent: input.agent })
@@ -68,11 +79,23 @@ export async function routeMedicalTurn(input: MedicalTurnInput): Promise<TurnRou
   if (!routed.useAgent)
     return { route: routed.route, reply: medicalGateReply }
 
+  // The records arrive as context, not as system text: they are data to quote,
+  // and the behaviour constraints above them must keep winning. A lookup that
+  // throws costs the consultation its references, not its answer.
+  let context: ContextMessage | null = null
+  try {
+    context = (await input.retrieveContext?.()) ?? null
+  }
+  catch {
+    context = null
+  }
+
   return {
     route: routed.route,
     isolate: true,
     // `useAgent` is only true when the router found a usable card prompt.
     systemPrompt: composeMedicalSystemPrompt({ persona: input.agent?.prompt ?? '' }),
+    contextMessages: context ? [context] : undefined,
   }
 }
 

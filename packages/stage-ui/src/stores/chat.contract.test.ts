@@ -48,6 +48,8 @@ const ioTracerMocks = vi.hoisted(() => {
 
 const llmStreamMock = vi.fn()
 const trackFirstMessageMock = vi.fn()
+const artistryAutonomyMock = vi.hoisted(() => vi.fn())
+const rememberTurnMock = vi.hoisted(() => vi.fn())
 const chatAnalyticsMocks = vi.hoisted(() => ({
   trackAiGeneration: vi.fn(),
   trackMessageRound: vi.fn(),
@@ -129,6 +131,7 @@ vi.mock('./chat/context-providers', () => ({
   createLongTermMemoryContext: () => undefined,
   createMinecraftContext: () => createMinecraftContextMock(),
   createUserProfileContext: () => undefined,
+  retrieveKnowledgeBaseContext: async () => null,
 }))
 
 vi.mock('./chat/context-store', () => ({
@@ -214,8 +217,14 @@ vi.mock('./modules/airi-card', () => ({
 
 vi.mock('./modules/artistry-autonomous', () => ({
   useAutonomousArtistryStore: () => ({
-    runArtistTask: vi.fn(),
+    runArtistTask: artistryAutonomyMock,
   }),
+}))
+
+// The long-term memory write is a side effect of an ordinary chat turn, so the
+// contract has to be able to observe whether it ran.
+vi.mock('./chat/remember-turn', () => ({
+  rememberTurn: rememberTurnMock,
 }))
 
 // The chat orchestrator instantiates the web-search store for its side effect
@@ -233,6 +242,8 @@ describe('chat store contract', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
     llmStreamMock.mockReset()
+    artistryAutonomyMock.mockReset()
+    rememberTurnMock.mockReset()
     trackFirstMessageMock.mockReset()
     for (const analyticsMock of Object.values(chatAnalyticsMocks))
       analyticsMock.mockReset()
@@ -1080,5 +1091,37 @@ describe('chat store contract', () => {
     await expect(store.send({ sessionId: 'session-1', text: '今天天气不错' }))
       .rejects
       .toThrow('No active chat provider or model configured')
+  })
+
+  // ROOT CAUSE:
+  //
+  // The turn hooks ran for every branch, so a medical answer was written to the
+  // ordinary long-term memory and could start the autonomous artistry task, which
+  // is what paints the stage. A medical turn is not ordinary chat.
+  it('keeps a medical turn out of ordinary chat side effects', async () => {
+    const store = useChatStore()
+
+    await store.send({ sessionId: 'session-1', text: '宝宝黄疸怎么看' })
+
+    // The turn was routed as medical, so neither side effect may run.
+    expect(rememberTurnMock).not.toHaveBeenCalled()
+    expect(artistryAutonomyMock).not.toHaveBeenCalled()
+  })
+
+  it('still records an ordinary chat turn', async () => {
+    // The previous test clears both refs, so this one restores its own provider.
+    activeProviderRef.value = 'mock-provider'
+    activeModelRef.value = 'gpt-test'
+    llmStreamMock.mockImplementationOnce(async (_model, _chatProvider, _messages, options: StreamOptions) => {
+      await options.onStreamEvent?.({ type: 'text-delta', text: 'ok' })
+      await options.onStreamEvent?.({ type: 'finish', finishReason: 'stop' })
+    })
+    const store = useChatStore()
+
+    await store.send({ sessionId: 'session-1', text: '今天天气不错' })
+
+    // Assert on the content, because a queued turn from an earlier test can still
+    // settle during this one and add a call of its own.
+    expect(rememberTurnMock).toHaveBeenCalledWith(expect.objectContaining({ assistantText: 'ok' }))
   })
 })

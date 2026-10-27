@@ -26,7 +26,7 @@ import { useWebSearchStore } from '../stores/modules/web-search'
 import { useSettingsAnalytics } from '../stores/settings/analytics'
 import { useSettingsBeatSync } from '../stores/settings/beat-sync'
 import { useSettingsGeneral } from '../stores/settings/general'
-import { useSettingsKnowledgeBase } from '../stores/settings/knowledge-base'
+import { connectionScope, useSettingsKnowledgeBase } from '../stores/settings/knowledge-base'
 import { useSettingsSpine } from '../stores/settings/spine'
 import { useSettingsTheme } from '../stores/settings/theme'
 import { useSettingsUserProfile } from '../stores/settings/user-profile'
@@ -139,6 +139,9 @@ export function readKnowledgeBaseBody(): Omit<NonNullable<KnowledgeBody>, 'updat
       apiKey: clip(connection.apiKey, 4_096),
       knowledgeBaseId: clip(connection.knowledgeBaseId, 256),
       enabled: connection.enabled,
+      // Written explicitly so another device reads the same flow even though
+      // the stored form still allows a connection without one.
+      scope: connectionScope(connection),
     })),
   }
 }

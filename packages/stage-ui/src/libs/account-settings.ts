@@ -68,6 +68,8 @@ export interface AccountSections {
       apiKey: string
       knowledgeBaseId: string
       enabled: boolean
+      /** The flow the connection answers. Absent on a server that predates it. */
+      scope?: 'chat' | 'medical'
     }>
   }
   connection?: {
