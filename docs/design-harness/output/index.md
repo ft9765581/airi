@@ -1,5 +1,7 @@
 # output
 
+标签：设计完成 · 产出层索引 · 开发未开始
+
 - [系统设计](system.md)
 - [文件结构](file-structure.md)
 - [实施顺序](implementation-plan.md)

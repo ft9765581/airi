@@ -1,5 +1,7 @@
 # board
 
+标签：设计完成 · 对比板索引 · 开发未开始
+
 Each md is a board: a comparison set or any scratch reasoning, no schema. Boards may
 reference the three layers for material; the layers never reference a board — a
 board's conclusion is distilled into an idea card before it enters the flow.

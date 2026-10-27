@@ -1,5 +1,7 @@
 # Desktop Lane Status
 
+标签：过时 · 状态备忘 · 2026-05-08 另一分支快照
+
 Updated: 2026-05-08
 
 This note is a factual status memo for the current desktop lane work in this recut branch. It is intentionally narrow: only current state, actual blockers, and what should happen now vs later.

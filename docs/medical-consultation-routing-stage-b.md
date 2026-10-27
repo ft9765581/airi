@@ -1,5 +1,7 @@
 # 医疗咨询分流：B 阶段实施步骤
 
+标签：开发中 · 实施步骤 · B 阶段
+
 状态：部分实现，待补审查问题并验收。目标与完成标准见 [medical-consultation-routing.md](./medical-consultation-routing.md) 第 3、5、8 节。本文件只拆解实施顺序、每一步的接口变化和验收方式。
 
 ## 0. 实施约定
@@ -187,3 +189,4 @@ type ChatOrchestratorSendOptions = ChatOrchestratorCommonSendOptions & ChatProvi
 - 医疗消息标识、设置页、角色卡导入导出保留 `agents`：属于 C 阶段。
 - 单轮/多轮试跑、批量评测、错例回填：属于 D 阶段。
 - 发布门槛复测与验收集：属于 A 阶段，当前暂停。
+- Embedding 分类的对照评测、组合策略与接入门槛见 [intent-routing.md](./intent-routing.md) 第 4—8 节。它不改变本文件 B1—B4 的当前接线。

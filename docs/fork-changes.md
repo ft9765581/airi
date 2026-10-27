@@ -1,5 +1,7 @@
 # 本 fork 相对上游的改动台账
 
+标签：维护中 · 改动台账
+
 这份文档记录「清锡医疗」分支相对 `moeru-ai/airi` 上游的全部偏离。
 目的只有一个：合上游时按这份清单逐条处理，而不是翻 `git diff` 猜意图。
 
@@ -557,6 +559,59 @@ better-auth 1.4.22 自带该插件，它的 `signIn.phoneNumber` 支持密码模
 
 - **连接仍存在浏览器 localStorage**：每个患者都要在设置里手配一遍。
   要上线需像 provider 那样自动下发，否则患者不会自己找到这个开关。
+
+### 2026-10-27 复测（同一个 `KNOWLEDGE_BASE_URL`）
+
+先说结论：**检索链路（浏览器 → 代理 → 知识服务）是通的，问题在知识服务这台机器上**。
+
+- **`error_code:2001` 是存在的。** 用文档里的随机 UUID `11111111-…` 打过去返回
+  `200 {"error_code":2001,"error_msg":"知识库不存在"}`。之前记录「没有 2001」是复测脚本的错：
+  它只读 `records`，把错误体当成了空结果。浏览器客户端不受影响 —— `requestKnowledgeBaseRetrieval`
+  要求 `error_code` 缺省才算 `ok`。
+- **鉴权与契约一致**：不带头 → `401 / 1001`；错 key（含本地模型的 `sk-local`）→ `403 / 1002`。
+  本部署的 `KNOWLEDGE_BASE_API_KEY` 是 `POT…` 开头、43 字符的工具令牌，与契约里的 `DIFY_TOOL_TOKEN` 同形。
+- **`GET /api/triage-chat/config` 在公网返回 404**，而 `/api/health` 是 200。
+  该端点是新提交里新增的，404 说明**前端已换新构建、后端进程还是旧的**。
+  这解释了所有对不上的现象：旧进程既没有新的存在性检查路径，也读不到新一轮数据卷。
+- **同一台服务上，两条检索路由给出不同答案**（2026-10-27 实测，同一 knowledge_id、同一句查询）：
+
+  | 端点 | 查询「小儿发热」 |
+  | --- | --- |
+  | `GET /api/demo/knowledge-bases/e9e4a2f8-…/search?q=…` | `total: 8`，mode hybrid、embedding `text-embedding-v4`；分数 0.629 / 0.612 / 0.478 / 0.463 / 0.452 / 0.428 / 0.411 / 0.401 |
+  | `POST /api/dify/retrieval` | `{"records":[]}`（阈值 0 与 0.5 都是 0 条） |
+
+  8 条里有 2 条高于新代码的 `MIN_SEARCH_SCORE = 0.5`，所以「被 0.5 下限全部过滤」解释不通；
+  更可能是运行中的 dify 路由挂在旧进程/旧连接上，读不到新数据卷。配合下面 `triage-chat/config` 的 404，
+  指向同一个结论：**前端换了新构建、后端进程没重启**。
+- **有已发布内容的库检索不到**：`e9e4a2f8-…`（妇幼导诊图谱，493 段）用
+  `小儿发热` / `新生儿发热` / `妇幼导诊`，`top_k` 4 与 50，`score_threshold` 0 与 0.5，全部 `records=0`。
+  `kb-demo-*` 是每次请求自动创建的种子空库，拿它测必然为空，也不能用来判断 id 是否有效。
+- **阈值会被服务端抬高**：新代码里有 `MIN_SEARCH_SCORE = 0.5` 并覆盖调用方传入的 `score_threshold`。
+  浏览器发 0 与发 0.5 效果相同。这块不归智能体改，需要时找知识服务的作者确认。
+
+待办（都属于知识服务那台机器的运维，不在本仓库）：`git pull` 到含 `long_term_memory.py` 的提交；
+**重启后端进程**（前端已经换了）；`chown -R www:www /www/wwwroot/knowledge`；然后用
+`e9e4a2f8-…` 复测。代码侧不再需要改动，重启后 `.env.local` 里的 id 即可生效。
+### 临时通道：`KNOWLEDGE_BASE_PROVIDER=demo`（2026-10-27）
+
+外部知识库端点在线上返回空，而同一台服务的 demo 检索路由能返回内容（8 条，最高分 0.848）。
+为了让医疗分支现在就能拿到参考，代理由两个 provider 组成，用环境变量切换：
+
+| 变量 | 作用 |
+| --- | --- |
+| `KNOWLEDGE_BASE_PROVIDER` | `dify`（默认，外部知识库契约）或 `demo` |
+| `KNOWLEDGE_BASE_DEMO_BASE_URL` | demo 路由的基址，默认 `https://knowledge.bestmings.com/api/demo` |
+
+浏览器端的契约没有变化：仍然向 `/api/v1/knowledge-base/retrieval` 发 Dify 形状的请求，
+切换发生在服务端，所以前端和运行中的页面都不用动。
+
+`demo` 分支做三件转译：`excerpt` → `content`（空摘要的记录丢弃），`section`/`book_title` → `title` 与 `metadata`，
+并把上游固定返回的条数在本地截到调用方要的 `top_k`。上游对不存在的库回 404，这里翻成
+`{ error_code: 2001 }`，页面就能用已有的「知识库不存在」文案解释。响应体先过 Valibot，形状不认识时回 502。
+
+这个通道有三条已知限制，写在这里以免被当成正式接口：demo 路由**不需要鉴权**、**没有 CORS 头**
+（所以只能走本代理）、**没有 top_k 参数**；响应还带 `synthetic_data: true`，含义待知识服务方确认。
+等外部端点恢复，把 `KNOWLEDGE_BASE_PROVIDER` 改回 `dify`（或删掉该变量）即可，不需要改代码。
 - 上游知识库当前对所有查询返回 `{"records":[]}`（书还在、`index_status: semantic_ready`，
   但 `book_count` 从 1→0、3→1）。这是上游数据的问题，与本代理无关。
 
@@ -613,3 +668,57 @@ better-auth 1.4.22 自带该插件，它的 `signIn.phoneNumber` 支持密码模
 
 **不用 `selfDestroying` 的原因**：它激活时会 `client.navigate()` 重载所有页面，而本站每次加载
 都会重新注册 SW，两者叠加会变成无限刷新。
+
+## 21. 知识库按流程分配：常规聊天 / 医疗咨询（2026-10-26）
+
+需求：知识库连接上加一个勾选，决定这条连接服务**常规聊天**还是**医疗咨询**。一条连接只服务
+其中一条流程，患者闲聊时不会被塞进导诊卡片。
+
+### 为什么不能只靠运行时上下文提供者
+
+医疗轮次返回 `isolate: true`，而 `isolate` 的定义是「跳过所有已注册的运行时上下文提供者」。
+知识库原本正是注册在那里的，所以医疗路径此前**一条知识库记录都拿不到**，普通聊天反而能拿到。
+修法不是去掉 `isolate`（会连带把角色人格、记忆、工具一起放回来），而是让路由**自己带上下文**。
+
+| 文件 | 改动 |
+| --- | --- |
+| `packages/core-agent/src/types/chat.ts` | `TurnRouteResult` 新增 `contextMessages?: ContextMessage[]`：隔离轮次自带的上下文 |
+| `packages/core-agent/src/runtime/chat-orchestrator-runtime.ts` | 组装前把 `contextMessages` 合并进快照，与普通上下文走同一条渲染路径（仍然不读提供者） |
+| `packages/stage-ui/src/stores/settings/knowledge-base.ts` | 新增 `KnowledgeBaseScope`（`chat` / `medical`）、`connectionScope()`、`connectionsFor(scope)`；`enabledConnections` 删除 |
+| `packages/stage-ui/src/stores/chat/context-providers/knowledge-base.ts` | `retrieveKnowledgeBaseContext(query, scope)`；`createKnowledgeBaseContext` 保留给常规聊天，只读 `chat` 连接 |
+| `packages/stage-ui/src/libs/intent/turn.ts` | 医疗分支新增 `retrieveContext`，结果随 `contextMessages` 进本轮 prompt；检索抛错只丢参考、不丢回答 |
+| `packages/stage-ui/src/stores/chat.ts` | 常规聊天重新注册 provider；医疗路由传 `'medical'` |
+| `packages/stage-pages/src/pages/settings/knowledge-base/**` | 表单新增「在医疗咨询流程中使用」勾选；列表行显示该连接服务哪条流程 |
+| `packages/i18n/src/locales/{en,zh-Hans}/settings.yaml` | 新增 3 个键；其他语种留给 Crowdin |
+| `packages/stage-ui/src/libs/account-settings{,-state}.ts`、`server/apps/api/src/routes/user-runtime/schema.ts`、`server/apps/api/src/services/domain/account-sections.ts` | `scope` 随账号同步字段一起往返；服务端为可选字段 |
+
+### 行为
+
+- 医疗轮次：规则判急症 → 模型分类 → 命中医疗且角色卡有可用 `agents.medical` 时才检索；
+  固定回复、急症、兜底三种分支都不发检索请求。
+- 检索结果进入 prompt 的位置是**上下文块**，不是系统提示词：记录是「可以引用的数据」，
+  行为约束仍然压在上面。
+- 检索失败（超时 / 网络 / 服务错误）只让本轮少一份参考，回答照常生成。
+- 常规聊天：仍然每轮跑 provider，但只读 `scope: 'chat'` 的连接，没有这类连接就不发请求。
+- 设置页多一个「添加医疗知识库」入口：预填本部署的检索地址并勾选医疗分支，只剩知识库 ID 需要人填。地址来自 `VITE_KNOWLEDGE_BASE_URL`（构建时注入），手打一次就多一次打错的机会。
+- 构建默认值里多一条 `ensureMedicalKnowledgeBase()`（`apps/stage-web/src/modules/defaults.ts`）：
+  启动时若浏览器里没有指向本部署地址与知识库 ID 的医疗连接，就写入一条；已有的保持不动，
+  被访客删掉的不再加回来（用 `settings/defaults/medical-knowledge-base` 记住已加过的组合）。
+  这样患者不必先找到设置页开关，医疗分支才有参考可引用。地址与 ID 分别来自
+  `VITE_KNOWLEDGE_BASE_URL` 与 `VITE_KNOWLEDGE_BASE_ID`，缺任一个就不写。
+
+### 迁移
+
+老连接没有 `scope` 字段，`connectionScope()` 读作 `chat` —— 写它的时候只有常规聊天会读列表。
+设置页保存一次就会写入显式值。`// NOTICE:` 标在字段上，写满之后再删默认值。
+
+### 实测
+
+| 检查 | 结果 |
+| --- | --- |
+| `packages/core-agent` vitest | 29 项通过（含新增「隔离轮次携带路由上下文」） |
+| `stage-ui` 医疗路由 | 15 项通过（含 5 项知识库/失败降级） |
+| `stage-ui` 知识库 store | 4 项通过（scope 分流、停用、缺字段） |
+| `stage-ui` chat 契约 | 25 项通过 |
+| `core-agent` / `server/apps/api` typecheck | 通过 |
+| `stage-ui` typecheck | 仅剩既有的 `@proj-airi/stage-ui-live2d` 缺导出（与本改动无关） |

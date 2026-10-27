@@ -1,5 +1,7 @@
 # sources
 
+标签：设计完成 · 证据层索引 · 开发未开始
+
 ## 现状: 仓库内可复用的后端能力与缺口
 
 - [现有托管后端](repository/hosted-backend.md)

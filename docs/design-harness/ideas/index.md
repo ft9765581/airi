@@ -1,5 +1,7 @@
 # ideas
 
+标签：设计完成 · 决策层索引 · 开发未开始
+
 ## 架构: 控制首版服务数量
 
 - [扩展资源 API](extend-resource-api.md)

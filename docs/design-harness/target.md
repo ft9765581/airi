@@ -1,5 +1,7 @@
 # target — acceptance criteria for output
 
+标签：设计完成 · 验收标准 · 开发未开始
+
 The human's requirements for output are registered here; output fulfils this list,
 and every requirement is checkable. When a requirement changes, the agent re-derives
 the affected parts of output in the same turn.
