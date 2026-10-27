@@ -14,13 +14,21 @@ import { SERVER_URL } from '../server'
  * surfacing as a failed save.
  */
 
+/** One earlier turn a sample depends on. */
+export interface RemoteContextMessage {
+  role: 'user' | 'assistant'
+  content: string
+}
+
 /** One sample as the API returns it. */
 export interface RemoteIntentSample {
   id: string
   input: string
-  previous: string | null
+  /** Earlier turns in order, when the sample needs context. */
+  context?: RemoteContextMessage[] | null
   group: IntentSampleGroup
-  expected: 'medical' | 'chat'
+  /** Missing while the sample is still unlabelled: a run skips it. */
+  expected?: 'medical' | 'chat'
   labelStatus: 'unreviewed' | 'reviewed'
   source: string | null
   sampleSetVersion: number
@@ -31,9 +39,11 @@ export interface RemoteIntentSample {
 /** One sample as a client may create it. */
 export interface RemoteIntentSampleInput {
   input: string
-  previous?: string
+  /** Earlier turns in order; an assistant turn changes what the next one means. */
+  context?: RemoteContextMessage[]
   group: IntentSampleGroup
-  expected: 'medical' | 'chat'
+  /** Missing while the sample is still unlabelled: a run skips it. */
+  expected?: 'medical' | 'chat'
   labelStatus?: 'unreviewed' | 'reviewed'
   source?: string
   sampleSetVersion?: number
@@ -43,18 +53,17 @@ export interface RemoteIntentSampleInput {
 export interface RemoteRunMetrics {
   rules?: { recall?: number, falsePositive?: number, failure?: number, uncertain?: number, medicalTotal?: number, chatTotal?: number }
   model?: { recall?: number, falsePositive?: number, failure?: number, uncertain?: number, medicalTotal?: number, chatTotal?: number }
-  embedding?: { recall?: number, falsePositive?: number, failure?: number, uncertain?: number, medicalTotal?: number, chatTotal?: number }
 }
 
 /** One sample's verdicts inside a run. */
 export interface RemoteRunCase {
   sampleId: string
   input: string
-  previous?: string
-  expected: 'medical' | 'chat'
+  /** Earlier turns in order; an assistant turn changes what the next one means. */
+  context?: RemoteContextMessage[]
+  expected?: 'medical' | 'chat'
   rules?: string
   model?: string
-  embedding?: string
   disagreement?: boolean
 }
 
@@ -62,7 +71,7 @@ export interface RemoteRunCase {
 export interface RemoteIntentRun {
   id: string
   sampleSetVersion: number
-  mode: 'rules' | 'model' | 'compare' | 'embedding'
+  mode: 'rules' | 'model' | 'compare'
   status: 'running' | 'completed' | 'failed' | 'cancelled'
   configKey: string
   modelId: string | null
@@ -82,9 +91,6 @@ export interface RemoteIntentRunInput {
   configKey: string
   modelId?: string
   classifierPromptDigest?: string
-  embeddingEndpoint?: string
-  embeddingModel?: string
-  embeddingMargin?: string
   total: number
 }
 
@@ -94,6 +100,24 @@ export interface RemoteIntentRunPatch {
   metrics?: RemoteRunMetrics
   cases?: RemoteRunCase[]
   failureReason?: string
+}
+
+/** Where a collection sits in the evaluation plan. Grants no permission. */
+export type RemoteIntentCollectionPurpose = 'development' | 'acceptance'
+
+/** One named sample collection, as the API returns it. */
+export interface RemoteIntentCollection {
+  id: string
+  name: string
+  purpose: RemoteIntentCollectionPurpose
+  createdAt: string
+  updatedAt: string
+}
+
+/** One collection as a page may create or rename it. */
+export interface RemoteIntentCollectionInput {
+  name: string
+  purpose?: RemoteIntentCollectionPurpose
 }
 
 const endpoint = () => `${SERVER_URL.replace(/\/+$/, '')}/api/v1/intent-eval`
@@ -128,7 +152,20 @@ function jsonRequest(body: unknown, method = 'POST'): RequestInit {
 }
 
 export const intentEvalApi = {
-  listSamples: () => request<RemoteIntentSample[]>('/samples'),
+  listSamples: (collectionId?: string) => request<RemoteIntentSample[]>(collectionId
+    ? `/samples?collectionId=${encodeURIComponent(collectionId)}`
+    : '/samples'),
+
+  listCollections: () => request<RemoteIntentCollection[]>('/collections'),
+
+  createCollection: (input: RemoteIntentCollectionInput) =>
+    request<RemoteIntentCollection>('/collections', jsonRequest(input)),
+
+  updateCollection: (id: string, patch: Partial<RemoteIntentCollectionInput>) =>
+    request<RemoteIntentCollection>(`/collections/${encodeURIComponent(id)}`, jsonRequest(patch, 'PATCH')),
+
+  deleteCollection: (id: string) =>
+    request<void>(`/collections/${encodeURIComponent(id)}`, { method: 'DELETE' }),
 
   importSamples: (samples: RemoteIntentSampleInput[]) =>
     request<RemoteIntentSample[]>('/samples/import', jsonRequest({ samples })),

@@ -21,17 +21,13 @@ export interface RouteBadge {
 /**
  * The label a branch must show, if any.
  *
- * A generated medical answer names its branch, because the reader has to know a
- * consultation answered. An emergency answer leads with its own action header
- * instead, and ordinary chat carries nothing at all.
+ * A generated medical answer carries no label: the line under the text states what
+ * the answer is not, and a second marker above it only repeats that. An emergency
+ * answer leads with its own action header instead, and ordinary chat carries
+ * nothing at all.
  */
 export function routeBadgeOf(route: TurnRoute | undefined): RouteBadge | undefined {
   switch (route?.kind) {
-    case 'medical':
-      return {
-        text: '医疗咨询',
-        class: 'border-teal-300 bg-teal-50 text-teal-700 dark:border-teal-900 dark:bg-teal-950/40 dark:text-teal-300',
-      }
     case 'fallback':
       return {
         text: '兜底回复',

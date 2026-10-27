@@ -16,7 +16,6 @@ import type { IntentSampleGroup } from './evaluate'
 
 /** One method's numbers, already computed by the caller. */
 export interface ReportMethod {
-  /** `规则`, `生成式模型`, `Embedding`. */
   label: string
   /** Present when the method ran; a missing field means "not run". */
   recall?: number
@@ -36,9 +35,6 @@ export interface ReportInput {
   mode: string
   modelId?: string
   classifierPromptDigest?: string
-  embeddingEndpoint?: string
-  embeddingModel?: string
-  embeddingMargin?: number
   methods: ReportMethod[]
   /** Per-group hit counts, when the page has them. */
   groups?: { group: IntentSampleGroup, label: string, total: number, medicalHits: number, falsePositives: number }[]
@@ -105,9 +101,6 @@ export function buildEvaluationMarkdown(input: ReportInput): string {
   lines.push(`- 运行模式：${input.mode}`)
   lines.push(`- 模型：${long(input.modelId)}`)
   lines.push(`- 分类提示词摘要：${long(input.classifierPromptDigest)}`)
-  if (input.embeddingEndpoint || input.embeddingModel) {
-    lines.push(`- 向量服务：${long(input.embeddingModel)} @ ${long(input.embeddingEndpoint)}（阈值 ${input.embeddingMargin ?? '未记录'}）`)
-  }
   lines.push('')
 
   if (input.sampleCount < releaseGates.minValidationSamples) {

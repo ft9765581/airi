@@ -65,7 +65,7 @@ const filteredCases = computed(() => {
       case 'failure':
         return caseIsFailure(item)
       case 'uncertain':
-        return item.embedding === 'uncertain'
+        return false
       default:
         return true
     }
@@ -77,9 +77,9 @@ const metricRows = computed(() => {
   if (!run?.metrics)
     return []
 
-  return (['rules', 'model', 'embedding'] as const).map((key) => {
+  return (['rules', 'model'] as const).map((key) => {
     const metric = run.metrics?.[key]
-    const label = key === 'rules' ? '规则' : key === 'model' ? '生成式' : 'Embedding'
+    const label = key === 'rules' ? '规则' : '生成式'
 
     return {
       label,
@@ -332,7 +332,7 @@ onMounted(() => {
                 </td>
               </tr>
               <tr v-if="!metricRows.length">
-                <td :colspan="6" :class="['px-2 py-3 text-xs text-neutral-500 dark:text-neutral-400']">
+                <td :colspan="5" :class="['px-2 py-3 text-xs text-neutral-500 dark:text-neutral-400']">
                   这次运行没有存指标（只存了逐条结果或仍在进行）。
                 </td>
               </tr>
@@ -383,9 +383,6 @@ onMounted(() => {
                   生成式
                 </th>
                 <th :class="['px-2 py-1 font-500']">
-                  Embedding
-                </th>
-                <th :class="['px-2 py-1 font-500']">
                   分歧
                 </th>
               </tr>
@@ -398,12 +395,12 @@ onMounted(() => {
               >
                 <td :class="['px-2 py-1']">
                   <div>{{ item.input }}</div>
-                  <div v-if="item.previous" :class="['text-[10px] text-neutral-500 dark:text-neutral-400']">
-                    上文：{{ item.previous }}
+                  <div v-if="item.context?.length" :class="['text-[10px] text-neutral-500 dark:text-neutral-400']">
+                    上文：{{ item.context?.length }} 轮 · {{ item.context?.[0]?.content }}
                   </div>
                 </td>
                 <td :class="['px-2 py-1']">
-                  {{ item.expected === 'medical' ? '医学' : '闲聊' }}
+                  {{ item.expected === 'medical' ? '医学' : item.expected === 'chat' ? '闲聊' : '未标注' }}
                 </td>
                 <td :class="['px-2 py-1']">
                   {{ verdictText(item.rules) }}
@@ -411,15 +408,12 @@ onMounted(() => {
                 <td :class="['px-2 py-1']">
                   {{ verdictText(item.model) }}
                 </td>
-                <td :class="['px-2 py-1']">
-                  {{ verdictText(item.embedding) }}
-                </td>
                 <td :class="['px-2 py-1 text-xs', item.disagreement ? 'text-amber-700 dark:text-amber-400' : 'text-neutral-500 dark:text-neutral-400']">
                   {{ item.disagreement ? '不一致' : '一致' }}
                 </td>
               </tr>
               <tr v-if="!filteredCases.length">
-                <td :colspan="6" :class="['px-2 py-3 text-xs text-neutral-500 dark:text-neutral-400']">
+                <td :colspan="5" :class="['px-2 py-3 text-xs text-neutral-500 dark:text-neutral-400']">
                   {{ selected.cases?.length ? '这个筛选下没有样本' : '这次运行没有存逐条结果' }}
                 </td>
               </tr>

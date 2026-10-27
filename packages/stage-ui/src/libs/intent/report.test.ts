@@ -22,7 +22,6 @@ describe('buildEvaluationMarkdown', () => {
       methods: [
         ...baseInput.methods,
         { label: '生成式模型', recall: 0.96, falsePositive: 0.04, failure: 0.005, medicalTotal: 200, chatTotal: 200, durationMs: 730 },
-        { label: 'Embedding', recall: 0.93, falsePositive: 0.03, failure: 0.01, uncertain: 0.05, medicalTotal: 200, chatTotal: 200, durationMs: 120 },
       ],
     })
 
@@ -38,7 +37,7 @@ describe('buildEvaluationMarkdown', () => {
   it('says a method did not run instead of scoring it zero', () => {
     const markdown = buildEvaluationMarkdown({
       ...baseInput,
-      methods: [{ label: 'Embedding', medicalTotal: 200, chatTotal: 200 }],
+      methods: [{ label: '生成式模型', medicalTotal: 200, chatTotal: 200 }],
     })
 
     expect(markdown).toContain('未运行')

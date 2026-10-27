@@ -8,8 +8,8 @@ import { routeBadgeOf, routeDetailBranchOf, routeDetailReasonOf, routeNoticeOf }
 const route = (kind: TurnRoute['kind'], reason?: string): TurnRoute => ({ kind, reason })
 
 describe('routeBadgeOf', () => {
-  it('names the medical branch so the reader knows a consultation answered', () => {
-    expect(routeBadgeOf(route('medical'))?.text).toBe('医疗咨询')
+  it('puts no tag on a medical answer: the notice under it carries the meaning', () => {
+    expect(routeBadgeOf(route('medical'))).toBeUndefined()
   })
 
   it('labels a fallback answer', () => {

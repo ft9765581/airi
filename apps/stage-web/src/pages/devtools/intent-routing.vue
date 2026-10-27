@@ -1,21 +1,20 @@
 <script setup lang="ts">
-import type { RemoteIntentRun, RemoteIntentSample, RemoteRunCase, RemoteRunMetrics } from '@proj-airi/stage-ui/libs/intent/api'
+import type { RemoteIntentCollection, RemoteIntentRun, RemoteIntentSample, RemoteRunCase, RemoteRunMetrics } from '@proj-airi/stage-ui/libs/intent/api'
 import type { ClassifyResult } from '@proj-airi/stage-ui/libs/intent/classify'
-import type { EmbeddingOutcome, EmbeddingReference, EmbeddingVote, EmbeddingVoteRecord } from '@proj-airi/stage-ui/libs/intent/classify-embedding'
 import type { ClassifyHistoryTurn, IntentModelOptions } from '@proj-airi/stage-ui/libs/intent/classify-model'
 import type { IntentClassifierMode, IntentDecision } from '@proj-airi/stage-ui/libs/intent/contract'
 import type { EvaluationCase, EvaluationReport, IntentSample, IntentSampleGroup } from '@proj-airi/stage-ui/libs/intent/evaluate'
 import type { MedicalPreviewResult } from '@proj-airi/stage-ui/libs/intent/preview'
 import type { ReportMethod } from '@proj-airi/stage-ui/libs/intent/report'
 import type { MedicalAgentProblem } from '@proj-airi/stage-ui/libs/intent/route'
-import type { SelectTabOption } from '@proj-airi/ui'
+import type { SelectOptionItem, SelectTabOption } from '@proj-airi/ui'
 
 import { errorMessageFrom } from '@moeru/std'
 import { describeIntentEvalError, intentEvalApi } from '@proj-airi/stage-ui/libs/intent/api'
 import { classifyMessage } from '@proj-airi/stage-ui/libs/intent/classify'
-import { classifyByNeighbours, decideEmbedding, embeddingDuplicateSimilarity, embeddingMargin, evaluateEmbeddingVotes, requestEmbeddings } from '@proj-airi/stage-ui/libs/intent/classify-embedding'
 import { composeClassifierUserText, defaultClassifierSystemPrompt } from '@proj-airi/stage-ui/libs/intent/classify-model'
 import { classifyRules } from '@proj-airi/stage-ui/libs/intent/classify-rules'
+import { collectionBlockedReason, collectionsFor } from '@proj-airi/stage-ui/libs/intent/collection-policy'
 import { evaluateSamples } from '@proj-airi/stage-ui/libs/intent/evaluate'
 import { intentSampleGroupLabels, intentSamples, intentSampleSetVersion } from '@proj-airi/stage-ui/libs/intent/fixtures'
 import { allowsMedicalGeneration, parseMedicalGenerationMode } from '@proj-airi/stage-ui/libs/intent/medical-generation'
@@ -26,7 +25,7 @@ import { medicalAgentProblem } from '@proj-airi/stage-ui/libs/intent/route'
 import { useAiriCardStore } from '@proj-airi/stage-ui/stores/modules/airi-card'
 import { useConsciousnessStore } from '@proj-airi/stage-ui/stores/modules/consciousness'
 import { useProviderStore } from '@proj-airi/stage-ui/stores/providers/provider'
-import { BasicTextarea, Button, SelectTab } from '@proj-airi/ui'
+import { BasicTextarea, Button, Select, SelectTab } from '@proj-airi/ui'
 import { useLocalStorage } from '@vueuse/core'
 import { computed, onMounted, ref, watch } from 'vue'
 
@@ -42,14 +41,8 @@ import { computed, onMounted, ref, watch } from 'vue'
 
 const isDevelopment = import.meta.env.DEV
 
-/**
- * The modes the page can run, in one row.
- *
- * `embedding` is a page mode, not a classifier mode: it answers with the vector
- * column of the same single-message comparison, and never calls the chat model
- * (intent-routing.md §5: 单句对照 shows 规则、生成式与 embedding 三列).
- */
-type PageMode = IntentClassifierMode | 'embedding'
+/** The modes the page can run, in one row. */
+type PageMode = IntentClassifierMode
 
 /**
  * The test-bench tabs (intent-routing.md §9.2).
@@ -58,12 +51,11 @@ type PageMode = IntentClassifierMode | 'embedding'
  * tab is the only method control: the old mode buttons and this list would
  * otherwise be two sources of truth for the same choice.
  */
-type BenchTab = 'rules' | 'model' | 'embedding' | 'three-way' | 'full'
+type BenchTab = 'rules' | 'model' | 'three-way' | 'full'
 
 const benchTabs: SelectTabOption<BenchTab>[] = [
   { label: '规则', value: 'rules' },
   { label: '生成式模型', value: 'model' },
-  { label: 'Embedding', value: 'embedding' },
   { label: '三方对照', value: 'three-way' },
   { label: '完整试跑', value: 'full' },
 ]
@@ -133,6 +125,8 @@ const records = ref<TestRecord[]>([])
  * for either).
  */
 const serverSamples = ref<RemoteIntentSample[]>([])
+/** True once the server answered; an empty collection still counts as an answer. */
+const serverSamplesLoaded = ref(false)
 const serverSamplesError = ref<string>()
 const serverSamplesLoading = ref(false)
 const importingSamples = ref(false)
@@ -141,36 +135,129 @@ const runsError = ref<string>()
 const runsLoading = ref(false)
 const runPersistError = ref<string>()
 
-/** The samples the batch runs read: the server set when it holds any. */
-const evaluationSamples = computed<IntentSample[]>(() => serverSamples.value.length
-  ? serverSamples.value.map(sample => ({
-      id: sample.id,
-      input: sample.input,
-      previous: sample.previous ?? undefined,
-      expected: sample.expected,
-      group: sample.group,
-    }))
-  : intentSamples)
+/** Collections as the API returns them; the bench only offers development ones. */
+const collections = ref<RemoteIntentCollection[]>([])
+
+/** The collection the pages share; empty means every stored sample. */
+const activeCollectionId = useLocalStorage('devtools/intent-routing/collection-id', '')
+
+/** The collection the bench is reading, when it knows one. */
+const activeCollection = computed(() => collections.value.find(collection => collection.id === activeCollectionId.value))
+
+/**
+ * Why the samples on screen are not runnable right now.
+ *
+ * A load in flight still holds the previous collection's rows, and a failed
+ * load with a collection selected has nothing at all. Running either would
+ * score samples the page is not showing.
+ */
+const samplesBlocked = computed(() => {
+  if (serverSamplesLoading.value)
+    return '正在加载集合样本'
+  if (activeCollectionId.value && !serverSamplesLoaded.value)
+    return serverSamplesError.value ?? '集合样本加载失败，先刷新'
+
+  return undefined
+})
+
+/** Why this selection cannot run here, e.g. an acceptance set left in storage. */
+const collectionBlocked = computed(() => collectionBlockedReason('bench', activeCollection.value))
+
+/**
+ * The samples a run can score.
+ *
+ * An unlabelled sample has nothing to be right or wrong about, so it is skipped
+ * instead of being counted as a miss. The count travels with the table so the
+ * denominators are not silently smaller than the stored set. An acceptance
+ * collection scores nothing here: the bench may not tune against it.
+ */
+const evaluationSamples = computed<IntentSample[]>(() => serverSamplesLoaded.value && !collectionBlocked.value && !samplesBlocked.value
+  ? serverSamples.value.flatMap(sample => sample.expected
+      ? [{
+          id: sample.id,
+          input: sample.input,
+          context: sample.context?.length ? sample.context.map(turn => ({ role: turn.role, content: turn.content })) : undefined,
+          expected: sample.expected,
+          group: sample.group,
+        }]
+      : [])
+  : collectionBlocked.value ? [] : intentSamples)
+
+/** The collections the bench offers: development only, by policy. */
+const benchCollectionOptions = computed<SelectOptionItem<string>[]>(() => [
+  { label: '全部样本', value: '' },
+  ...collectionsFor('bench', collections.value).map(collection => ({
+    label: collection.name,
+    value: collection.id,
+  })),
+])
+
+/** Stored samples left out of a run because nobody labelled them yet. */
+/** How many model requests a batch would send; rules ask none. */
+const plannedModelCalls = computed(() => mode.value === 'rules' ? 0 : evaluationSamples.value.length)
+
+const unlabelledSampleCount = computed(() => serverSamples.value.length
+  ? serverSamples.value.length - evaluationSamples.value.length
+  : 0)
 
 const evaluationSetVersion = computed(() => serverSamples.value.length
   ? Math.max(...serverSamples.value.map(sample => sample.sampleSetVersion))
   : intentSampleSetVersion)
 
-const sampleSourceLabel = computed(() => serverSamples.value.length ? '服务端样本' : '内置开发样本')
+const sampleSourceLabel = computed(() => serverSamplesLoaded.value ? '服务端样本' : '内置开发样本')
+
+/**
+ * The newest completed run the database returned.
+ *
+ * The page keeps the detailed table for the session, but a refresh loses it: the
+ * stored run is what survives a reload, so the bench shows its numbers and links
+ * to the full detail page (intent-routing.md §7.5 item 5).
+ */
+const latestRun = computed(() => runs.value.find(run => run.status === 'completed'))
+
+/** Reads the collections once, so the bench can name what it is looking at. */
+async function loadCollections() {
+  try {
+    collections.value = await intentEvalApi.listCollections()
+  }
+  catch {
+    // The bench still works without a collection list: it falls back to "全部样本".
+    collections.value = []
+  }
+}
+
+/** Which load is newest. Switching collections fires several at once. */
+let samplesRequestId = 0
 
 async function loadServerSamples() {
+  const requestId = ++samplesRequestId
   serverSamplesLoading.value = true
   serverSamplesError.value = undefined
   try {
-    serverSamples.value = await intentEvalApi.listSamples()
+    const rows = await intentEvalApi.listSamples(activeCollectionId.value || undefined)
+
+    // An older request may answer after a newer one; its rows describe a
+    // collection the page is no longer showing.
+    if (requestId !== samplesRequestId)
+      return
+
+    serverSamples.value = rows
+    serverSamplesLoaded.value = true
   }
   catch (error) {
+    if (requestId !== samplesRequestId)
+      return
+
     // No session is the normal case for this page; it is a note, not a failure,
-    // so the fixtures stay usable instead of blocking the page.
+    // so the fixtures stay usable instead of blocking the page. The stale rows
+    // go too: showing another collection's samples would mislabel the run.
+    serverSamples.value = []
+    serverSamplesLoaded.value = false
     serverSamplesError.value = describeIntentEvalError(error)
   }
   finally {
-    serverSamplesLoading.value = false
+    if (requestId === samplesRequestId)
+      serverSamplesLoading.value = false
   }
 }
 
@@ -180,7 +267,8 @@ async function importBuiltinSamples() {
   try {
     await intentEvalApi.importSamples(intentSamples.map(sample => ({
       input: sample.input,
-      previous: sample.previous,
+      // The route stores `context`; a fixture carries one earlier turn.
+      context: sample.previous ? [{ role: 'user' as const, content: sample.previous }] : undefined,
       group: sample.group,
       expected: sample.expected,
       labelStatus: 'unreviewed' as const,
@@ -396,25 +484,21 @@ const trialFilledFrom = ref<string>()
  */
 function fillTrial(item: EvaluationCase) {
   message.value = item.sample.input
-  contextText.value = item.sample.previous ?? ''
+  contextText.value = turnsToContextText({
+    id: item.sample.id,
+    input: item.sample.input,
+    expected: item.sample.expected,
+    group: item.sample.group,
+    context: item.sample.context,
+    previous: item.sample.previous,
+  })
   trialFilledFrom.value = item.sample.id
   trialResult.value = undefined
   trialFailure.value = undefined
 }
 
-/**
- * Runs the labelled set with whichever side the mode selects.
- *
- * One button, two runs: the classifiers share one report, the vector column has
- * its own vote table. Sending an embedding mode into the classifier report would
- * label its numbers with a mode that never ran.
- */
+/** Runs the labelled set with the classifier mode the page is on. */
 async function runBatch() {
-  if (mode.value === 'embedding') {
-    await runEmbeddingEvaluation()
-    return
-  }
-
   await runEvaluation()
 }
 
@@ -423,20 +507,61 @@ async function runBatch() {
  *
  * A rules-only run asks no model and reads the default prompt, so the key is
  * built the same way `evaluateSamples()` builds it. Otherwise a rules report
- * would always look stale. The embedding mode is not a report mode at all, so it
- * compares as `compare`.
+ * would always look stale.
  */
 const currentConfigKey = computed(() => {
-  const effectiveMode: IntentClassifierMode = mode.value === 'embedding' ? 'compare' : mode.value
+  const effectiveMode: IntentClassifierMode = mode.value
   const rulesOnly = effectiveMode === 'rules'
   const modelId = rulesOnly ? 'no-model' : (consciousnessStore.activeModel || 'no-model')
   const promptDigest = summarizePrompt(rulesOnly ? defaultClassifierSystemPrompt : systemPrompt.value)
 
-  return [effectiveMode, `set${intentSampleSetVersion}`, modelId, promptDigest].join('|')
+  // The collection and the sample ids decide comparability as much as the model
+  // does: two collections of the same set version are different measurements.
+  const collectionKey = activeCollectionId.value || 'all'
+  const samplesKey = evaluationSamples.value
+    .map(sample => [
+      sample.id,
+      sample.expected,
+      sample.input,
+      (sample.context ?? []).map(turn => `${turn.role}:${turn.content}`).join('/'),
+    ].join(':'))
+    .sort()
+    .join(',')
+
+  return [
+    effectiveMode,
+    `set${intentSampleSetVersion}`,
+    modelId,
+    promptDigest,
+    `col:${collectionKey}`,
+    `sig:${samplesKey.length}:${fingerprint(samplesKey)}`,
+  ].join('|')
 })
+
+/**
+ * A short, stable digest of the sample signature.
+ *
+ * The fingerprint travels into stored runs and is shown to a reader, so it has
+ * to stay short. djb2 collides rarely enough for "did my samples change".
+ */
+function fingerprint(value: string): string {
+  let hash = 5381
+  for (let index = 0; index < value.length; index += 1)
+    hash = ((hash * 33) ^ value.charCodeAt(index)) >>> 0
+
+  return hash.toString(36)
+}
 
 /** True when the stored report was produced under a different configuration. */
 const reportIsStale = computed(() => !!report.value && report.value.configKey !== currentConfigKey.value)
+
+/** True when the stored run was produced under another configuration. */
+const latestRunStale = computed(() => !!latestRun.value && latestRun.value.configKey !== currentConfigKey.value)
+
+/** The recall of the stored run, formatted so the template stays readable. */
+function storedRecall(value: number | undefined): string {
+  return value === undefined ? '-' : `${(value * 100).toFixed(1)}%`
+}
 
 async function runTrial() {
   trialFailure.value = undefined
@@ -508,7 +633,9 @@ function currentContext(): ClassifyHistoryTurn[] {
     .split('\n')
     .map(line => line.trim())
     .filter(Boolean)
-    .map(line => ({ role: 'user' as const, content: line }))
+    .map(line => line.startsWith('助手：')
+      ? { role: 'assistant' as const, content: line.slice(3).trim() }
+      : { role: 'user' as const, content: line })
 }
 
 function percent(value: number) {
@@ -600,13 +727,6 @@ async function run() {
     return
   }
 
-  // The vector column has its own endpoint and never calls the chat model, so it
-  // does not need a provider and its failure belongs to its own section.
-  if (mode.value === 'embedding') {
-    await runEmbeddingOnce()
-    return
-  }
-
   running.value = true
   const startedAt = performance.now()
   try {
@@ -649,22 +769,45 @@ async function run() {
 
 async function runEvaluation(persist = true) {
   failure.value = undefined
+
+  // An empty collection is a real answer: running the built-in set here would
+  // label the numbers with samples the page is not showing.
+  if (!evaluationSamples.value.length) {
+    failure.value = samplesBlocked.value ?? '当前集合没有已标注样本，先添加或换个集合'
+    return
+  }
+
+  // Everything the run will be recorded under, taken now: the model call can
+  // take a minute, and the page stays editable while it runs.
+  const meta: RunMetadata & { mode: RemoteIntentRun['mode'], total: number } = {
+    mode: mode.value,
+    total: evaluationSamples.value.length,
+    configKey: currentConfigKey.value,
+    sampleSetVersion: evaluationSetVersion.value,
+    modelId: consciousnessStore.activeModel || undefined,
+    promptDigest: summarizePrompt(systemPrompt.value),
+  }
+
   evaluating.value = true
   try {
     report.value = await evaluateSamples({
       samples: evaluationSamples.value,
       sampleSetVersion: evaluationSetVersion.value,
-      // Embedding has its own batch run; a classifier report is always one of
-      // the three classifier modes.
-      mode: mode.value === 'embedding' ? 'compare' : mode.value,
+      mode: mode.value,
+      configKey: currentConfigKey.value,
       model: mode.value === 'rules' ? undefined : await resolveModelOptions(),
     })
     reportAt.value = Date.now()
 
     const stored = report.value
     if (persist && stored) {
-      const runMode = mode.value === 'embedding' ? 'embedding' : mode.value
-      void persistRun(runMode, evaluationSamples.value.length, runMetricsPayload(stored), runCasesPayload())
+      void persistRun(
+        meta.mode,
+        meta.total,
+        runMetricsPayload(stored),
+        runCasesPayload(),
+        meta,
+      )
     }
   }
   catch (error) {
@@ -676,250 +819,10 @@ async function runEvaluation(persist = true) {
 }
 
 /**
- * Embedding comparison, kept apart from the two routers above.
+ * One message judged by both classifiers (intent-routing.md §9.3).
  *
- * Nothing here is wired into a reply: the page calls an embeddings route the
- * person starts themselves, and shows what a neighbourhood vote would have said.
- * The vectors live in memory only, so a reload rebuilds them.
- */
-/**
- * Where the vectors come from.
- *
- * A value in the env wins over the stored one, and the field becomes read-only. A
- * stored value that silently outranks the env would leave the page pointing at
- * the local service after someone configured a remote one. The key is read from
- * the env only: writing it into local storage copies it into every profile.
- */
-const embedEnvBaseURL = import.meta.env.VITE_MEDICAL_EMBEDDING_BASE_URL?.trim() ?? ''
-const embedEnvModel = import.meta.env.VITE_MEDICAL_EMBEDDING_MODEL?.trim() ?? ''
-const embedStoredBaseURL = useLocalStorage('devtools/intent-routing/embed-base-url', 'http://127.0.0.1:5178/v1')
-const embedStoredModel = useLocalStorage('devtools/intent-routing/embed-model', 'Xenova/bge-small-zh-v1.5')
-
-const embedBaseURL = computed({
-  get: () => embedEnvBaseURL || embedStoredBaseURL.value,
-  set: (value: string) => {
-    if (!embedEnvBaseURL)
-      embedStoredBaseURL.value = value
-  },
-})
-const embedModel = computed({
-  get: () => embedEnvModel || embedStoredModel.value,
-  set: (value: string) => {
-    if (!embedEnvModel)
-      embedStoredModel.value = value
-  },
-})
-
-const embedApiKey = import.meta.env.VITE_MEDICAL_EMBEDDING_API_KEY?.trim() ?? ''
-
-/** Shown next to the batch note, so the exclusion rule is not a hidden constant. */
-const duplicateSimilarity = embeddingDuplicateSimilarity
-
-/** True when the endpoint or model came from the env instead of the stored value. */
-const embedEnvDefaults = !!embedEnvBaseURL || !!embedEnvModel
-const embedMargin = useLocalStorage('devtools/intent-routing/embed-margin', embeddingMargin)
-const embedReferences = ref<EmbeddingReference[]>([])
-const embedReferenceKey = ref<string>()
-const embedBuiltAt = ref<number>()
-const embedVotes = ref<EmbeddingVoteRecord[]>([])
-const embedVotesKey = ref<string>()
-const embedVotesAt = ref<number>()
-const embedBuildDurationMs = ref<number>()
-const embedBatchDurationMs = ref<number>()
-const embedBuilding = ref(false)
-const embedTesting = ref(false)
-const embedEvaluating = ref(false)
-const embedFailure = ref<string>()
-const embedService = ref<{ ok: boolean, detail: string }>()
-const embedChecking = ref(false)
-const embedVote = ref<EmbeddingVote>()
-const embedOutcome = ref<EmbeddingOutcome>()
-const embedDurationMs = ref<number>()
-const embedQueryText = ref('')
-const embedSingleInput = ref('')
-
-/**
- * What the stored vectors were built from.
- *
- * A reference set belongs to one endpoint, one model and one sample set. Editing
- * any of them makes the stored vectors stale, and a vote against stale vectors
- * would compare two different spaces while still looking like a number.
- */
-const embedReferenceIdentity = computed(() => [
-  embedBaseURL.value.trim(),
-  embedModel.value.trim(),
-  `samples-v${evaluationSetVersion.value}`,
-  'template-v1',
-].join('|'))
-
-const embedReferencesStale = computed(() => !!embedReferenceKey.value && embedReferenceKey.value !== embedReferenceIdentity.value)
-const embedVotesStale = computed(() => !!embedVotesKey.value && embedVotesKey.value !== embedReferenceIdentity.value)
-
-/** How many references the batch left out as rewrites of their own query. */
-const embedDuplicateTotal = computed(() => embedVotes.value.reduce((total, record) => total + record.vote.excludedDuplicates, 0))
-
-/**
- * Scores the stored votes at the current threshold.
- *
- * Recomputed from memory, so moving the threshold costs neither a request nor a
- * re-embedding, and the rows that move can be named.
- */
-const embedReport = computed(() => {
-  if (!embedVotes.value.length || embedVotesStale.value)
-    return undefined
-
-  return evaluateEmbeddingVotes(embedVotes.value, { margin: embedMargin.value })
-})
-
-/** Labels the two other classifiers for the same input, or says they have not run. */
-const embedCompareColumns = computed(() => {
-  // Both the other classifiers and the embedding vote must have judged *this*
-  // input: a column from an earlier message would read as a comparison it is not.
-  const sameInput = !!embedSingleInput.value && embedSingleInput.value === message.value && resultInput.value === message.value
-  const current = sameInput ? result.value : undefined
-
-  const rules = current?.mode === 'compare'
-    ? current.comparison.rules
-    : current?.mode === 'rules' ? current.decision : undefined
-  const model = current?.mode === 'compare'
-    ? current.comparison.model
-    : current?.mode === 'model' ? current.decision : undefined
-
-  return [
-    { key: 'rules', title: '规则', decision: rules },
-    { key: 'model', title: '生成式', decision: model },
-  ]
-})
-
-function embeddingEndpoint() {
-  const baseURL = embedBaseURL.value.trim()
-  const model = embedModel.value.trim()
-
-  if (!baseURL || !model)
-    throw new Error('请先填写 embedding 端点与模型名')
-
-  return { baseURL, model, ...(embedApiKey ? { apiKey: embedApiKey } : {}) }
-}
-
-/**
- * Embeds every labelled sample once and keeps the result as the reference set.
- *
- * Returning the vectors too lets the batch run reuse them as queries, so a full
- * pass costs one request instead of one per sample. A failure leaves no partial
- * set: the previous vectors are dropped first, so a half-built set cannot be
- * voted against.
- */
-async function vectorizeSamples(): Promise<number[][]> {
-  embedBuilding.value = true
-  embedReferences.value = []
-  embedReferenceKey.value = undefined
-  const startedAt = performance.now()
-  try {
-    const vectors = await requestEmbeddings(embeddingEndpoint(), evaluationSamples.value.map(sample => sample.input), { timeoutMs: 120_000 })
-
-    if (vectors.length !== evaluationSamples.value.length)
-      throw new Error(`embedding 返回 ${vectors.length} 条向量，样本有 ${evaluationSamples.value.length} 条`)
-
-    const dimensions = vectors[0]?.length ?? 0
-    if (!dimensions || vectors.some(vector => vector.length !== dimensions))
-      throw new Error('embedding 返回的向量维度不一致，无法比较')
-
-    embedReferences.value = evaluationSamples.value.map((sample, index) => ({
-      id: sample.id,
-      label: sample.expected,
-      vector: vectors[index],
-    }))
-    embedReferenceKey.value = embedReferenceIdentity.value
-    embedBuiltAt.value = Date.now()
-    embedBuildDurationMs.value = performance.now() - startedAt
-
-    return vectors
-  }
-  finally {
-    embedBuilding.value = false
-  }
-}
-
-/** Builds the reference set when there is none, or when it belongs to another endpoint. */
-async function ensureReferences() {
-  if (embedReferences.value.length && !embedReferencesStale.value)
-    return
-
-  await vectorizeSamples()
-}
-
-/**
- * The text this page sends to the embedding route.
- *
- * The generative classifier receives the earlier turns as separate messages and
- * cannot see them here, so the page states what it sent instead of implying the
- * three columns read the same input shape. Only the lines the person typed are
- * used: no session history is read.
- */
-function embeddingQueryText() {
-  const context = currentContext()
-  const head = context.map(turn => `【上文用户】${turn.content}`).join('\n')
-  return head ? `${head}\n【当前用户消息】${message.value.trim()}` : message.value.trim()
-}
-
-/**
- * Checks the route without embedding the sample set.
- *
- * The local service answers `/health`, but a cloud OpenAI-compatible route does
- * not, so a remote endpoint is checked with a one-input request instead. That
- * also proves the model id and key, which a health route would not.
- */
-async function checkEmbeddingService() {
-  embedFailure.value = undefined
-  embedService.value = undefined
-  embedChecking.value = true
-  try {
-    const url = new URL(embedBaseURL.value.trim())
-    const isLocal = url.hostname === 'localhost' || url.hostname === '127.0.0.1'
-
-    if (isLocal) {
-      const response = await fetch(`${url.origin}/health`)
-
-      if (!response.ok)
-        throw new Error(`health 返回 ${response.status}`)
-
-      const body = await response.json() as { models?: string[], mirror?: string }
-      embedService.value = {
-        ok: true,
-        detail: `本地服务可用 · 已加载 ${body.models?.length ?? 0} 个模型${body.mirror ? ` · 镜像 ${body.mirror}` : ''}`,
-      }
-      return
-    }
-
-    const startedAt = performance.now()
-    const [vector] = await requestEmbeddings(embeddingEndpoint(), ['ping'], { timeoutMs: 20_000 })
-    embedService.value = {
-      ok: true,
-      detail: `远端可用 · ${vector?.length ?? 0} 维 · 首包 ${Math.round(performance.now() - startedAt)} ms · 模型 ${embedModel.value}`,
-    }
-  }
-  catch (error) {
-    // A stopped local service and a rejected remote key are the two common
-    // reasons this page shows nothing, so each keeps its own message.
-    const isLocalRoute = /localhost|127\.0\.0\.1/.test(embedBaseURL.value)
-    embedService.value = {
-      ok: false,
-      detail: isLocalRoute
-        ? `连不上本地服务：${errorMessageFrom(error) ?? 'unknown'}。先在 packages/stage-ui 下运行 node scripts/dev-local-embeddings.mjs。`
-        : `远端端点不可用：${errorMessageFrom(error) ?? 'unknown'}。检查 base URL、模型名与 key。`,
-    }
-  }
-  finally {
-    embedChecking.value = false
-  }
-}
-
-/**
- * One message judged by all three methods (intent-routing.md §9.3).
- *
- * Each method keeps its own failure instead of collapsing into one verdict: a
- * vector service that is down must not hide what the model said, and a model
- * fallback must not read as a medical judgement.
+ * Each column keeps its own failure instead of collapsing into one verdict: a
+ * model fallback must not read as a medical judgement.
  */
 interface ThreeWayRun {
   message: string
@@ -929,17 +832,10 @@ interface ThreeWayRun {
   modelFailure?: string
   /** The text the classifier really sent, so the column can show the difference. */
   modelInput: string
-  embeddingOutcome?: EmbeddingOutcome
-  embeddingVote?: EmbeddingVote
-  embeddingDurationMs?: number
-  embeddingFailure?: string
-  /** The text the vector query really sent. */
-  embeddingInput: string
   durationMs: number
   /** The configuration the run used, so a later change can invalidate the result. */
   modelId: string
   promptDigest: string
-  margin: number
 }
 
 const threeWay = ref<ThreeWayRun>()
@@ -949,14 +845,6 @@ const threeWayFailure = ref<string>()
 interface ModelOutcome {
   decision?: IntentDecision
   failure?: string
-}
-
-interface EmbeddingProbe {
-  outcome?: EmbeddingOutcome
-  vote?: EmbeddingVote
-  durationMs?: number
-  failure?: string
-  query: string
 }
 
 async function runThreeWay() {
@@ -973,39 +861,18 @@ async function runThreeWay() {
   const context = currentContext()
   const rules = classifyRules(message.value)
   const modelInput = composeClassifierUserText({ message: message.value, history: context })
-  const embeddingInput = embeddingQueryText()
 
   try {
-    const modelRun = (async (): Promise<ModelOutcome> => {
-      try {
-        const options = await resolveModelOptions()
-        const outcome = await classifyMessage({ message: message.value, mode: 'model', history: context, model: options })
+    let model: ModelOutcome
+    try {
+      const options = await resolveModelOptions()
+      const outcome = await classifyMessage({ message: message.value, mode: 'model', history: context, model: options })
 
-        return outcome.mode === 'model' ? { decision: outcome.decision } : { failure: '分类模式不是 model' }
-      }
-      catch (error) {
-        return { failure: errorMessageFrom(error) ?? '模型分类失败' }
-      }
-    })()
-
-    // The two network methods run together: neither waits for the other, and one
-    // failing leaves the other column valid.
-    const embeddingRun = (async (): Promise<EmbeddingProbe> => {
-      try {
-        await ensureReferences()
-        const [vector] = await requestEmbeddings(embeddingEndpoint(), [embeddingInput])
-        const vote = classifyByNeighbours(vector, embedReferences.value)
-        if (!vote)
-          throw new Error('参考集为空，无法比较')
-
-        return { outcome: decideEmbedding(vote, { margin: embedMargin.value }), vote, durationMs: performance.now() - startedAt, query: embeddingInput }
-      }
-      catch (error) {
-        return { failure: errorMessageFrom(error) ?? 'embedding 分类失败', query: embeddingInput }
-      }
-    })()
-
-    const [model, embedding] = await Promise.all([modelRun, embeddingRun])
+      model = outcome.mode === 'model' ? { decision: outcome.decision } : { failure: '分类模式不是 model' }
+    }
+    catch (error) {
+      model = { failure: errorMessageFrom(error) ?? '模型分类失败' }
+    }
 
     threeWay.value = {
       message: message.value,
@@ -1014,15 +881,9 @@ async function runThreeWay() {
       model: model.decision,
       modelFailure: model.failure,
       modelInput,
-      embeddingOutcome: embedding.outcome,
-      embeddingVote: embedding.vote,
-      embeddingDurationMs: embedding.durationMs,
-      embeddingFailure: embedding.failure,
-      embeddingInput: embedding.query,
       durationMs: performance.now() - startedAt,
       modelId: consciousnessStore.activeModel || '',
       promptDigest: summarizePrompt(systemPrompt.value),
-      margin: embedMargin.value,
     }
   }
   finally {
@@ -1043,10 +904,8 @@ const threeWayStale = computed(() => {
     return false
 
   return run.modelInput !== composeClassifierUserText({ message: message.value, history: currentContext() })
-    || run.embeddingInput !== embeddingQueryText()
     || run.modelId !== (consciousnessStore.activeModel || '')
     || run.promptDigest !== summarizePrompt(systemPrompt.value)
-    || run.margin !== embedMargin.value
 })
 
 /** The verdict one column shows, or the reason it has none. */
@@ -1059,102 +918,6 @@ function decisionLabel(decision: IntentDecision | undefined): string {
   return decision.decision === 'medical' ? '医学' : '闲聊'
 }
 
-/** The vector column's verdict, which has a third state the other two lack. */
-function embeddingLabel(outcome: EmbeddingOutcome | undefined): string {
-  if (!outcome)
-    return '未运行'
-  if (outcome === 'uncertain')
-    return '不确定'
-
-  return outcome === 'medical' ? '医学' : '闲聊'
-}
-
-async function runEmbeddingOnce() {
-  embedFailure.value = undefined
-  embedVote.value = undefined
-  embedOutcome.value = undefined
-  embedDurationMs.value = undefined
-
-  if (!message.value.trim()) {
-    embedFailure.value = '请输入一条消息'
-    return
-  }
-
-  embedTesting.value = true
-  const startedAt = performance.now()
-  try {
-    await ensureReferences()
-
-    const query = embeddingQueryText()
-    const [vector] = await requestEmbeddings(embeddingEndpoint(), [query])
-    const vote = classifyByNeighbours(vector, embedReferences.value)
-
-    if (!vote)
-      throw new Error('参考集为空，无法比较')
-
-    embedVote.value = vote
-    embedOutcome.value = decideEmbedding(vote, { margin: embedMargin.value })
-    embedDurationMs.value = performance.now() - startedAt
-    embedQueryText.value = query
-    embedSingleInput.value = message.value
-  }
-  catch (error) {
-    embedFailure.value = errorMessageFrom(error) ?? 'embedding 分类失败'
-  }
-  finally {
-    embedTesting.value = false
-  }
-}
-
-/**
- * Runs the labelled set through the embedding vote and keeps every vote.
- *
- * Each sample is scored against the reference set with itself removed: leaving it
- * in would match it perfectly and measure the set instead of the classifier.
- * Close rewrites of the same sentence are not removed yet, so they can still lift
- * a score, which is why this page reports them as a known limit.
- */
-async function runEmbeddingEvaluation() {
-  embedFailure.value = undefined
-  embedEvaluating.value = true
-  const startedAt = performance.now()
-  try {
-    const vectors = await vectorizeSamples()
-    const records: EmbeddingVoteRecord[] = []
-
-    for (const [index, sample] of evaluationSamples.value.entries()) {
-      const references = embedReferences.value.filter((_, other) => other !== index)
-      const vote = classifyByNeighbours(vectors[index], references)
-      if (!vote)
-        continue
-
-      records.push({ id: sample.id, input: sample.input, expected: sample.expected, vote })
-    }
-
-    embedVotes.value = records
-    embedVotesKey.value = embedReferenceIdentity.value
-    embedVotesAt.value = Date.now()
-    embedBatchDurationMs.value = performance.now() - startedAt
-  }
-  catch (error) {
-    embedFailure.value = errorMessageFrom(error) ?? 'embedding 评测失败'
-  }
-  finally {
-    embedEvaluating.value = false
-  }
-}
-
-function embeddingOutcomeText(outcome: EmbeddingOutcome) {
-  if (outcome === 'uncertain')
-    return '不确定（转交生成式模型）'
-
-  return outcome === 'medical' ? '医学问题' : '闲聊'
-}
-
-function embeddingOutcomeOf(record: EmbeddingVoteRecord) {
-  return decideEmbedding(record.vote, { margin: embedMargin.value })
-}
-
 /**
  * Fills the table on a first visit.
  *
@@ -1162,9 +925,15 @@ function embeddingOutcomeOf(record: EmbeddingVoteRecord) {
  * real numbers instead of an empty panel. A stored report is left alone, so a
  * model run is not replaced by a rule run just because the page reloaded.
  */
-onMounted(() => {
-  void loadServerSamples()
+onMounted(async () => {
   void refreshRuns()
+
+  // The stored selection decides what the first run reads, so both loads finish
+  // before the automatic run: otherwise it scores the built-in set and labels it
+  // as the collection result.
+  await loadCollections()
+  await loadServerSamples()
+
   if (isDevelopment && !report.value)
     void runEvaluation(false)
 })
@@ -1212,22 +981,13 @@ interface BatchRow {
   id: string
   input: string
   previous?: string
+  /** Every earlier turn, in order; `previous` is the single-turn form. */
+  context?: { role: 'user' | 'assistant', content: string }[]
   group: IntentSampleGroup
   expected: 'medical' | 'chat'
   rules?: IntentDecision
   model?: IntentDecision
-  embedding?: EmbeddingOutcome
-  embeddingMargin?: number
 }
-
-/** The vectors, keyed by sample id, so a row can join them without a second run. */
-const embedVoteById = computed(() => {
-  const map = new Map<string, EmbeddingVote>()
-  for (const record of embedVotes.value)
-    map.set(record.id, record.vote)
-
-  return map
-})
 
 /**
  * The classifier report and the vector votes joined on the sample id.
@@ -1241,21 +1001,16 @@ const batchRows = computed<BatchRow[]>(() => {
   if (!current?.cases)
     return []
 
-  const votes = embedVoteById.value
-
   return current.cases.map(({ sample, rules, model }) => {
-    const vote = votes.get(sample.id)
-
     return {
       id: sample.id,
       input: sample.input,
       previous: sample.previous,
+      context: sample.context,
       group: sample.group,
       expected: sample.expected,
       rules,
       model,
-      embedding: vote ? decideEmbedding(vote, { margin: embedMargin.value }) : undefined,
-      embeddingMargin: vote?.margin,
     }
   })
 })
@@ -1277,8 +1032,6 @@ function rowVerdicts(row: BatchRow): ('medical' | 'chat')[] {
     verdicts.push(rules)
   if (model)
     verdicts.push(model)
-  if (row.embedding === 'medical' || row.embedding === 'chat')
-    verdicts.push(row.embedding)
 
   return verdicts
 }
@@ -1294,9 +1047,25 @@ function rowDisagrees(row: BatchRow): boolean {
  * A disagreement is only actionable if it can be reproduced: the sample's
  * `previous` turn is what makes "现在还是这样" mean anything (§9.5 item 4).
  */
+/**
+ * Writes earlier turns back into the shared context box.
+ *
+ * The box is one line per turn, so an assistant turn carries a marker the parser
+ * reads back. Without the marker the refill would silently turn an assistant
+ * answer into something the user said.
+ */
+function turnsToContextText(row: BatchRow): string {
+  const turns = row.context?.length
+    ? row.context
+    : row.previous ? [{ role: 'user' as const, content: row.previous }] : []
+
+  return turns
+    .map(turn => (turn.role === 'assistant' ? `助手：${turn.content}` : turn.content))
+    .join('\n')
+}
 function fillFromRow(row: BatchRow) {
   message.value = row.input
-  contextText.value = row.previous ?? ''
+  contextText.value = turnsToContextText(row)
   trialFilledFrom.value = row.id
   trialResult.value = undefined
   trialFailure.value = undefined
@@ -1315,7 +1084,7 @@ const filteredRows = computed(() => batchRows.value.filter((row) => {
       // Some method said medical on a sample labelled chat.
       return row.expected === 'chat' && verdicts.includes('medical')
     case 'uncertain':
-      return row.embedding === 'uncertain'
+      return false
     case 'failure':
       return row.rules?.source === 'fallback' || row.model?.source === 'fallback'
     default:
@@ -1338,9 +1107,6 @@ const batchMetrics = computed(() => {
   const medicalTotal = rows.filter(row => row.expected === 'medical').length
   const chatTotal = rows.filter(row => row.expected === 'chat').length
   const denominators = `医疗 ${medicalTotal} / 闲聊 ${chatTotal}`
-  const embedding = embedReport.value
-  const voted = rows.filter(row => row.embedding !== undefined).length
-  const uncertain = rows.filter(row => row.embedding === 'uncertain').length
 
   return [
     {
@@ -1360,15 +1126,6 @@ const batchMetrics = computed(() => {
       uncertain: '—',
       denominators,
       duration: current.durationMs.model === undefined ? '未运行' : `${current.durationMs.model.toFixed(0)} ms`,
-    },
-    {
-      label: 'Embedding',
-      recall: embedding ? percent(embedding.medicalRecall) : '未运行',
-      falsePositive: embedding ? percent(embedding.chatFalsePositiveRate) : '未运行',
-      failure: embedding ? `${rows.length - voted} 条未投票` : '未运行',
-      uncertain: embedding ? `${uncertain} 条` : '未运行',
-      denominators,
-      duration: embedBatchDurationMs.value === undefined ? '未运行' : `${embedBatchDurationMs.value.toFixed(0)} ms`,
     },
   ]
 })
@@ -1390,9 +1147,6 @@ function runMetricsPayload(current: EvaluationReport): RemoteRunMetrics {
   const rows = batchRows.value
   const medicalTotal = rows.filter(row => row.expected === 'medical').length
   const chatTotal = rows.filter(row => row.expected === 'chat').length
-  const embedding = embedReport.value
-  const voted = rows.filter(row => row.embedding !== undefined).length
-  const uncertain = rows.filter(row => row.embedding === 'uncertain').length
 
   return {
     rules: {
@@ -1411,16 +1165,7 @@ function runMetricsPayload(current: EvaluationReport): RemoteRunMetrics {
           chatTotal,
         }
       : undefined,
-    embedding: embedding
-      ? {
-          recall: embedding.medicalRecall,
-          falsePositive: embedding.chatFalsePositiveRate,
-          failure: rows.length ? (rows.length - voted) / rows.length : 0,
-          uncertain: rows.length ? uncertain / rows.length : 0,
-          medicalTotal: embedding.medicalTotal,
-          chatTotal: embedding.chatTotal,
-        }
-      : undefined,
+
   }
 }
 
@@ -1430,10 +1175,10 @@ function runCasesPayload(): RemoteRunCase[] {
     sampleId: row.id,
     input: row.input,
     previous: row.previous,
+    context: row.context,
     expected: row.expected,
     rules: rawVerdict(row.rules),
     model: rawVerdict(row.model),
-    embedding: row.embedding,
     disagreement: rowDisagrees(row),
   }))
 }
@@ -1444,18 +1189,29 @@ function runCasesPayload(): RemoteRunCase[] {
  * Best effort: the numbers are already on screen, and losing the history must
  * not look like losing the run. A failure is reported beside the section.
  */
-async function persistRun(mode: RemoteIntentRun['mode'], total: number, metrics: RemoteRunMetrics, cases: RemoteRunCase[]) {
+/** What one run was started with, captured before any request goes out. */
+export interface RunMetadata {
+  configKey: string
+  sampleSetVersion: number
+  modelId?: string
+  promptDigest: string
+}
+
+/**
+ * Stores one finished batch run under the metadata it started with.
+ *
+ * Reading the current collection or prompt here would label a run with a
+ * configuration the person switched to while the model was answering.
+ */
+async function persistRun(mode: RemoteIntentRun['mode'], total: number, metrics: RemoteRunMetrics, cases: RemoteRunCase[], meta: RunMetadata) {
   runPersistError.value = undefined
   try {
     const run = await intentEvalApi.createRun({
-      sampleSetVersion: evaluationSetVersion.value,
+      sampleSetVersion: meta.sampleSetVersion,
       mode,
-      configKey: currentConfigKey.value,
-      modelId: consciousnessStore.activeModel || undefined,
-      classifierPromptDigest: summarizePrompt(systemPrompt.value),
-      embeddingEndpoint: mode === 'embedding' ? embedBaseURL.value : undefined,
-      embeddingModel: mode === 'embedding' ? embedModel.value : undefined,
-      embeddingMargin: mode === 'embedding' ? String(embedMargin.value) : undefined,
+      configKey: meta.configKey,
+      modelId: meta.modelId,
+      classifierPromptDigest: meta.promptDigest,
       total,
     })
 
@@ -1481,9 +1237,6 @@ const reportMarkdown = computed(() => {
   const rows = batchRows.value
   const medicalTotal = rows.filter(row => row.expected === 'medical').length
   const chatTotal = rows.filter(row => row.expected === 'chat').length
-  const embedding = embedReport.value
-  const voted = rows.filter(row => row.embedding !== undefined).length
-  const uncertain = rows.filter(row => row.embedding === 'uncertain').length
   const groupReport = (current.model ?? current.rules).groups.map(group => ({
     group: group.group,
     label: intentSampleGroupLabels[group.group],
@@ -1513,18 +1266,7 @@ const reportMarkdown = computed(() => {
           durationMs: current.durationMs.model,
         }
       : { label: '生成式模型', medicalTotal, chatTotal },
-    embedding
-      ? {
-          label: 'Embedding',
-          recall: embedding.medicalRecall,
-          falsePositive: embedding.chatFalsePositiveRate,
-          failure: rows.length ? (rows.length - voted) / rows.length : 0,
-          uncertain: rows.length ? uncertain / rows.length : 0,
-          medicalTotal: embedding.medicalTotal,
-          chatTotal: embedding.chatTotal,
-          durationMs: embedBatchDurationMs.value,
-        }
-      : { label: 'Embedding', medicalTotal, chatTotal },
+
   ]
 
   return buildEvaluationMarkdown({
@@ -1534,15 +1276,13 @@ const reportMarkdown = computed(() => {
     mode: current.mode,
     modelId: current.modelId,
     classifierPromptDigest: current.classifierPromptDigest,
-    embeddingEndpoint: embedBaseURL.value,
-    embeddingModel: embedModel.value,
-    embeddingMargin: embedMargin.value,
+
     methods,
     groups: groupReport,
     disagreements: rows.filter(row => rowDisagrees(row)).map(row => ({
       input: row.input,
       expected: row.expected,
-      verdicts: [decisionLabel(row.rules), decisionLabel(row.model), embeddingLabel(row.embedding)],
+      verdicts: [decisionLabel(row.rules), decisionLabel(row.model)],
     })),
   })
 })
@@ -1585,7 +1325,33 @@ function downloadReport() {
           to="/devtools/intent-routing/datasets"
           :class="['text-primary-600 underline dark:text-primary-400']"
         >
-          样本集 · {{ evaluationSamples.length }} 条（{{ sampleSourceLabel }}）
+          <Select v-model="activeCollectionId" :options="benchCollectionOptions" @update:model-value="loadServerSamples" />
+
+          <!-- What survives a reload: the stored run, not the session table. -->
+          <div
+            v-if="latestRun"
+            :class="[
+              'flex w-full flex-wrap items-center gap-3 rounded-xl border px-3 py-2 text-xs',
+              'bg-white dark:bg-neutral-900',
+              latestRunStale ? 'border-amber-300 dark:border-amber-800' : 'border-neutral-200 dark:border-neutral-700',
+            ]"
+          >
+            <span :class="['font-500']">最近一次运行（数据库）</span>
+            <span :class="['text-neutral-500 dark:text-neutral-400']">
+              {{ latestRun.total }} 条 · {{ latestRun.mode }} · {{ new Date(latestRun.startedAt).toLocaleString() }}
+            </span>
+            <span v-if="latestRun.metrics?.rules" :class="['text-neutral-500 dark:text-neutral-400']">
+              规则 {{ storedRecall(latestRun.metrics.rules.recall) }}
+              <span v-if="latestRun.metrics.model"> · 生成式 {{ storedRecall(latestRun.metrics.model.recall) }}</span>
+            </span>
+            <span v-if="latestRunStale" :class="['text-amber-700 dark:text-amber-400']">
+              配置已变化，数字不可直接比较
+            </span>
+            <RouterLink to="/devtools/intent-routing/runs" :class="['text-primary-600 underline dark:text-primary-400']">
+              查看这次运行
+            </RouterLink>
+          </div>
+          样本集 · {{ evaluationSamples.length }} 条（{{ sampleSourceLabel }}）<span v-if="activeCollectionId"> · 集合筛选已开启</span><span v-if="unlabelledSampleCount"> · 未标注 {{ unlabelledSampleCount }} 条已跳过</span><span v-if="collectionBlocked" :class="['text-amber-700 dark:text-amber-400']"> · {{ collectionBlocked }}</span>
         </RouterLink>
       </div>
 
@@ -1736,9 +1502,9 @@ function downloadReport() {
         ]"
       >
         <Button
-          v-if="tab === 'rules' || tab === 'model' || tab === 'embedding'"
-          :loading="running || embedTesting"
-          :label="running || embedTesting ? '运行中…' : '只测识别'"
+          v-if="true"
+          :loading="running"
+          :label="running ? '运行中…' : '只测识别'"
           icon="i-solar:play-circle-bold-duotone"
           @click="run"
         />
@@ -1751,8 +1517,8 @@ function downloadReport() {
         />
         <Button
           v-if="tab !== 'full' && tab !== 'three-way'"
-          :loading="evaluating || embedEvaluating"
-          :label="evaluating || embedEvaluating ? '评测中…' : `跑测试集（${evaluationSamples.length} 条）`"
+          :loading="evaluating"
+          :label="evaluating ? '评测中…' : `跑测试集（${evaluationSamples.length} 条 · 预计 ${plannedModelCalls} 次模型请求）`"
           icon="i-solar:chart-2-bold-duotone"
           variant="secondary"
           @click="runBatch"
@@ -1874,7 +1640,7 @@ function downloadReport() {
         </div>
 
         <p v-if="!threeWay" :class="['text-xs text-neutral-500 dark:text-neutral-400']">
-          点「运行三方对照」用当前输入跑一次。生成式与 Embedding 各自独立失败：一边连不上，不掩盖另一边说了什么。
+          点「运行对照」用当前输入跑一次。规则与生成式各自独立失败：模型连不上不掩盖规则说了什么。
         </p>
 
         <template v-else>
@@ -1934,31 +1700,10 @@ function downloadReport() {
               </span>
               <pre :class="['mt-1 overflow-x-auto whitespace-pre-wrap break-words rounded bg-neutral-100/70 p-1.5 font-mono text-[10px] dark:bg-neutral-800/60']">{{ threeWay.modelInput }}</pre>
             </div>
-
-            <div
-              :class="[
-                'flex flex-col gap-1 rounded-xl border px-3 py-2',
-                'border-neutral-200 dark:border-neutral-700',
-              ]"
-            >
-              <span :class="['text-xs text-neutral-500 dark:text-neutral-400']">Embedding</span>
-              <span :class="['text-sm font-600']">{{ embeddingLabel(threeWay.embeddingOutcome) }}</span>
-              <span :class="['text-xs text-neutral-500 dark:text-neutral-400']">
-                {{ embedModel }} · 阈值 {{ embedMargin }}
-              </span>
-              <span v-if="threeWay.embeddingVote" :class="['text-xs text-neutral-500 dark:text-neutral-400']">
-                分差 {{ threeWay.embeddingVote.margin.toFixed(4) }}
-                · 耗时 {{ (threeWay.embeddingDurationMs ?? 0).toFixed(0) }} ms
-              </span>
-              <span v-if="threeWay.embeddingFailure" :class="['text-xs text-red-600 dark:text-red-400']">
-                {{ threeWay.embeddingFailure }}
-              </span>
-              <pre :class="['mt-1 overflow-x-auto whitespace-pre-wrap break-words rounded bg-neutral-100/70 p-1.5 font-mono text-[10px] dark:bg-neutral-800/60']">{{ threeWay.embeddingInput }}</pre>
-            </div>
           </div>
 
           <p :class="['text-xs text-neutral-500 dark:text-neutral-400']">
-            失败和「不确定」都不算命中；规则列不依赖网络，Embedding 列需要先构建参考向量。
+            模型失败不算命中；规则列不依赖网络。
           </p>
         </template>
       </section>
@@ -2051,304 +1796,6 @@ function downloadReport() {
         </section>
       </template>
 
-      <section
-        v-if="tab === 'embedding'"
-        :class="[
-          'flex flex-col gap-3 rounded-2xl border px-4 py-3 text-sm',
-          'bg-white dark:bg-neutral-900',
-          'border-neutral-200 dark:border-neutral-700',
-        ]"
-      >
-        <h2 :class="['text-base font-600']">
-          Embedding 对照
-          <span :class="['text-xs font-400 text-neutral-500 dark:text-neutral-400']">
-            实验 · 不参与路由
-          </span>
-        </h2>
-
-        <p :class="['text-xs text-neutral-500 dark:text-neutral-400']">
-          当前：{{ embedModel }} · {{ embedBaseURL }}
-          · key {{ embedApiKey ? '已配置' : '未配置' }}
-          · 参考向量 {{ embedReferences.length }} 条
-          <span v-if="embedEnvDefaults">· 端点/模型来自 env</span>
-        </p>
-
-        <div :class="['flex flex-col gap-3']">
-          <p :class="['text-xs text-neutral-500 dark:text-neutral-400']">
-            先在 <code :class="['rounded bg-neutral-200/60 px-1 dark:bg-neutral-700/60']">packages/stage-ui</code> 下运行 <code :class="['rounded bg-neutral-200/60 px-1 dark:bg-neutral-700/60']">node scripts/dev-local-embeddings.mjs</code>，
-            它把中文句向量模型按 OpenAI 兼容接口开在 127.0.0.1。首次请求要下载模型，约两分钟。
-            这里的结果只显示在这里，不影响聊天。
-          </p>
-
-          <div :class="['grid grid-cols-1 gap-2 md:grid-cols-3']">
-            <label :class="['flex flex-col gap-1 text-xs']">
-              端点
-              <input
-                v-model="embedBaseURL"
-                :disabled="!!embedEnvBaseURL"
-                :class="[
-                  'rounded-lg border px-2 py-1 text-sm',
-                  'bg-white dark:bg-neutral-900',
-                  'border-neutral-200 dark:border-neutral-700',
-                  embedEnvBaseURL ? 'opacity-70' : '',
-                ]"
-              >
-            </label>
-            <label :class="['flex flex-col gap-1 text-xs']">
-              模型
-              <input
-                v-model="embedModel"
-                :disabled="!!embedEnvModel"
-                :class="[
-                  'rounded-lg border px-2 py-1 text-sm',
-                  'bg-white dark:bg-neutral-900',
-                  'border-neutral-200 dark:border-neutral-700',
-                  embedEnvModel ? 'opacity-70' : '',
-                ]"
-              >
-            </label>
-            <label :class="['flex flex-col gap-1 text-xs']">
-              置信阈值（分差）
-              <input
-                v-model.number="embedMargin"
-                type="number"
-                step="0.01"
-                min="0"
-                max="1"
-                :class="[
-                  'rounded-lg border px-2 py-1 text-sm',
-                  'bg-white dark:bg-neutral-900',
-                  'border-neutral-200 dark:border-neutral-700',
-                ]"
-              >
-            </label>
-          </div>
-
-          <p :class="['text-xs text-neutral-500 dark:text-neutral-400']">
-            key：{{ embedApiKey ? '已从 env 读取（VITE_MEDICAL_EMBEDDING_API_KEY）' : '未配置，本地服务不需要' }}
-            <span v-if="embedEnvDefaults">· 端点/模型默认值来自 env</span>
-          </p>
-
-          <div :class="['flex flex-wrap items-center gap-2']">
-            <Button
-              :loading="embedChecking"
-              :label="embedChecking ? '检测中…' : '检测端点'"
-              icon="i-solar:server-square-cloud-bold-duotone"
-              variant="secondary"
-              @click="checkEmbeddingService"
-            />
-            <Button
-              :loading="embedBuilding"
-              :label="embedBuilding ? '建向量中…' : `构建参考向量（${evaluationSamples.length} 条）`"
-              icon="i-solar:database-bold-duotone"
-              variant="secondary"
-              @click="vectorizeSamples"
-            />
-            <Button
-              :loading="embedTesting"
-              :label="embedTesting ? '比较中…' : '用 embedding 判这一句'"
-              icon="i-solar:play-circle-bold-duotone"
-              @click="runEmbeddingOnce"
-            />
-            <Button
-              :loading="embedEvaluating"
-              :label="embedEvaluating ? '评测中…' : '跑测试集（embedding）'"
-              icon="i-solar:chart-2-bold-duotone"
-              variant="secondary"
-              @click="runEmbeddingEvaluation"
-            />
-          </div>
-
-          <p
-            v-if="embedService"
-            :class="[
-              'text-xs',
-              embedService.ok ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400',
-            ]"
-          >
-            {{ embedService.detail }}
-          </p>
-
-          <div
-            v-if="embedFailure"
-            :class="[
-              'rounded-xl border px-3 py-2 text-xs',
-              'bg-red-50/70 border-red-200 text-red-700 dark:bg-red-950/30 dark:border-red-900 dark:text-red-300',
-            ]"
-          >
-            {{ embedFailure }}
-          </div>
-
-          <p :class="['text-xs text-neutral-500 dark:text-neutral-400']">
-            参考向量 {{ embedReferences.length }} 条
-            <span v-if="embedBuiltAt">· 建于 {{ new Date(embedBuiltAt).toLocaleTimeString() }} · 建集 {{ ((embedBuildDurationMs ?? 0) / 1000).toFixed(1) }} s</span>
-            · 样本集 v{{ evaluationSetVersion }}（{{ sampleSourceLabel }}）
-            · 向量只存在内存里，刷新页面要重建
-          </p>
-
-          <p
-            v-if="embedReferencesStale"
-            :class="['text-xs text-amber-700 dark:text-amber-400']"
-          >
-            端点、模型或样本集变了，旧参考向量不再使用；下次点按钮会自动重建。
-          </p>
-
-          <p
-            v-if="embedVotesStale"
-            :class="['text-xs text-amber-700 dark:text-amber-400']"
-          >
-            下面的批量结果来自旧的参考向量，需要重新跑测试集。
-          </p>
-
-          <template v-if="embedVote && embedOutcome && embedSingleInput === message">
-            <p :class="['text-xs text-neutral-500 dark:text-neutral-400']">
-              送去向量的文本：{{ embedQueryText }}
-            </p>
-
-            <div :class="['grid grid-cols-1 gap-2 md:grid-cols-3']">
-              <div
-                v-for="column in embedCompareColumns"
-                :key="column.key"
-                :class="[
-                  'flex flex-col gap-1 rounded-xl border px-3 py-2 text-xs',
-                  'bg-white dark:bg-neutral-900',
-                  'border-neutral-200 dark:border-neutral-700',
-                ]"
-              >
-                <span :class="['font-600']">{{ column.title }}</span>
-                <span v-if="column.decision">{{ column.decision.decision === 'medical' ? '医学问题' : '闲聊' }}</span>
-                <span v-else :class="['text-neutral-500 dark:text-neutral-400']">未运行（点上方对应按钮）</span>
-                <span v-if="column.decision" :class="['text-neutral-500 dark:text-neutral-400']">
-                  source={{ column.decision.source }}
-                </span>
-              </div>
-
-              <div
-                :class="[
-                  'flex flex-col gap-1 rounded-xl border px-3 py-2 text-xs',
-                  embedOutcome === 'medical'
-                    ? 'bg-teal-50/60 border-teal-200 dark:bg-teal-950/30 dark:border-teal-900'
-                    : embedOutcome === 'uncertain'
-                      ? 'bg-amber-50/60 border-amber-200 dark:bg-amber-950/30 dark:border-amber-900'
-                      : 'bg-white border-neutral-200 dark:bg-neutral-900 dark:border-neutral-700',
-                ]"
-              >
-                <span :class="['font-600']">Embedding</span>
-                <span>{{ embeddingOutcomeText(embedOutcome) }}</span>
-                <span :class="['text-neutral-500 dark:text-neutral-400']">
-                  医学 {{ embedVote.medicalScore.toFixed(4) }} · 闲聊 {{ embedVote.chatScore.toFixed(4) }}
-                  · 分差 {{ embedVote.margin.toFixed(4) }}
-                  <span v-if="embedDurationMs !== undefined"> · {{ embedDurationMs.toFixed(0) }} ms</span>
-                </span>
-                <span :class="['text-neutral-500 dark:text-neutral-400']">
-                  最近邻：{{ embedVote.nearest.map(item => `${item.id}(${item.score.toFixed(3)})`).join('、') || '无' }}
-                </span>
-                <span
-                  v-if="embedVote.excludedDuplicates"
-                  :class="['text-amber-700 dark:text-amber-400']"
-                >
-                  已排除 {{ embedVote.excludedDuplicates }} 条近似重复
-                </span>
-              </div>
-            </div>
-          </template>
-
-          <p
-            v-else-if="embedSingleInput"
-            :class="['text-xs text-amber-700 dark:text-amber-400']"
-          >
-            embedding 结果来自另一条输入，先重新判这一句。
-          </p>
-
-          <template v-if="embedReport">
-            <div :class="['grid grid-cols-2 gap-2 text-xs md:grid-cols-4']">
-              <div
-                v-for="metric in [
-                  { label: `召回（分母 ${embedReport.medicalTotal}）`, value: percent(embedReport.medicalRecall) },
-                  { label: `误判（分母 ${embedReport.chatTotal}）`, value: percent(embedReport.chatFalsePositiveRate) },
-                  { label: '不确定', value: `${embedReport.uncertain} 条` },
-                  { label: '批量耗时', value: `${((embedBatchDurationMs ?? 0) / 1000).toFixed(1)} s` },
-                ]"
-                :key="metric.label"
-                :class="[
-                  'flex flex-col gap-1 rounded-xl border px-3 py-2',
-                  'bg-white dark:bg-neutral-900',
-                  'border-neutral-200 dark:border-neutral-700',
-                ]"
-              >
-                <span :class="['text-neutral-500 dark:text-neutral-400']">{{ metric.label }}</span>
-                <span :class="['text-sm font-600']">{{ metric.value }}</span>
-              </div>
-            </div>
-
-            <p :class="['text-xs text-neutral-500 dark:text-neutral-400']">
-              阈值 {{ embedReport.margin }} 只作用于本页，改它不会新增请求；阈值未在独立验收集上确认，不能当作可上线结论。
-              同一样本不参与自己的投票；相似度 ≥ {{ duplicateSimilarity }} 的近似重复已从投票中排除，本批共排除 {{ embedDuplicateTotal }} 条。
-              {{ embedVotesAt ? `批量运行于 ${new Date(embedVotesAt).toLocaleTimeString()}` : '' }}
-            </p>
-
-            <template v-if="embedReport.misses.length || embedReport.falsePositives.length">
-              <h3 :class="['text-sm font-600']">
-                逐条错例 · 漏判 {{ embedReport.misses.length }} · 误判 {{ embedReport.falsePositives.length }}
-              </h3>
-
-              <div :class="['overflow-x-auto rounded-xl border', 'border-neutral-200 dark:border-neutral-700']">
-                <table :class="['w-full text-left text-xs']">
-                  <thead :class="['bg-neutral-50 dark:bg-neutral-900']">
-                    <tr>
-                      <th :class="['px-2 py-1 font-500']">
-                        ID
-                      </th>
-                      <th :class="['px-2 py-1 font-500']">
-                        输入
-                      </th>
-                      <th :class="['px-2 py-1 font-500']">
-                        标答
-                      </th>
-                      <th :class="['px-2 py-1 font-500']">
-                        结果
-                      </th>
-                      <th :class="['px-2 py-1 font-500']">
-                        分差
-                      </th>
-                      <th :class="['px-2 py-1 font-500']">
-                        最近邻
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr
-                      v-for="row in [...embedReport.misses, ...embedReport.falsePositives]"
-                      :key="row.id"
-                      :class="['border-t border-neutral-200 dark:border-neutral-800']"
-                    >
-                      <td :class="['px-2 py-1']">
-                        {{ row.id }}
-                      </td>
-                      <td :class="['px-2 py-1']">
-                        {{ row.input }}
-                      </td>
-                      <td :class="['px-2 py-1']">
-                        {{ labelText(row.expected) }}
-                      </td>
-                      <td :class="['px-2 py-1']">
-                        {{ embeddingOutcomeText(embeddingOutcomeOf(row)) }}
-                      </td>
-                      <td :class="['px-2 py-1']">
-                        {{ row.vote.margin.toFixed(4) }}
-                      </td>
-                      <td :class="['px-2 py-1']">
-                        {{ row.vote.nearest.slice(0, 3).map(item => item.id).join('、') }}
-                      </td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-            </template>
-          </template>
-        </div>
-      </section>
-
       <template v-if="report">
         <h2 :class="['text-base font-600']">
           批量评测 · {{ report.total }} 条 · 模式 {{ report.mode }} · 样本集 v{{ report.sampleSetVersion }}
@@ -2357,10 +1804,10 @@ function downloadReport() {
           </span>
         </h2>
 
-        <!-- 一行样本、三列判定（§9.3）。分类器来自这份报告，Embedding 来自
+        <!-- 一行样本、两列判定（§9.3）。分类器来自这份报告。
              它自己的批量运行，两边都跑过才有三列。 -->
         <p :class="['text-xs text-neutral-500 dark:text-neutral-400']">
-          统一逐条结果按样本 ID 合并：分类判定来自这次报告，Embedding 来自「Embedding 批量」。分差阈值在读取时应用，改阈值不重新请求。
+          统一逐条结果按样本 ID 合并：两列判定来自同一次报告。
         </p>
 
         <!-- 样本与报告以服务端为准（§9.4）；登录不可用时退回内置样本，页面说明当前读的是哪一份。 -->
@@ -2521,12 +1968,6 @@ function downloadReport() {
                   生成式
                 </th>
                 <th :class="['px-2 py-1 font-500']">
-                  Embedding
-                </th>
-                <th :class="['px-2 py-1 font-500']">
-                  分差
-                </th>
-                <th :class="['px-2 py-1 font-500']">
                   分歧
                 </th>
                 <th :class="['px-2 py-1 font-500']">
@@ -2558,12 +1999,6 @@ function downloadReport() {
                 <td :class="['px-2 py-1']">
                   {{ decisionLabel(row.model) }}
                 </td>
-                <td :class="['px-2 py-1']">
-                  {{ embeddingLabel(row.embedding) }}
-                </td>
-                <td :class="['px-2 py-1 font-mono text-xs']">
-                  {{ row.embeddingMargin === undefined ? '—' : row.embeddingMargin.toFixed(4) }}
-                </td>
                 <td
                   :class="[
                     'px-2 py-1 text-xs',
@@ -2591,8 +2026,8 @@ function downloadReport() {
                 </td>
               </tr>
               <tr v-if="!filteredRows.length">
-                <td :colspan="9" :class="['px-2 py-3 text-xs text-neutral-500 dark:text-neutral-400']">
-                  {{ batchRows.length ? '这个筛选下没有样本' : '先跑一次测试集（分类），再跑 Embedding 批量，三列才能合并' }}
+                <td :colspan="7" :class="['px-2 py-3 text-xs text-neutral-500 dark:text-neutral-400']">
+                  {{ batchRows.length ? '这个筛选下没有样本' : '先跑一次测试集（分类），两列才能合并' }}
                 </td>
               </tr>
             </tbody>
@@ -2926,10 +2361,6 @@ function downloadReport() {
           当前配置和这份报告不一致（模式、样本集、模型或分类提示词有一项变了），数字不可直接比较。重新跑一次。
         </div>
       </template>
-
-      <!-- Always open on purpose: a collapsed section at the bottom of this page
-           is easy to miss, and a tester who never opens it reads the page as if
-           the embedding comparison did not exist. -->
 
       <!-- The full history is its own page; the bench keeps the newest run in view. -->
       <div :class="['flex flex-wrap items-center gap-3 text-sm']">

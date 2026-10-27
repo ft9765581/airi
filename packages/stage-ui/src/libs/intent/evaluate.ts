@@ -1,4 +1,4 @@
-import type { IntentModelOptions } from './classify-model'
+import type { ClassifyHistoryTurn, IntentModelOptions } from './classify-model'
 import type { IntentClassifierMode, IntentDecision } from './contract'
 
 import { classifyWithModel, defaultClassifierSystemPrompt } from './classify-model'
@@ -39,7 +39,9 @@ export interface IntentSample {
   id: string
   /** The message to classify. Synthetic or de-identified: never take a real user message. */
   input: string
-  /** The earlier turn this sample depends on, when it needs one. */
+  /** The earlier turns this sample depends on, in order, when it needs any. */
+  context?: { role: 'user' | 'assistant', content: string }[]
+  /** The single earlier turn, kept for fixtures that only need one. */
   previous?: string
   /** The label a person assigned. */
   expected: 'medical' | 'chat'
@@ -134,6 +136,14 @@ export interface EvaluationReport {
 export interface EvaluateSamplesRequest {
   samples: IntentSample[]
   /**
+   * The caller's configuration fingerprint.
+   *
+   * The page compares this against what it would run now, and the stored run
+   * keeps it. Building a second fingerprint here would make every report look
+   * stale the moment either side gained a field.
+   */
+  configKey?: string
+  /**
    * Version of the labelled set.
    *
    * A stored report keeps it, so a run over an older set is not read as a
@@ -208,6 +218,19 @@ function summarize(
  * report.rules.medicalRecall // 0.82
  * report.model?.medicalRecall // 0.97
  */
+/**
+ * The earlier turns a sample depends on.
+ *
+ * A context array keeps the roles in order, so an assistant answer that changed
+ * the meaning of the next turn is not dropped. Fixtures that only need one turn
+ * keep using `previous`, which reads as a user message.
+ */
+function historyOf(sample: IntentSample): ClassifyHistoryTurn[] | undefined {
+  if (sample.context?.length)
+    return sample.context.map(turn => ({ role: turn.role, content: turn.content }))
+
+  return sample.previous ? [{ role: 'user', content: sample.previous }] : undefined
+}
 export async function evaluateSamples(request: EvaluateSamplesRequest): Promise<EvaluationReport> {
   const cases: EvaluationCase[] = []
 
@@ -226,13 +249,8 @@ export async function evaluateSamples(request: EvaluateSamplesRequest): Promise<
     const modelStartedAt = performance.now()
 
     for (const item of cases) {
-      // A sample's earlier turn is a user message: the fixtures carry the
-      // sentence a person said before, never an assistant answer.
-      const history = item.sample.previous
-        ? [{ role: 'user' as const, content: item.sample.previous }]
-        : undefined
       item.model = await classifyWithModel(
-        { message: item.sample.input, history },
+        { message: item.sample.input, history: historyOf(item.sample) },
         modelOptions,
       )
     }
@@ -272,6 +290,6 @@ export async function evaluateSamples(request: EvaluateSamplesRequest): Promise<
     ranAt: Date.now(),
     modelId,
     classifierPromptDigest,
-    configKey: [request.mode, `set${request.sampleSetVersion}`, modelId ?? 'no-model', classifierPromptDigest].join('|'),
+    configKey: request.configKey ?? [request.mode, `set${request.sampleSetVersion}`, modelId ?? 'no-model', classifierPromptDigest].join('|'),
   }
 }
