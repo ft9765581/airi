@@ -25,6 +25,7 @@ const ownCard = { name: '我自己的卡', version: '1.0.0', description: '自�
 function installStorage(initial: Record<string, string> = {}) {
   const storage = new Map<string, string>(Object.entries(initial))
   vi.stubGlobal('window', {
+    location: { origin: 'http://localhost:5180' },
     localStorage: {
       getItem: (key: string) => storage.get(key) ?? null,
       setItem: (key: string, value: string) => storage.set(key, value),
@@ -49,6 +50,8 @@ function stubDeploymentEnv() {
   vi.stubEnv('VITE_DEFAULT_SPEECH_MODEL', '')
   vi.stubEnv('VITE_DEFAULT_SPEECH_VOICE', '')
   vi.stubEnv('VITE_DEFAULT_DISPLAY_MODEL', '')
+  vi.stubEnv('VITE_KNOWLEDGE_BASE_URL', '')
+  vi.stubEnv('VITE_KNOWLEDGE_BASE_ID', '')
 }
 
 describe('build defaults: shipped character cards', () => {
@@ -248,5 +251,126 @@ describe('build defaults: stage appearance', () => {
     // Without this setting the expression controller registers no group, so
     // every emotion of the stage reaches a model that cannot show it.
     expect(storage.get('settings/live2d/expression-enabled')).toBe('true')
+  })
+})
+
+describe('build defaults: medical knowledge base', () => {
+  const connectionsKey = 'settings/knowledge-base/connections'
+  const ensuredKey = 'settings/defaults/medical-knowledge-base'
+  const deploymentUrl = 'https://api.example.test/api/v1/knowledge-base/retrieval'
+  const deploymentId = 'kb-medical'
+
+  function stubKnowledgeBaseEnv() {
+    vi.stubEnv('VITE_KNOWLEDGE_BASE_URL', deploymentUrl)
+    vi.stubEnv('VITE_KNOWLEDGE_BASE_ID', deploymentId)
+  }
+
+  beforeEach(() => {
+    stubDeploymentEnv()
+    stubKnowledgeBaseEnv()
+  })
+
+  afterEach(() => {
+    vi.unstubAllEnvs()
+    vi.unstubAllGlobals()
+  })
+
+  it('adds the deployment connection for the medical branch', () => {
+    const storage = installStorage()
+
+    applyBuildDefaults()
+
+    const connections = JSON.parse(storage.get(connectionsKey) ?? '[]') as Array<Record<string, unknown>>
+    expect(connections).toHaveLength(1)
+    expect(connections[0]).toMatchObject({
+      baseUrl: deploymentUrl,
+      knowledgeBaseId: deploymentId,
+      scope: 'medical',
+      enabled: true,
+    })
+  })
+
+  it('uses the deployment API when a production build has no knowledge base URL override', () => {
+    vi.stubEnv('PROD', true)
+    vi.stubEnv('DEV', false)
+    vi.stubEnv('VITE_KNOWLEDGE_BASE_URL', '')
+    vi.stubEnv('VITE_SERVER_URL', 'https://airi.example.test')
+    const storage = installStorage()
+
+    applyBuildDefaults()
+
+    const connections = JSON.parse(storage.get(connectionsKey) ?? '[]') as Array<Record<string, unknown>>
+    expect(connections).toHaveLength(1)
+    expect(connections[0]).toMatchObject({
+      baseUrl: 'https://airi.example.test/api/v1/knowledge-base/retrieval',
+      apiKey: '',
+      knowledgeBaseId: deploymentId,
+      scope: 'medical',
+    })
+  })
+
+  it('uses the same-origin development proxy when the local API is unavailable', () => {
+    vi.stubEnv('DEV', true)
+    vi.stubEnv('VITE_KNOWLEDGE_BASE_URL', '')
+    vi.stubEnv('VITE_SERVER_URL', 'http://localhost:6112')
+    const storage = installStorage()
+
+    applyBuildDefaults()
+
+    const connections = JSON.parse(storage.get(connectionsKey) ?? '[]') as Array<Record<string, unknown>>
+    expect(connections).toHaveLength(1)
+    expect(connections[0]).toMatchObject({
+      baseUrl: 'http://localhost:5180/knowledge-base-dev/api/dify/retrieval',
+      apiKey: '',
+      knowledgeBaseId: deploymentId,
+      scope: 'medical',
+    })
+  })
+
+  it('keeps the values a visitor edited', () => {
+    const storage = installStorage({
+      [connectionsKey]: JSON.stringify([{
+        id: 'mine',
+        name: '我的导诊库',
+        baseUrl: deploymentUrl,
+        apiKey: '',
+        knowledgeBaseId: deploymentId,
+        enabled: false,
+        scope: 'medical',
+      }]),
+    })
+
+    applyBuildDefaults()
+
+    const connections = JSON.parse(storage.get(connectionsKey) ?? '[]') as Array<Record<string, unknown>>
+    // One connection, still the visitor's: the pass must not add a duplicate.
+    expect(connections).toHaveLength(1)
+    expect(connections[0]).toMatchObject({ id: 'mine', name: '我的导诊库', enabled: false })
+  })
+
+  it('does not come back after the visitor removes it', () => {
+    // ROOT CAUSE:
+    //
+    // The pass runs on every start so that a settings reset repairs itself. If it
+    // only checked the connection list, a visitor who deleted the connection would
+    // get it back on the next reload, and the settings page would look broken.
+    //
+    // We fixed this by remembering the deployment connection separately and adding
+    // it once per address and knowledge id.
+    const storage = installStorage({ [ensuredKey]: `${deploymentUrl}|${deploymentId}` })
+
+    applyBuildDefaults()
+
+    expect(storage.get(connectionsKey)).toBeNull()
+  })
+
+  it('adds nothing when the build serves no knowledge base', () => {
+    vi.stubEnv('VITE_KNOWLEDGE_BASE_ID', '')
+    const storage = installStorage()
+
+    applyBuildDefaults()
+
+    expect(storage.get(connectionsKey)).toBeNull()
+    expect(storage.get(ensuredKey)).toBeNull()
   })
 })

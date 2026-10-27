@@ -24,6 +24,7 @@ import {
   SPEECH_PROVIDER_KEY,
   SPEECH_VOICE_KEY,
 } from '@proj-airi/stage-ui/libs/deployment-default-keys'
+import { KNOWLEDGE_BASE_RETRIEVAL_PATH } from '@proj-airi/stage-ui/libs/server'
 
 import xiaoqingCard from '../assets/airi-cards/xiaoqing.json'
 
@@ -84,6 +85,16 @@ const APPLIED_VERSION_KEY = 'settings/defaults/version'
 const PROVIDER_PURGE_KEY = 'settings/defaults/provider-purge'
 
 const PROVIDERS_KEY = 'settings/providers/configured'
+/** Where the settings store keeps its knowledge base connections. */
+const KNOWLEDGE_BASE_CONNECTIONS_KEY = 'settings/knowledge-base/connections'
+/**
+ * Remembers the medical connection this build added.
+ *
+ * Without it, a visitor who removes the connection would get it back on every
+ * start. The value carries the address and the knowledge id, so a later build
+ * that serves another knowledge base adds that one.
+ */
+const MEDICAL_KNOWLEDGE_BASE_KEY = 'settings/defaults/medical-knowledge-base'
 const ADDED_PROVIDERS_KEY = 'settings/providers/added'
 
 const CARDS_KEY = 'airi-cards'
@@ -284,6 +295,61 @@ function writeProviderRecord(record: ProviderDefault): void {
   }
 }
 
+/**
+ * Adds the medical knowledge base connection of this deployment.
+ *
+ * The medical branch reads only the connections marked for it, so a browser
+ * that never opened the settings page answers every medical question without a
+ * single reference. This pass runs on every start and adds the deployment's
+ * connection once: a connection the visitor edited keeps its values, and a
+ * connection the visitor removed stays removed.
+ */
+function ensureMedicalKnowledgeBase(): void {
+  const configuredUrl = envValue(import.meta.env.VITE_KNOWLEDGE_BASE_URL)
+  const serverUrl = envValue(import.meta.env.VITE_SERVER_URL)
+  const baseUrl = configuredUrl || (import.meta.env.DEV
+    ? `${window.location.origin}/knowledge-base-dev/api/dify/retrieval`
+    : serverUrl ? new URL(KNOWLEDGE_BASE_RETRIEVAL_PATH, serverUrl).toString() : '')
+  const knowledgeBaseId = envValue(import.meta.env.VITE_KNOWLEDGE_BASE_ID)
+  if (!baseUrl || !knowledgeBaseId)
+    return
+
+  const identity = `${baseUrl}|${knowledgeBaseId}`
+  if (window.localStorage.getItem(MEDICAL_KNOWLEDGE_BASE_KEY) === identity)
+    return
+
+  const raw = window.localStorage.getItem(KNOWLEDGE_BASE_CONNECTIONS_KEY)
+  let connections: unknown[] = []
+  try {
+    const parsed: unknown = raw ? JSON.parse(raw) : []
+    connections = Array.isArray(parsed) ? parsed : []
+  }
+  catch {
+    // A damaged list is replaced by the deployment connection below.
+    connections = []
+  }
+
+  const alreadyThere = connections.some((connection) => {
+    const candidate = connection as Record<string, unknown>
+    return candidate.scope === 'medical'
+      && `${String(candidate.baseUrl ?? '')}|${String(candidate.knowledgeBaseId ?? '')}` === identity
+  })
+
+  if (!alreadyThere) {
+    connections.push({
+      id: 'deployment-medical',
+      name: '医疗知识库',
+      baseUrl,
+      apiKey: '',
+      knowledgeBaseId,
+      enabled: true,
+      scope: 'medical',
+    })
+    window.localStorage.setItem(KNOWLEDGE_BASE_CONNECTIONS_KEY, JSON.stringify(connections))
+  }
+
+  window.localStorage.setItem(MEDICAL_KNOWLEDGE_BASE_KEY, identity)
+}
 /**
  * Writes the provider records of this deployment while a browser lacks them.
  *
@@ -726,6 +792,10 @@ export function applyBuildDefaults(): void {
   // removes their records and leaves the defaults version alone, so a pass that
   // waits for a new version would never repair that browser.
   const served = ensureDeploymentProviders()
+
+  // Same reason as the provider records above: this runs on every start, because
+  // a settings reset or a fresh browser must reach the same configured state.
+  ensureMedicalKnowledgeBase()
 
   // Dropping a card and shipping one are the same concern: a deployment that
   // hands the cards to its visitors does neither.

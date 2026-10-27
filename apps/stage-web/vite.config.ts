@@ -20,7 +20,7 @@ import { tryCatch } from '@moeru/std'
 import { Download } from '@proj-airi/unplugin-fetch/vite'
 import { DownloadLive2DSDK } from '@proj-airi/unplugin-live2d-sdk/vite'
 import { LFS, SpaceCard } from 'hfup/vite'
-import { defineConfig } from 'vite'
+import { defineConfig, loadEnv } from 'vite'
 import { VitePWA } from 'vite-plugin-pwa'
 
 const stageUIAssetsRoot = resolve(join(import.meta.dirname, '..', '..', 'packages', 'stage-ui', 'src', 'assets'))
@@ -36,6 +36,8 @@ function hasFlagEnableMkcert(): boolean {
 
   return false
 }
+
+const knowledgeBaseDevApiKey = loadEnv('development', import.meta.dirname, 'KNOWLEDGE_BASE_DEV_').KNOWLEDGE_BASE_DEV_API_KEY
 
 export default defineConfig({
   optimizeDeps: {
@@ -82,6 +84,30 @@ export default defineConfig({
       //
       // See: https://vite.dev/config/server-options#server-fs-strict
       strict: false,
+    },
+    proxy: {
+      // NOTICE:
+      // The knowledge base service rejects most browser origins, including
+      // local dev ports other than 5173. The deployment proxy at
+      // `localhost:6112` works but needs the Docker backend and a session
+      // cookie, so a fresh checkout cannot test the knowledge base page at all.
+      // This same-origin path makes the settings page testable without either.
+      // The dev server adds the key from its private environment; the key
+      // does not enter the browser bundle. `server.proxy` never reaches a build.
+      // Removal condition: when the knowledge service allows the local dev
+      // origins, or when the local backend is part of the standard dev flow.
+      '/knowledge-base-dev': {
+        target: env.VITE_KNOWLEDGE_BASE_DEV_TARGET || 'https://knowledge.bestmings.com',
+        changeOrigin: true,
+        rewrite: path => path.replace(/^\/knowledge-base-dev/, ''),
+        configure: (proxy) => {
+          if (knowledgeBaseDevApiKey) {
+            proxy.on('proxyReq', (request) => {
+              request.setHeader('Authorization', `Bearer ${knowledgeBaseDevApiKey}`)
+            })
+          }
+        },
+      },
     },
     watch: {
       // NOTICE:
