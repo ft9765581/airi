@@ -1,14 +1,16 @@
 <script setup lang="ts">
-import type { KnowledgeBaseDraft } from '@proj-airi/stage-ui/stores/settings/knowledge-base'
+import type { KnowledgeBaseConnection, KnowledgeBaseDraft } from '@proj-airi/stage-ui/stores/settings/knowledge-base'
 
 import { useSettingsKnowledgeBase } from '@proj-airi/stage-ui/stores/settings/knowledge-base'
-import { Button } from '@proj-airi/ui'
+import { Button, GhostButton } from '@proj-airi/ui'
 import { nanoid } from 'nanoid'
 import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 import KnowledgeBaseForm from './components/knowledge-base-form.vue'
 import KnowledgeBaseList from './components/knowledge-base-list.vue'
+
+import { defaultKnowledgeBaseKnowledgeId, defaultKnowledgeBaseServerUrl } from './defaults'
 
 const { t } = useI18n()
 const knowledgeBaseStore = useSettingsKnowledgeBase()
@@ -20,6 +22,15 @@ const connectedCount = computed(() => connections.value.length)
 // connection. One form is open at a time.
 const formOpen = ref(false)
 const editingId = ref<string>()
+/**
+ * Values a new medical connection starts from.
+ *
+ * The medical branch reads only connections marked for it (§21 of the fork
+ * log). Sending every new connection there would put triage records into small
+ * talk, so the choice stays explicit — but the address and the switch are
+ * filled in, because retyping a deployment URL invites typos.
+ */
+const preset = ref<KnowledgeBaseConnection>()
 
 const editingConnection = computed(() =>
   editingId.value
@@ -29,17 +40,34 @@ const editingConnection = computed(() =>
 
 function openCreate() {
   editingId.value = undefined
+  preset.value = undefined
+  formOpen.value = true
+}
+
+function openMedicalPreset() {
+  editingId.value = undefined
+  preset.value = {
+    id: '',
+    name: t('settings.pages.knowledge-base.list.add-medical-name'),
+    baseUrl: defaultKnowledgeBaseServerUrl,
+    apiKey: '',
+    knowledgeBaseId: defaultKnowledgeBaseKnowledgeId,
+    enabled: true,
+    scope: 'medical',
+  }
   formOpen.value = true
 }
 
 function openEdit(id: string) {
   editingId.value = id
+  preset.value = undefined
   formOpen.value = true
 }
 
 function closeForm() {
   formOpen.value = false
   editingId.value = undefined
+  preset.value = undefined
 }
 
 /** The connection fields a save writes, without the identity and the switch. */
@@ -49,6 +77,7 @@ function toConnectionFields(draft: KnowledgeBaseDraft) {
     baseUrl: draft.baseUrl,
     apiKey: draft.apiKey,
     knowledgeBaseId: draft.knowledgeBaseId,
+    scope: draft.scope,
   }
 }
 
@@ -108,14 +137,22 @@ function handleRemove(id: string) {
           </span>
         </div>
       </div>
-      <Button
-        v-if="!formOpen"
-        color="primary"
-        variant="primary"
-        icon="i-solar:add-circle-bold-duotone"
-        :label="t('settings.pages.knowledge-base.list.add')"
-        @click="openCreate"
-      />
+      <div v-if="!formOpen" :class="['flex flex-wrap items-center gap-2']">
+        <GhostButton
+          size="sm"
+          icon="i-solar:stethoscope-bold-duotone"
+          @click="openMedicalPreset"
+        >
+          {{ t('settings.pages.knowledge-base.list.add-medical') }}
+        </GhostButton>
+        <Button
+          color="primary"
+          variant="primary"
+          icon="i-solar:add-circle-bold-duotone"
+          :label="t('settings.pages.knowledge-base.list.add')"
+          @click="openCreate"
+        />
+      </div>
     </div>
 
     <span :class="['text-xs text-neutral-500 dark:text-neutral-400']">
@@ -132,6 +169,7 @@ function handleRemove(id: string) {
     <KnowledgeBaseForm
       v-if="formOpen"
       :connection="editingConnection"
+      :preset="preset"
       @submit="handleSubmit"
       @cancel="closeForm"
     />

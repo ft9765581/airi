@@ -491,8 +491,12 @@ pages:
       empty: 还没有连接知识库。
       empty-hint: 点「添加知识库」开始连接。
       add: 添加知识库
+      add-medical: 添加医疗知识库
+      add-medical-name: 医疗知识库
       edit: 编辑
       enabled: 启用
+      scope-chat: 常规聊天
+      scope-medical: 医疗咨询
       test: 测试
       remove: 删除
     form:
@@ -514,6 +518,9 @@ pages:
         label: 知识库 ID
         description: 检索接口要求的 knowledge_id。
         placeholder: 请输入知识库 ID
+      medical-flow:
+        label: 在医疗咨询流程中使用
+        description: 不勾选时只用于常规聊天；勾选后只在医疗问题进入咨询分支时检索。
       save: 添加
       save-edit: 保存修改
       show-api-key: 显示 API Key
@@ -528,7 +535,7 @@ pages:
       failed: 连接失败
       http-detail: 'HTTP {status} · {latency} 毫秒'
       record-count: '命中 {count} 条'
-      empty-records-hint: 连接正常，但检索没有返回内容，知识库可能是空的。
+      empty-records-hint: 连接正常。这次测试用的是固定探测词「连接测试」，没有命中很常见，不代表知识库是空的；真实问题有没有结果要在聊天里试。
       service-error: '服务返回错误 {code}：{message}'
       authorization-format-hint: Authorization 请求头格式无效。
       authentication-hint: 认证失败，请检查 API Key。

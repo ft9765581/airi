@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import type { KnowledgeBaseConnection, KnowledgeBaseDraft } from '@proj-airi/stage-ui/stores/settings/knowledge-base'
 
-import { Button, FieldInput, GhostButton } from '@proj-airi/ui'
+import { connectionScope } from '@proj-airi/stage-ui/stores/settings/knowledge-base'
+import { Button, FieldCheckbox, FieldInput, GhostButton } from '@proj-airi/ui'
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 
@@ -13,6 +14,13 @@ import { defaultKnowledgeBaseApiKey, defaultKnowledgeBaseServerUrl } from '../de
 const props = defineProps<{
   /** The connection to edit. Without it, the form creates a connection. */
   connection?: KnowledgeBaseConnection
+  /**
+   * Values a new connection starts from.
+   *
+   * Ignored when `connection` is set: an edit must show the stored row, not a
+   * preset that would silently replace it.
+   */
+  preset?: Partial<KnowledgeBaseConnection>
 }>()
 
 const emit = defineEmits<{
@@ -30,15 +38,28 @@ const baseUrl = ref('')
 const apiKey = ref('')
 const knowledgeBaseId = ref('')
 const revealApiKey = ref(false)
+/**
+ * Whether this connection answers the medical flow.
+ *
+ * One switch, two names: checked means the medical consultation branch reads
+ * it, unchecked means ordinary chat does. The flows never share a connection,
+ * so a patient cannot get a triage card in small talk.
+ */
+const medicalFlow = ref(false)
 
 // The page keeps one form open at a time and replaces the `connection` prop
 // when the user edits another row, so the fields follow the prop.
-watch(() => props.connection, (connection) => {
-  name.value = connection?.name ?? ''
-  baseUrl.value = connection?.baseUrl ?? defaultKnowledgeBaseServerUrl
-  apiKey.value = connection?.apiKey ?? defaultKnowledgeBaseApiKey
-  knowledgeBaseId.value = connection?.knowledgeBaseId ?? ''
+watch(() => [props.connection, props.preset] as const, () => {
+  const source = props.connection ?? props.preset
+
+  name.value = source?.name ?? ''
+  baseUrl.value = source?.baseUrl ?? defaultKnowledgeBaseServerUrl
+  apiKey.value = source?.apiKey ?? defaultKnowledgeBaseApiKey
+  knowledgeBaseId.value = source?.knowledgeBaseId ?? ''
   revealApiKey.value = false
+  medicalFlow.value = props.connection
+    ? connectionScope(props.connection) === 'medical'
+    : source?.scope === 'medical'
 }, { immediate: true })
 
 /** The retrieval test needs the address and the knowledge id. */
@@ -50,6 +71,7 @@ function handleSubmit() {
     baseUrl: baseUrl.value.trim(),
     apiKey: apiKey.value.trim(),
     knowledgeBaseId: knowledgeBaseId.value.trim(),
+    scope: medicalFlow.value ? 'medical' : 'chat',
   })
 }
 
@@ -113,6 +135,12 @@ function handleTest() {
       :label="t('settings.pages.knowledge-base.form.knowledge-base-id.label')"
       :description="t('settings.pages.knowledge-base.form.knowledge-base-id.description')"
       :placeholder="t('settings.pages.knowledge-base.form.knowledge-base-id.placeholder')"
+    />
+
+    <FieldCheckbox
+      v-model="medicalFlow"
+      :label="t('settings.pages.knowledge-base.form.medical-flow.label')"
+      :description="t('settings.pages.knowledge-base.form.medical-flow.description')"
     />
 
     <div :class="['flex items-center gap-2']">

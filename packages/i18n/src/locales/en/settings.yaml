@@ -514,8 +514,12 @@ pages:
       empty: No knowledge base is connected.
       empty-hint: Select Add knowledge base to connect one.
       add: Add knowledge base
+      add-medical: Add medical knowledge base
+      add-medical-name: Medical knowledge base
       edit: Edit
       enabled: Enabled
+      scope-chat: Chat
+      scope-medical: Medical
       test: Test
       remove: Remove
     form:
@@ -537,6 +541,9 @@ pages:
         label: Knowledge base ID
         description: The knowledge_id that the retrieval endpoint expects.
         placeholder: Enter the knowledge base ID
+      medical-flow:
+        label: Use in the medical consultation flow
+        description: Unchecked, this connection answers ordinary chat only. Checked, it is read only when a medical question reaches the consultation branch.
       save: Add
       save-edit: Save changes
       show-api-key: Show API key
@@ -551,7 +558,7 @@ pages:
       failed: Failed
       http-detail: 'HTTP {status} · {latency} ms'
       record-count: '{count} records'
-      empty-records-hint: The connection works, but the retrieval returned no records. The knowledge base can be empty.
+      empty-records-hint: The connection works. This test sends a fixed probe word, so zero records is common and does not mean the knowledge base is empty; a real question is the only way to judge it.
       service-error: 'Service error {code}: {message}'
       authorization-format-hint: The Authorization header format is not valid.
       authentication-hint: Authentication failed. Check the API key.

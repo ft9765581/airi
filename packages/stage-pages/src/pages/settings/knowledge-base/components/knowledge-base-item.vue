@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import type { KnowledgeBaseConnection } from '@proj-airi/stage-ui/stores/settings/knowledge-base'
 
+import { connectionScope } from '@proj-airi/stage-ui/stores/settings/knowledge-base'
 import { Checkbox, GhostButton } from '@proj-airi/ui'
+import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 import KnowledgeBaseStatusBadge from './knowledge-base-status-badge.vue'
@@ -20,6 +22,13 @@ const emit = defineEmits<{
 
 const { t } = useI18n()
 const { testing, status, detail, run } = useKnowledgeBaseConnectionTest()
+
+/** The flow name this row answers, so the list shows where it is used. */
+const scopeLabel = computed(() =>
+  connectionScope(props.connection) === 'medical'
+    ? t('settings.pages.knowledge-base.list.scope-medical')
+    : t('settings.pages.knowledge-base.list.scope-chat'),
+)
 
 function handleTest() {
   void run({
@@ -41,6 +50,15 @@ function handleTest() {
     <div :class="['flex min-w-0 flex-col gap-1']">
       <div :class="['flex items-center gap-2']">
         <span :class="['truncate text-sm font-medium']">{{ connection.name }}</span>
+        <span
+          :class="[
+            'shrink-0 rounded-md px-1.5 py-0.5 text-xs',
+            'bg-neutral-200/70 text-neutral-600',
+            'dark:bg-neutral-700/60 dark:text-neutral-300',
+          ]"
+        >
+          {{ scopeLabel }}
+        </span>
         <KnowledgeBaseStatusBadge :status="status" />
       </div>
       <span :class="['truncate text-xs text-neutral-500 dark:text-neutral-400']">
