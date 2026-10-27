@@ -1,6 +1,8 @@
 import { array, integer, maxLength, minLength, minValue, number, object, optional, partial, pipe, string } from 'valibot'
 
 import {
+  IntentCollectionPurposeSchema,
+  IntentContextSchema,
   IntentLabelSchema,
   IntentLabelStatusSchema,
   IntentRunModeSchema,
@@ -18,16 +20,16 @@ import {
  */
 
 const InputTextSchema = pipe(string(), minLength(1), maxLength(2000))
-const PreviousTextSchema = pipe(string(), maxLength(2000))
 
 export const CreateIntentSampleSchema = object({
   input: InputTextSchema,
-  previous: optional(PreviousTextSchema),
+  context: optional(IntentContextSchema),
   group: IntentSampleGroupSchema,
-  expected: IntentLabelSchema,
+  expected: optional(IntentLabelSchema),
   labelStatus: optional(IntentLabelStatusSchema),
   source: optional(pipe(string(), maxLength(200))),
   sampleSetVersion: optional(pipe(number(), integer(), minValue(1))),
+  collectionId: optional(pipe(string(), maxLength(200))),
 })
 
 export const UpdateIntentSampleSchema = partial(CreateIntentSampleSchema)
@@ -37,15 +39,23 @@ export const ImportIntentSamplesSchema = object({
   samples: pipe(array(CreateIntentSampleSchema), minLength(1), maxLength(500)),
 })
 
+/** One named sample collection. */
+export const CreateIntentCollectionSchema = object({
+  name: pipe(string(), minLength(1), maxLength(80)),
+  purpose: optional(IntentCollectionPurposeSchema),
+})
+
+export const UpdateIntentCollectionSchema = object({
+  name: optional(pipe(string(), minLength(1), maxLength(80))),
+  purpose: optional(IntentCollectionPurposeSchema),
+})
+
 export const CreateIntentRunSchema = object({
   sampleSetVersion: pipe(number(), integer(), minValue(1)),
   mode: IntentRunModeSchema,
   configKey: pipe(string(), minLength(1), maxLength(400)),
   modelId: optional(pipe(string(), maxLength(200))),
   classifierPromptDigest: optional(pipe(string(), maxLength(80))),
-  embeddingEndpoint: optional(pipe(string(), maxLength(400))),
-  embeddingModel: optional(pipe(string(), maxLength(200))),
-  embeddingMargin: optional(pipe(string(), maxLength(40))),
   total: pipe(number(), integer(), minValue(0)),
 })
 

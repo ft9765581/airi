@@ -24,8 +24,20 @@ export const IntentSampleGroupSchema = picklist([
 /** A label nobody confirmed is not an answer a release report may use. */
 export const IntentLabelStatusSchema = picklist(['unreviewed', 'reviewed'])
 
+/** One earlier turn a sample depends on. The role decides how it reads. */
+export const IntentContextMessageSchema = object({
+  role: picklist(['user', 'assistant']),
+  content: pipe(string(), minLength(1), maxLength(2000)),
+})
+
+/** Up to ten turns: more than one turn is enough to read a follow-up. */
+export const IntentContextSchema = pipe(array(IntentContextMessageSchema), maxLength(10))
+
+/** Where a collection sits in the evaluation plan. It grants no permission. */
+export const IntentCollectionPurposeSchema = picklist(['development', 'acceptance'])
+
 /** Which method produced a run. */
-export const IntentRunModeSchema = picklist(['rules', 'model', 'compare', 'embedding'])
+export const IntentRunModeSchema = picklist(['rules', 'model', 'compare'])
 
 /** A batch outlives one request, so it reports where it is. */
 export const IntentRunStatusSchema = picklist(['running', 'completed', 'failed', 'cancelled'])
@@ -43,7 +55,6 @@ export const RunMethodMetricsSchema = object({
 export const RunMetricsSchema = object({
   rules: optional(RunMethodMetricsSchema),
   model: optional(RunMethodMetricsSchema),
-  embedding: optional(RunMethodMetricsSchema),
 })
 
 /**
@@ -55,11 +66,11 @@ export const RunMetricsSchema = object({
 export const RunCaseSchema = object({
   sampleId: pipe(string(), minLength(1), maxLength(200)),
   input: pipe(string(), minLength(1), maxLength(2000)),
-  previous: optional(pipe(string(), maxLength(2000))),
-  expected: IntentLabelSchema,
+  /** The earlier turns the run actually saw, so a snapshot can be replayed. */
+  context: optional(IntentContextSchema),
+  expected: optional(IntentLabelSchema),
   rules: optional(string()),
   model: optional(string()),
-  embedding: optional(string()),
   disagreement: optional(boolean()),
 })
 

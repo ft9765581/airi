@@ -21,13 +21,26 @@ import * as schema from '../../schemas/intent-eval'
 /** One sample as a client may create it. The route validates the body first. */
 export interface IntentSampleInput {
   input: string
-  previous?: string
+  /** Earlier turns, in order. */
+  context?: { role: 'user' | 'assistant', content: string }[]
   group: string
-  expected: 'medical' | 'chat'
+  /** Missing until someone labels the sample: an unlabelled row is data, not an answer. */
+  expected?: 'medical' | 'chat'
   labelStatus?: 'unreviewed' | 'reviewed'
   source?: string
+  /** The collection this sample belongs to, when the page has created one. */
+  collectionId?: string
   sampleSetVersion?: number
 }
+
+/** One collection as a client may create it. */
+export interface IntentCollectionInput {
+  name: string
+  purpose?: 'development' | 'acceptance'
+}
+
+/** What a client may change on a collection. */
+export type IntentCollectionPatch = Partial<IntentCollectionInput>
 
 /** What a client may change on a sample. */
 export type IntentSamplePatch = Partial<IntentSampleInput>
@@ -35,13 +48,10 @@ export type IntentSamplePatch = Partial<IntentSampleInput>
 /** One run as a client creates it. Metrics and cases arrive as the run progresses. */
 export interface IntentRunInput {
   sampleSetVersion: number
-  mode: 'rules' | 'model' | 'compare' | 'embedding'
+  mode: 'rules' | 'model' | 'compare'
   configKey: string
   modelId?: string
   classifierPromptDigest?: string
-  embeddingEndpoint?: string
-  embeddingModel?: string
-  embeddingMargin?: string
   total: number
 }
 
@@ -54,10 +64,45 @@ export interface IntentRunPatch {
   failureReason?: string
 }
 
+/**
+ * Thrown when a write points at a collection the caller does not own.
+ *
+ * The route maps it to 400: the caller sent an id, and the id is wrong. A 404
+ * would read as "the sample is missing", which it is not.
+ */
+function createCollectionMissingError() {
+  return new CollectionMissingError('Unknown collection')
+}
+
+export class CollectionMissingError extends Error {}
+
 /** The statuses after which a run does not change again. */
 const terminalStatuses = new Set(['completed', 'failed', 'cancelled'])
 
 export function createIntentEvalService(db: Database) {
+  /**
+   * Confirms the collection belongs to this caller and still exists.
+   *
+   * A sample that points at a stranger's collection would be readable through
+   * that collection's filter, so the check runs at every write boundary instead
+   * of only in the page (intent-routing.md §7.6).
+   */
+  async function assertCollection(userId: string, collectionId: string | undefined) {
+    if (!collectionId)
+      return
+
+    const row = await db.query.intentCollections.findFirst({
+      where: and(
+        eq(schema.intentCollections.id, collectionId),
+        eq(schema.intentCollections.userId, userId),
+        isNull(schema.intentCollections.deletedAt),
+      ),
+    })
+
+    if (!row)
+      throw createCollectionMissingError()
+  }
+
   /** One row as the API returns it, with the stored JSON validated. */
   function toRun(row: schema.IntentRunRow) {
     return {
@@ -68,22 +113,74 @@ export function createIntentEvalService(db: Database) {
   }
 
   return {
-    async listSamples(userId: string) {
+    /** Collections the person created, newest first. */
+    async listCollections(userId: string) {
+      return await db.query.intentCollections.findMany({
+        where: and(eq(schema.intentCollections.userId, userId), isNull(schema.intentCollections.deletedAt)),
+        orderBy: [desc(schema.intentCollections.createdAt)],
+      })
+    },
+
+    async createCollection(userId: string, input: IntentCollectionInput) {
+      const [row] = await db.insert(schema.intentCollections).values({
+        userId,
+        name: input.name,
+        purpose: input.purpose,
+      }).returning()
+
+      return row
+    },
+
+    async updateCollection(userId: string, id: string, patch: IntentCollectionPatch) {
+      const [row] = await db.update(schema.intentCollections)
+        .set({ ...patch, updatedAt: new Date() })
+        .where(and(
+          eq(schema.intentCollections.id, id),
+          eq(schema.intentCollections.userId, userId),
+          isNull(schema.intentCollections.deletedAt),
+        ))
+        .returning()
+
+      return row
+    },
+
+    /** Soft delete; the samples keep pointing at an id no collection resolves. */
+    async deleteCollection(userId: string, id: string) {
+      const [row] = await db.update(schema.intentCollections)
+        .set({ deletedAt: new Date(), updatedAt: new Date() })
+        .where(and(
+          eq(schema.intentCollections.id, id),
+          eq(schema.intentCollections.userId, userId),
+          isNull(schema.intentCollections.deletedAt),
+        ))
+        .returning()
+
+      return row
+    },
+
+    async listSamples(userId: string, collectionId?: string) {
       return await db.query.intentSamples.findMany({
-        where: and(eq(schema.intentSamples.userId, userId), isNull(schema.intentSamples.deletedAt)),
+        where: and(
+          eq(schema.intentSamples.userId, userId),
+          isNull(schema.intentSamples.deletedAt),
+          ...(collectionId ? [eq(schema.intentSamples.collectionId, collectionId)] : []),
+        ),
         orderBy: [desc(schema.intentSamples.createdAt)],
       })
     },
 
     async createSample(userId: string, input: IntentSampleInput) {
+      await assertCollection(userId, input.collectionId)
+
       const [row] = await db.insert(schema.intentSamples).values({
         userId,
         input: input.input,
-        previous: input.previous,
+        context: input.context,
         group: input.group,
         expected: input.expected,
         labelStatus: input.labelStatus,
         source: input.source,
+        collectionId: input.collectionId,
         sampleSetVersion: input.sampleSetVersion,
       }).returning()
 
@@ -95,19 +192,25 @@ export function createIntentEvalService(db: Database) {
       if (!inputs.length)
         return []
 
+      for (const input of inputs)
+        await assertCollection(userId, input.collectionId)
+
       return await db.insert(schema.intentSamples).values(inputs.map(input => ({
         userId,
         input: input.input,
-        previous: input.previous,
+        context: input.context,
         group: input.group,
         expected: input.expected,
         labelStatus: input.labelStatus,
         source: input.source,
+        collectionId: input.collectionId,
         sampleSetVersion: input.sampleSetVersion,
       }))).returning()
     },
 
     async updateSample(userId: string, id: string, patch: IntentSamplePatch) {
+      await assertCollection(userId, patch.collectionId)
+
       const [row] = await db.update(schema.intentSamples)
         .set({ ...patch, updatedAt: new Date() })
         .where(and(
@@ -164,9 +267,6 @@ export function createIntentEvalService(db: Database) {
         configKey: input.configKey,
         modelId: input.modelId,
         classifierPromptDigest: input.classifierPromptDigest,
-        embeddingEndpoint: input.embeddingEndpoint,
-        embeddingModel: input.embeddingModel,
-        embeddingMargin: input.embeddingMargin,
         total: input.total,
       }).returning()
 
@@ -214,7 +314,16 @@ export function createIntentEvalService(db: Database) {
           ))
           .returning({ id: schema.intentSamples.id })
 
+        const collections = await tx.update(schema.intentCollections)
+          .set({ deletedAt: now, updatedAt: now })
+          .where(and(
+            eq(schema.intentCollections.userId, userId),
+            isNull(schema.intentCollections.deletedAt),
+          ))
+          .returning({ id: schema.intentCollections.id })
+
         const runs = await tx.update(schema.intentRuns)
+
           .set({ deletedAt: now })
           .where(and(
             eq(schema.intentRuns.userId, userId),
@@ -222,7 +331,7 @@ export function createIntentEvalService(db: Database) {
           ))
           .returning({ id: schema.intentRuns.id })
 
-        return { samples: samples.length, runs: runs.length }
+        return { samples: samples.length, runs: runs.length, collections: collections.length }
       })
     },
   }

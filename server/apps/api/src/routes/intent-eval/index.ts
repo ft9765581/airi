@@ -5,11 +5,14 @@ import { Hono } from 'hono'
 import { safeParse } from 'valibot'
 
 import { authGuard } from '../../middlewares/auth'
+import { CollectionMissingError } from '../../services/domain/intent-eval'
 import { createBadRequestError, createNotFoundError } from '../../utils/error'
 import {
+  CreateIntentCollectionSchema,
   CreateIntentRunSchema,
   CreateIntentSampleSchema,
   ImportIntentSamplesSchema,
+  UpdateIntentCollectionSchema,
   UpdateIntentRunSchema,
   UpdateIntentSampleSchema,
 } from './schema'
@@ -24,14 +27,65 @@ import {
  * Every repository call passes the signed-in user id, so a resource belonging to
  * someone else is reported as missing.
  */
+/** Maps a rejected collection id to a 400 the page can show. */
+async function withCollectionCheck<T>(run: () => Promise<T>): Promise<T> {
+  try {
+    return await run()
+  }
+  catch (error) {
+    if (error instanceof CollectionMissingError)
+      throw createBadRequestError('Unknown collection', 'INVALID_REQUEST')
+
+    throw error
+  }
+}
 export function createIntentEvalRoutes(service: IntentEvalService) {
   const userOf = (c: { get: (key: 'user') => { id: string } | undefined }) => c.get('user')!
 
   return new Hono<HonoEnv>()
     .use('*', authGuard)
 
+    .get('/collections', async (c) => {
+      const rows = await service.listCollections(userOf(c).id)
+      return c.json(rows)
+    })
+
+    .post('/collections', async (c) => {
+      const payload = await c.req.json().catch(() => null)
+      const result = safeParse(CreateIntentCollectionSchema, payload)
+
+      if (!result.success)
+        throw createBadRequestError('Invalid Request', 'INVALID_REQUEST', result.issues)
+
+      const row = await service.createCollection(userOf(c).id, result.output)
+      return c.json(row, 201)
+    })
+
+    .patch('/collections/:id', async (c) => {
+      const payload = await c.req.json().catch(() => null)
+      const result = safeParse(UpdateIntentCollectionSchema, payload)
+
+      if (!result.success)
+        throw createBadRequestError('Invalid Request', 'INVALID_REQUEST', result.issues)
+
+      const row = await service.updateCollection(userOf(c).id, c.req.param('id'), result.output)
+      if (!row)
+        throw createNotFoundError()
+
+      return c.json(row)
+    })
+
+    .delete('/collections/:id', async (c) => {
+      const row = await service.deleteCollection(userOf(c).id, c.req.param('id'))
+      if (!row)
+        throw createNotFoundError()
+
+      return c.body(null, 204)
+    })
+
     .get('/samples', async (c) => {
-      const rows = await service.listSamples(userOf(c).id)
+      const collectionId = c.req.query('collectionId')
+      const rows = await service.listSamples(userOf(c).id, collectionId)
       return c.json(rows)
     })
 
@@ -42,7 +96,7 @@ export function createIntentEvalRoutes(service: IntentEvalService) {
       if (!result.success)
         throw createBadRequestError('Invalid Request', 'INVALID_REQUEST', result.issues)
 
-      const row = await service.createSample(userOf(c).id, result.output)
+      const row = await withCollectionCheck(() => service.createSample(userOf(c).id, result.output))
       return c.json(row, 201)
     })
 
@@ -55,7 +109,7 @@ export function createIntentEvalRoutes(service: IntentEvalService) {
 
       // One statement: a rejected row rejects the file, so an import cannot land
       // half of a set and read as a complete one.
-      const rows = await service.createSamples(userOf(c).id, result.output.samples)
+      const rows = await withCollectionCheck(() => service.createSamples(userOf(c).id, result.output.samples))
       return c.json(rows, 201)
     })
 
@@ -66,7 +120,7 @@ export function createIntentEvalRoutes(service: IntentEvalService) {
       if (!result.success)
         throw createBadRequestError('Invalid Request', 'INVALID_REQUEST', result.issues)
 
-      const row = await service.updateSample(userOf(c).id, c.req.param('id'), result.output)
+      const row = await withCollectionCheck(() => service.updateSample(userOf(c).id, c.req.param('id'), result.output))
       if (!row)
         throw createNotFoundError()
 

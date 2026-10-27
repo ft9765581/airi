@@ -106,7 +106,7 @@ describe('intentEvalRoutes', () => {
   it('imports a batch in one request', async () => {
     const res = await request('/samples/import', jsonBody({
       samples: [
-        { input: '现在还是这样', previous: '大量出血', group: 'medical-implicit', expected: 'medical' },
+        { input: '现在还是这样', context: [{ role: 'user', content: '大量出血' }], group: 'medical-implicit', expected: 'medical' },
         { input: '今天天气不错', group: 'chitchat', expected: 'chat' },
       ],
     }))
@@ -114,7 +114,8 @@ describe('intentEvalRoutes', () => {
     expect(res.status).toBe(201)
     const rows = await res.json() as any[]
     expect(rows).toHaveLength(2)
-    expect(rows[0].previous).toBe('大量出血')
+    // The earlier turn is stored as an ordered array, so its role survives.
+    expect(rows[0].context).toEqual([{ role: 'user', content: '大量出血' }])
   })
 
   it('updates the label status of an owned sample', async () => {
@@ -276,5 +277,42 @@ describe('intentEvalRoutes', () => {
 
     const strangerSamples = (await (await request('/samples', undefined, otherUser)).json() as any[]).map(row => row.id)
     expect(strangerSamples).toContain(kept.id)
+  })
+  it('rejects a sample that points at a collection the caller does not own', async () => {
+    const theirs = await (await request('/collections', jsonBody({ name: '别人的集合' }), otherUser)).json() as any
+
+    const res = await request('/samples', jsonBody({
+      input: '宝宝黄疸怎么看',
+      group: 'medical-explicit',
+      expected: 'medical',
+      collectionId: theirs.id,
+    }))
+
+    expect(res.status).toBe(400)
+  })
+  it('creates a collection and lists only its own samples', async () => {
+    const created = await request('/collections', jsonBody({ name: '开发集', purpose: 'development' }))
+    expect(created.status).toBe(201)
+    const collection = await created.json() as any
+    expect(collection).toMatchObject({ name: '开发集', purpose: 'development' })
+
+    await request('/samples', jsonBody({ input: '宝宝黄疸怎么看', group: 'medical-explicit', expected: 'medical', collectionId: collection.id }))
+    await request('/samples', jsonBody({ input: '今天天气不错', group: 'chitchat', expected: 'chat' }))
+
+    const inCollection = await (await request(`/samples?collectionId=${collection.id}`)).json() as any[]
+    expect(inCollection).toHaveLength(1)
+    expect(inCollection[0].collectionId).toBe(collection.id)
+
+    const all = await (await request('/samples')).json() as any[]
+    expect(all.length).toBeGreaterThan(inCollection.length)
+  })
+
+  it('renames a collection and hides it from another user', async () => {
+    const created = await (await request('/collections', jsonBody({ name: '旧名' }))).json() as any
+    const renamed = await request(`/collections/${created.id}`, jsonBody({ name: '新名' }, 'PATCH'))
+    expect(renamed.status).toBe(200)
+    expect((await renamed.json() as any).name).toBe('新名')
+
+    expect((await request(`/collections/${created.id}`, jsonBody({ name: '别人的' }, 'PATCH'), otherUser)).status).toBe(404)
   })
 })

@@ -22,18 +22,29 @@ export const intentSamples = pgTable(
     userId: text('user_id').notNull(),
     /** The message to classify. Synthetic or de-identified: never a real user turn. */
     input: text('input').notNull(),
-    /** The earlier turn this sample depends on, when it needs one. */
-    previous: text('previous'),
-    /** Who said `previous`. A follow-up only inherits from the user, not from the assistant. */
-    previousRole: text('previous_role').notNull().default('user'),
+    /**
+     * The earlier turns this sample depends on, in order.
+     *
+     * `jsonb` rather than columns: a follow-up can need a user turn, an
+     * assistant turn, or both, and dropping the assistant turn changes what the
+     * sentence means.
+     */
+    context: jsonb('context'),
     /** The slice this sample measures, e.g. `medical-explicit`, `chitchat`. */
     group: text('group').notNull(),
-    /** The human label: `medical` or `chat`. */
-    expected: text('expected').notNull(),
+    /**
+     * The human label: `medical` or `chat`, or nothing until someone labels it.
+     *
+     * An unlabelled sample is a collected sentence, not an answer: a batch run
+     * skips it and keeps it out of every denominator.
+     */
+    expected: text('expected'),
     /** `unreviewed` or `reviewed`. Only reviewed labels may reach a release report. */
     labelStatus: text('label_status').notNull().default('unreviewed'),
     /** Where the sample came from, for a reader who has to judge it later. */
     source: text('source'),
+    /** The collection this sample belongs to, when the page has created one. */
+    collectionId: text('collection_id'),
     /** The set version this label belongs to. Runs record the version they read. */
     sampleSetVersion: integer('sample_set_version').notNull().default(1),
     createdAt: timestamp('created_at').defaultNow().notNull(),
@@ -67,7 +78,7 @@ export const intentRuns = pgTable(
     userId: text('user_id').notNull(),
     /** The sample set version this run read. */
     sampleSetVersion: integer('sample_set_version').notNull(),
-    /** `rules`, `model`, `compare` or `embedding`. */
+    /** `rules`, `model` or `compare`. */
     mode: text('mode').notNull(),
     /** `running`, `completed`, `failed` or `cancelled`. */
     status: text('status').notNull().default('running'),
@@ -76,11 +87,6 @@ export const intentRuns = pgTable(
     modelId: text('model_id'),
     /** Digest of the classifier prompt, never the prompt itself. */
     classifierPromptDigest: text('classifier_prompt_digest'),
-    /** The vector service identity, when the run also used embedding. */
-    embeddingEndpoint: text('embedding_endpoint'),
-    embeddingModel: text('embedding_model'),
-    /** The margin the run stored its votes under. */
-    embeddingMargin: text('embedding_margin'),
     /** Samples the run planned to cover. */
     total: integer('total').notNull().default(0),
     /** Samples finished so far. A cancelled run keeps this and says so. */
@@ -103,3 +109,30 @@ export const intentRuns = pgTable(
 
 export type IntentRunRow = InferSelectModel<typeof intentRuns>
 export type NewIntentRunRow = InferInsertModel<typeof intentRuns>
+
+/**
+ * A named collection of samples.
+ *
+ * A collection is what a person picks before a batch run, so `name` is the label
+ * they see and `purpose` only separates the development set from the acceptance
+ * set. Purpose grants no permission and freezes nothing (intent-routing.md §7.6).
+ */
+export const intentCollections = pgTable(
+  'intent_collections',
+  {
+    id: text('id').primaryKey().$defaultFn(() => randomUUID()),
+    userId: text('user_id').notNull(),
+    name: text('name').notNull(),
+    /** `development` or `acceptance`. */
+    purpose: text('purpose').notNull().default('development'),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+    deletedAt: timestamp('deleted_at'),
+  },
+  table => [
+    index('intent_collections_owner_idx').on(table.userId, table.deletedAt),
+  ],
+)
+
+export type IntentCollectionRow = InferSelectModel<typeof intentCollections>
+export type NewIntentCollectionRow = InferInsertModel<typeof intentCollections>
