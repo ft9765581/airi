@@ -356,11 +356,15 @@ export interface ChatOrchestratorRuntimeDeps {
   }) => void
   /** Called after user turn persistence, before provider prompt composition. */
   onUserTurnReady?: (event: {
+    /** Session that owns the turn, so a consumer can read its branch record. */
+    sessionId: string
     messageText: string
     sessionMessages: ChatHistoryItem[]
   }) => void
   /** Called after assistant streaming and hook finalization. */
   onAssistantTurnReady?: (event: {
+    /** Session that owns the turn, so a consumer can read its branch record. */
+    sessionId: string
     messageText: string
     sessionMessages: ChatHistoryItem[]
   }) => void
@@ -575,6 +579,14 @@ export function createChatOrchestratorRuntime(deps: ChatOrchestratorRuntimeDeps)
     const sendingCreatedAt = now()
     const contextsSnapshot = isolated ? {} : deps.context.snapshot()
 
+    // A routed branch that looked its own data up cannot use a provider: an
+    // isolated turn skips them all. Its messages therefore join the snapshot
+    // here, so one rendering path serves both sources.
+    for (const contextMessage of routeResult?.contextMessages ?? []) {
+      const bucket = contextsSnapshot[contextMessage.contextId] ??= []
+      bucket.push(contextMessage)
+    }
+
     // TODO: Expire or prune stale runtime contexts from disconnected services before composing.
     // Allocate the three per-round ids in their historical order so callers
     // with deterministic id factories keep the same durable message ids.
@@ -706,6 +718,7 @@ export function createChatOrchestratorRuntime(deps: ChatOrchestratorRuntimeDeps)
 
       const sessionMessagesForSend = deps.session.getSessionMessages(sessionId)
       deps.onUserTurnReady?.({
+        sessionId,
         messageText: sendingMessage,
         sessionMessages: sessionMessagesForSend,
       })
@@ -1045,6 +1058,7 @@ export function createChatOrchestratorRuntime(deps: ChatOrchestratorRuntimeDeps)
       if (shouldAbort())
         return
       deps.onAssistantTurnReady?.({
+        sessionId,
         messageText: fullText,
         sessionMessages: sessionMessagesForSend,
       })

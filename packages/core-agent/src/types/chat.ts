@@ -88,6 +88,15 @@ export interface TurnRouteResult {
    * @default false
    */
   isolate?: boolean
+  /**
+   * Context the router looked up for this turn.
+   *
+   * An isolated turn skips every registered provider, so a branch that needs its
+   * own data — the medical branch retrieving a knowledge base, for example —
+   * supplies it here instead. The runtime renders these beside the snapshot
+   * context, grouped by `contextId`, also on an isolated turn.
+   */
+  contextMessages?: ContextMessage[]
 }
 
 export interface ErrorMessage {

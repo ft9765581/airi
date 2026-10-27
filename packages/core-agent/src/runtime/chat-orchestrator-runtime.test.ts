@@ -1100,6 +1100,46 @@ describe('createChatOrchestratorRuntime', () => {
     expect(JSON.stringify(providerMessages?.at(-1))).not.toContain('sunny')
   })
 
+  it('carries the context the router supplies on an isolated turn', async () => {
+    const harness = createHarness({
+      routeTurn: async () => ({
+        route: { kind: 'medical' },
+        isolate: true,
+        systemPrompt: 'medical system',
+        contextMessages: [
+          {
+            id: 'kb-1',
+            contextId: 'system:knowledge-base',
+            strategy: ContextUpdateStrategy.ReplaceSelf,
+            text: '1. 产后门诊 · 42天检查',
+            createdAt: 1,
+          },
+        ],
+      }),
+    })
+    harness.contextSnapshot['system:weather'] = [
+      {
+        id: 'weather',
+        contextId: 'system:weather',
+        strategy: ContextUpdateStrategy.ReplaceSelf,
+        text: 'sunny',
+        createdAt: 1,
+      },
+    ]
+
+    await harness.runtime.ingest('42天检查挂什么科', {
+      model: 'gpt-test',
+      chatProvider: provider,
+    })
+
+    // The providers stay skipped: the router looked this up itself.
+    expect(harness.contextIngest).not.toHaveBeenCalled()
+    const lastMessage = JSON.stringify(harness.stream.mock.calls[0]?.[2]?.at(-1))
+    expect(lastMessage).toContain('system:knowledge-base')
+    expect(lastMessage).toContain('42天检查')
+    expect(lastMessage).not.toContain('sunny')
+  })
+
   it('routes against the history of the session that owns the turn', async () => {
     const harness = createHarness({ routeTurn: async () => ({ route: { kind: 'medical' } }) })
 
