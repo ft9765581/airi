@@ -236,6 +236,26 @@ function formatHistory(history: ClassifyHistoryTurn[]): string {
  * classifyWithModel({ message: '宝宝黄疸怎么看' }, { request: provider.chat(model) })
  * // => { decision: 'medical', scene: 'health-consultation', source: 'model', … }
  */
+/**
+ * The user text one classification actually sends.
+ *
+ * Exported so the devtools page can show the real input instead of describing
+ * it: the three methods read different shapes, and a comparison that hides the
+ * difference invites the reader to treat three columns as one experiment
+ * (intent-routing.md §9.3).
+ *
+ * @example
+ * composeClassifierUserText({ message: '那这个呢', history: [{ role: 'user', content: '宝宝黄疸怎么看' }] })
+ * // => '【上文用户】宝宝黄疸怎么看\n\n【当前用户消息】\n那这个呢'
+ */
+export function composeClassifierUserText(input: ClassifyModelInput): string {
+  const history = (input.history ?? []).slice(-2)
+
+  return history.length
+    ? `${formatHistory(history)}\n\n【当前用户消息】\n${input.message}`
+    : input.message
+}
+
 export async function classifyWithModel(
   input: ClassifyModelInput,
   options: IntentModelOptions,
@@ -245,10 +265,7 @@ export async function classifyWithModel(
   if (!request.baseURL || !request.model)
     return fallbackDecision('fallback:not_configured')
 
-  const history = (input.history ?? []).slice(-2)
-  const userText = history.length
-    ? `${formatHistory(history)}\n\n【当前用户消息】\n${input.message}`
-    : input.message
+  const userText = composeClassifierUserText(input)
 
   try {
     const result = await generateText({

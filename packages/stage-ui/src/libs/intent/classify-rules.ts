@@ -46,6 +46,51 @@ export const redFlagWords = [
   '自伤',
 ]
 
+/**
+ * Words that say the previous symptom is still happening.
+ *
+ * Inheritance needs the previous user message to carry a danger signal and this
+ * message to say it persists. The marker is the only evidence this rule reads,
+ * so it errs towards the emergency: "还是不要去了" after a bleeding report
+ * inherits the alarm even though it describes no symptom. One unnecessary
+ * emergency line is the safe direction; missing a continuing haemorrhage is not.
+ * The list needs review against real conversations.
+ */
+export const continuingSymptomWords = [
+  '还是',
+  '还在',
+  '一直',
+  '仍然',
+  '持续',
+  '没停',
+  '止不住',
+  '不止',
+  '越来越',
+  '更严重',
+  '加重',
+  '没好转',
+  '不见好',
+]
+
+/**
+ * Words that close the topic instead of continuing it.
+ *
+ * A goodnight after an emergency must not inherit the emergency. Re-raising an
+ * alarm the reader already put down teaches them to ignore the next one.
+ */
+const topicEndWords = [
+  '晚安',
+  '睡了',
+  '睡觉了',
+  '再见',
+  '拜拜',
+  '谢谢',
+  '不用了',
+  '不聊了',
+  '没事了',
+  '好了',
+]
+
 /** Medical terms for the mother, the newborn and hospital care. */
 const medicalWords = [
   // 产妇
@@ -156,4 +201,44 @@ export function classifyRules(message: string): IntentDecision {
     return decision('medical', 'health-consultation', ['medical_term'])
 
   return decision('chat', 'non-medical', ['no_signal'])
+}
+
+/**
+ * Re-reads the previous turn's danger signal when this message says it persists.
+ *
+ * A reader who wrote "大量出血" and then "现在还是这样" asked one question across
+ * two messages. Judged alone, the second message carries no danger word, so the
+ * reader would get a consultation answer instead of the emergency instruction.
+ * Only the immediately preceding user message counts: an alarm from older
+ * history was already answered and must not keep firing.
+ *
+ * @example
+ * inheritedRedFlag('现在还是这样', '大量出血，头晕')?.evidenceCodes
+ * // => ['red_flag_inherited']
+ * @example
+ * inheritedRedFlag('晚安', '大量出血，头晕')
+ * // => undefined
+ */
+export function inheritedRedFlag(message: string, previousUserMessage?: string): IntentDecision | undefined {
+  const text = message.trim()
+  const previous = previousUserMessage?.trim()
+
+  if (!text || !previous)
+    return undefined
+
+  // A message that carries its own danger word is a fresh signal, not an
+  // inherited one, and `classifyRules()` already reports it.
+  if (redFlagWords.some(word => text.includes(word)))
+    return undefined
+
+  if (!redFlagWords.some(word => previous.includes(word)))
+    return undefined
+
+  if (topicEndWords.some(word => text.includes(word)))
+    return undefined
+
+  if (!continuingSymptomWords.some(word => text.includes(word)))
+    return undefined
+
+  return decision('medical', 'health-consultation', ['red_flag_inherited'])
 }

@@ -68,6 +68,22 @@ export function medicalAgentProblem(agent: MedicalAgentConfig | undefined): Medi
 }
 
 /**
+ * True when the rules raised an urgency signal, fresh or inherited.
+ *
+ * Both codes mean the same thing to the reader: this turn needs the emergency
+ * instruction. Keeping one predicate stops the router, the fixed copy and the
+ * switch-off path from drifting apart.
+ */
+export function hasUrgentSignal(rules: IntentDecision): boolean {
+  return rules.evidenceCodes.includes('red_flag') || rules.evidenceCodes.includes('red_flag_inherited')
+}
+
+/** Why the turn is urgent: a danger word in this message, or one carried over. */
+export function urgentReason(rules: IntentDecision): string {
+  return rules.evidenceCodes.includes('red_flag') ? 'red_flag' : 'red_flag_inherited'
+}
+
+/**
  * Chooses the branch for one turn.
  *
  * @example
@@ -76,8 +92,8 @@ export function medicalAgentProblem(agent: MedicalAgentConfig | undefined): Medi
  */
 export function resolveTurnRoute(input: TurnRouteInput): TurnRouteDecision {
   // A danger signal must not wait for a classifier that could disagree.
-  if (input.rules.evidenceCodes.includes('red_flag'))
-    return { route: { kind: 'urgent', reason: 'red_flag' }, useAgent: false }
+  if (hasUrgentSignal(input.rules))
+    return { route: { kind: 'urgent', reason: urgentReason(input.rules) }, useAgent: false }
 
   // A degraded answer is not a medical judgement, so it cannot be routed as
   // one. A medical word the rules matched does not promote it either.

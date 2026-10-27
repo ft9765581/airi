@@ -36,8 +36,9 @@ export function medicalGateReplyFor(decision: IntentDecision): string | null {
     return null
 
   // A danger signal must not hear "I cannot answer", so it gets the line that
-  // names the action instead.
-  if (decision.evidenceCodes.includes('red_flag'))
+  // names the action instead. An inherited signal is the same emergency seen on
+  // a follow-up turn, so it reads the same line.
+  if (decision.evidenceCodes.includes('red_flag') || decision.evidenceCodes.includes('red_flag_inherited'))
     return medicalGateUrgentReply
 
   return medicalGateReply

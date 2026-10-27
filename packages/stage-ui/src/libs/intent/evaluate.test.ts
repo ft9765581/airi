@@ -1,6 +1,6 @@
 import type { IntentSample } from './evaluate'
 
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import { evaluateSamples } from './evaluate'
 import { intentSampleGroupLabels, intentSamples } from './fixtures'
@@ -51,6 +51,67 @@ const sampleSet: IntentSample[] = [
   { id: 'b', group: 'medical-implicit', expected: 'medical', input: '她今天特别没精神' },
   { id: 'c', group: 'chitchat', expected: 'chat', input: '今天天气不错' },
 ]
+
+describe('report traceability', () => {
+  it('keeps the model, prompt digest and run time the numbers came from', async () => {
+    vi.stubGlobal('fetch', labelFetch(() => 'chat'))
+
+    const report = await evaluateSamples({ samples: sampleSet, sampleSetVersion: setVersion, mode: 'model', model: options })
+
+    expect(report.modelId).toBe('test-model')
+    // The digest is what lets a later run tell whether the prompt changed,
+    // without storing the prompt text.
+    expect(report.classifierPromptDigest).toMatch(/^[0-9a-f]{8}:\d+$/)
+    expect(report.ranAt).toBeGreaterThan(0)
+
+    vi.unstubAllGlobals()
+  })
+
+  it('answers a different config key when the classifier prompt changed', async () => {
+    vi.stubGlobal('fetch', labelFetch(() => 'chat'))
+
+    const first = await evaluateSamples({ samples: sampleSet, sampleSetVersion: setVersion, mode: 'model', model: options })
+    const edited = await evaluateSamples({
+      samples: sampleSet,
+      sampleSetVersion: setVersion,
+      mode: 'model',
+      model: { ...options, systemPrompt: '你是另一个分类器。' },
+    })
+
+    expect(edited.configKey).not.toBe(first.configKey)
+
+    vi.unstubAllGlobals()
+  })
+
+  it('answers the same config key for the same configuration', async () => {
+    vi.stubGlobal('fetch', labelFetch(() => 'chat'))
+
+    const first = await evaluateSamples({ samples: sampleSet, sampleSetVersion: setVersion, mode: 'model', model: options })
+    const again = await evaluateSamples({ samples: sampleSet, sampleSetVersion: setVersion, mode: 'model', model: options })
+
+    expect(again.configKey).toBe(first.configKey)
+
+    vi.unstubAllGlobals()
+  })
+
+  // ROOT CAUSE:
+  //
+  // The report used to keep only the error lists. A three-column table needs one
+  // row per sample, and rebuilding it by re-running the set would make the table
+  // show a different run than the numbers above it.
+  it('keeps every sample with its decisions so the three columns can be joined', async () => {
+    vi.stubGlobal('fetch', labelFetch(() => 'medical'))
+
+    const report = await evaluateSamples({ samples: sampleSet, sampleSetVersion: setVersion, mode: 'model', model: options })
+
+    expect(report.cases).toHaveLength(sampleSet.length)
+    expect(report.cases.map(item => item.sample.id)).toEqual(sampleSet.map(sample => sample.id))
+    expect(report.cases.every(item => !!item.rules)).toBe(true)
+    expect(report.cases.every(item => !!item.model)).toBe(true)
+
+    vi.unstubAllGlobals()
+  })
+})
 
 describe('evaluateSamples', () => {
   it('scores the rules without touching the model', async () => {

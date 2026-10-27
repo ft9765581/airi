@@ -1,9 +1,10 @@
 import type { IntentModelOptions } from './classify-model'
 import type { IntentClassifierMode, IntentDecision } from './contract'
 
-import { classifyWithModel } from './classify-model'
+import { classifyWithModel, defaultClassifierSystemPrompt } from './classify-model'
 import { classifyRules } from './classify-rules'
 import { classifierVersion } from './contract'
+import { summarizePrompt } from './medical-prompt'
 
 /**
  * Offline evaluation over a labelled set.
@@ -105,6 +106,28 @@ export interface EvaluationReport {
   unmatched: EvaluationCase[]
   /** Samples where the two valid results differ, which is what the comparison is for. */
   disagreements: EvaluationCase[]
+  /**
+   * Every sample with the decisions this run produced.
+   *
+   * The page joins this with the vector votes so one row carries all three
+   * verdicts (intent-routing.md §9.3). Only the error lists used to be kept,
+   * which made a three-column table impossible without re-running.
+   */
+  cases: EvaluationCase[]
+  /** When the run finished. A stored report is only current if its config still matches. */
+  ranAt: number
+  /** The model id the run asked, when a model ran. */
+  modelId?: string
+  /** Digest of the classifier prompt, so a prompt edit marks the report stale. */
+  classifierPromptDigest: string
+  /**
+   * Everything that decides whether two runs are comparable.
+   *
+   * Mode, sample set, model and prompt digest. A report whose key no longer
+   * matches the page's current configuration cannot be read as a comparison
+   * with a fresh run, which is what the page checks before showing numbers.
+   */
+  configKey: string
 }
 
 /** Everything one evaluation run needs. */
@@ -232,6 +255,9 @@ export async function evaluateSamples(request: EvaluateSamplesRequest): Promise<
     isClassification(item.model) && item.model.decision !== item.rules.decision,
   )
 
+  const modelId = request.model?.request.model
+  const classifierPromptDigest = summarizePrompt(request.model?.systemPrompt ?? defaultClassifierSystemPrompt)
+
   return {
     classifierVersion,
     sampleSetVersion: request.sampleSetVersion,
@@ -242,5 +268,10 @@ export async function evaluateSamples(request: EvaluateSamplesRequest): Promise<
     model,
     unmatched,
     disagreements,
+    cases,
+    ranAt: Date.now(),
+    modelId,
+    classifierPromptDigest,
+    configKey: [request.mode, `set${request.sampleSetVersion}`, modelId ?? 'no-model', classifierPromptDigest].join('|'),
   }
 }

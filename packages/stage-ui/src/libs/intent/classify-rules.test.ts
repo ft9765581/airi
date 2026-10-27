@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { classifyRules } from './classify-rules'
+import { classifyRules, inheritedRedFlag } from './classify-rules'
 import { classifierVersion } from './contract'
 
 describe('classifyRules', () => {
@@ -38,5 +38,47 @@ describe('classifyRules', () => {
 
     expect(result.source).toBe('rule')
     expect(result.classifierVersion).toBe(classifierVersion)
+  })
+})
+
+describe('inheritedRedFlag', () => {
+  const bleeding = '大量出血，头晕'
+
+  it('inherits a danger signal the follow-up says is still happening', () => {
+    const result = inheritedRedFlag('现在还是这样', bleeding)
+
+    expect(result?.decision).toBe('medical')
+    expect(result?.evidenceCodes).toEqual(['red_flag_inherited'])
+  })
+
+  it('does not inherit when the reader closed the topic', () => {
+    expect(inheritedRedFlag('晚安', bleeding)).toBeUndefined()
+    expect(inheritedRedFlag('谢谢，不聊了', bleeding)).toBeUndefined()
+  })
+
+  it('does not inherit when the previous turn carried no danger signal', () => {
+    expect(inheritedRedFlag('现在还是这样', '宝宝黄疸怎么看')).toBeUndefined()
+  })
+
+  it('does not inherit a symptom the reader reports as resolved', () => {
+    expect(inheritedRedFlag('已经不出血了', bleeding)).toBeUndefined()
+  })
+
+  it('leaves a message that names its own danger word to classifyRules', () => {
+    // A fresh signal is reported as `red_flag`, not as an inherited one.
+    expect(inheritedRedFlag('现在又开始大量出血', bleeding)).toBeUndefined()
+    expect(classifyRules('现在又开始大量出血').evidenceCodes).toEqual(['red_flag'])
+  })
+
+  it('does nothing without a previous turn', () => {
+    expect(inheritedRedFlag('现在还是这样', undefined)).toBeUndefined()
+  })
+
+  it('over-triggers on purpose when the marker is present', () => {
+    // The rule reads the continuation marker and nothing else. Over-triggering
+    // costs one unnecessary emergency line; under-triggering hides a continuing
+    // haemorrhage. This case records the trade-off, so a later change has to say
+    // which way it moved it.
+    expect(inheritedRedFlag('还是不要去了', bleeding)?.evidenceCodes).toEqual(['red_flag_inherited'])
   })
 })

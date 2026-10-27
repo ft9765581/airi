@@ -8,8 +8,14 @@
  * `source` says which classifier answered.
  */
 
-/** Bumped when a rule, a prompt or the model changes enough to invalidate old logs. */
-export const classifierVersion = 3
+/**
+ * Bumped when a rule, a prompt or the model changes enough to invalidate old logs.
+ *
+ * 4 adds the inherited danger signal: a follow-up that says the previous
+ * emergency is still happening now routes as urgent, so decisions recorded
+ * under 3 are not comparable with current ones.
+ */
+export const classifierVersion = 4
 
 /** Which classifier answers one request. */
 export type IntentClassifierMode = 'rules' | 'model' | 'compare'
@@ -41,6 +47,7 @@ export const intentEvidenceCodes = [
   'ack',
   'empty',
   'red_flag',
+  'red_flag_inherited',
   'vital_value',
   'medical_term',
   'anaphora',
