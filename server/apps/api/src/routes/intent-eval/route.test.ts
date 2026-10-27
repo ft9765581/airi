@@ -290,6 +290,42 @@ describe('intentEvalRoutes', () => {
 
     expect(res.status).toBe(400)
   })
+  it('records a run under the collection purpose it was started with', async () => {
+    const dev = await (await request('/collections', jsonBody({ name: '开发' }))).json() as any
+    const acc = await (await request('/collections', jsonBody({ name: '验收', purpose: 'acceptance' }))).json() as any
+
+    const accepted = await request('/runs', jsonBody({
+      sampleSetVersion: 1,
+      mode: 'model',
+      configKey: 'k-acceptance',
+      collectionId: acc.id,
+      purpose: 'acceptance',
+      total: 3,
+    }))
+    expect(accepted.status).toBe(201)
+    expect(await accepted.json()).toMatchObject({ purpose: 'acceptance', collectionId: acc.id })
+
+    // A bench run over an acceptance set would tune against the gate samples.
+    const mismatched = await request('/runs', jsonBody({
+      sampleSetVersion: 1,
+      mode: 'model',
+      configKey: 'k-bench',
+      collectionId: acc.id,
+      purpose: 'development',
+      total: 3,
+    }))
+    expect(mismatched.status).toBe(400)
+
+    const bench = await request('/runs', jsonBody({
+      sampleSetVersion: 1,
+      mode: 'model',
+      configKey: 'k-bench',
+      collectionId: dev.id,
+      total: 3,
+    }))
+    expect(bench.status).toBe(201)
+    expect((await bench.json() as any).purpose).toBe('development')
+  })
   it('creates a collection and lists only its own samples', async () => {
     const created = await request('/collections', jsonBody({ name: '开发集', purpose: 'development' }))
     expect(created.status).toBe(201)

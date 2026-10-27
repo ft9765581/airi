@@ -6,6 +6,7 @@ import {
   IntentLabelSchema,
   IntentLabelStatusSchema,
   IntentRunModeSchema,
+  IntentRunPurposeSchema,
   IntentRunStatusSchema,
   IntentSampleGroupSchema,
   RunCasesSchema,
@@ -56,6 +57,8 @@ export const CreateIntentRunSchema = object({
   configKey: pipe(string(), minLength(1), maxLength(400)),
   modelId: optional(pipe(string(), maxLength(200))),
   classifierPromptDigest: optional(pipe(string(), maxLength(80))),
+  collectionId: optional(pipe(string(), maxLength(200))),
+  purpose: optional(IntentRunPurposeSchema),
   total: pipe(number(), integer(), minValue(0)),
 })
 

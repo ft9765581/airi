@@ -39,6 +39,9 @@ export const IntentCollectionPurposeSchema = picklist(['development', 'acceptanc
 /** Which method produced a run. */
 export const IntentRunModeSchema = picklist(['rules', 'model', 'compare'])
 
+/** Why a run happened: tuning on the bench, or the final acceptance gate. */
+export const IntentRunPurposeSchema = picklist(['development', 'acceptance'])
+
 /** A batch outlives one request, so it reports where it is. */
 export const IntentRunStatusSchema = picklist(['running', 'completed', 'failed', 'cancelled'])
 

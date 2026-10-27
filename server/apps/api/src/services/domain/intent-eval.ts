@@ -52,6 +52,10 @@ export interface IntentRunInput {
   configKey: string
   modelId?: string
   classifierPromptDigest?: string
+  /** The collection the run read; absent for a run over every sample. */
+  collectionId?: string
+  /** `development` on the bench, `acceptance` for the release gate. */
+  purpose?: 'development' | 'acceptance'
   total: number
 }
 
@@ -100,6 +104,32 @@ export function createIntentEvalService(db: Database) {
     })
 
     if (!row)
+      throw createCollectionMissingError()
+  }
+
+  /**
+   * Confirms a run uses a collection of the matching purpose.
+   *
+   * An acceptance run over a development set would publish a tuning number as
+   * the gate; a development run over an acceptance set would tune against the
+   * samples the gate relies on. Both are refused here, not only in the page.
+   */
+  async function assertRunPurpose(userId: string, input: IntentRunInput) {
+    if (!input.collectionId)
+      return
+
+    const row = await db.query.intentCollections.findFirst({
+      where: and(
+        eq(schema.intentCollections.id, input.collectionId),
+        eq(schema.intentCollections.userId, userId),
+        isNull(schema.intentCollections.deletedAt),
+      ),
+    })
+
+    if (!row)
+      return
+
+    if (row.purpose !== (input.purpose ?? 'development'))
       throw createCollectionMissingError()
   }
 
@@ -260,6 +290,9 @@ export function createIntentEvalService(db: Database) {
     },
 
     async createRun(userId: string, input: IntentRunInput) {
+      await assertCollection(userId, input.collectionId)
+      await assertRunPurpose(userId, input)
+
       const [row] = await db.insert(schema.intentRuns).values({
         userId,
         sampleSetVersion: input.sampleSetVersion,
@@ -267,6 +300,8 @@ export function createIntentEvalService(db: Database) {
         configKey: input.configKey,
         modelId: input.modelId,
         classifierPromptDigest: input.classifierPromptDigest,
+        collectionId: input.collectionId,
+        purpose: input.purpose ?? 'development',
         total: input.total,
       }).returning()
 

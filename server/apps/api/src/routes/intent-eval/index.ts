@@ -158,7 +158,7 @@ export function createIntentEvalRoutes(service: IntentEvalService) {
       if (!result.success)
         throw createBadRequestError('Invalid Request', 'INVALID_REQUEST', result.issues)
 
-      const row = await service.createRun(userOf(c).id, result.output)
+      const row = await withCollectionCheck(() => service.createRun(userOf(c).id, result.output))
       return c.json(row, 201)
     })
 

@@ -85,6 +85,10 @@ export const intentRuns = pgTable(
     /** Mode, set version, model and prompt digest: two runs compare only when equal. */
     configKey: text('config_key').notNull(),
     modelId: text('model_id'),
+    /** The collection this run read, so a report names its sample set. */
+    collectionId: text('collection_id'),
+    /** development for a bench run, cceptance for a final acceptance run. */
+    purpose: text('purpose').notNull().default('development'),
     /** Digest of the classifier prompt, never the prompt itself. */
     classifierPromptDigest: text('classifier_prompt_digest'),
     /** Samples the run planned to cover. */
