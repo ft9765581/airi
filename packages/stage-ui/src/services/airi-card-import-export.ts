@@ -9,6 +9,7 @@ import JSZip from 'jszip'
 import { exportToJSON } from '@proj-airi/ccc'
 import { array, literal, object, optional, parse, picklist, record, string, unknown as unknownSchema } from 'valibot'
 
+import { normalizeMedicalAgent } from '../libs/intent/medical-agent'
 import { DisplayModelFormat } from '../stores/display-models'
 
 const FORMAT = 'airi-character-card'
@@ -241,8 +242,42 @@ function sanitizeAiri(value: unknown, displayModelIdOverride?: string): AiriExte
         ...(typeof artistry.autonomousThreshold === 'number' ? { autonomousThreshold: artistry.autonomousThreshold } : {}),
       },
     },
-    agents: {},
+    agents: sanitizeAgents(source.agents),
   }
+}
+
+/**
+ * Keeps the agent entries a card may carry.
+ *
+ * An entry survives by shape, not by name: a build that only reads `medical`
+ * must not delete another release's agent on a round trip, so an unknown entry
+ * with a prompt is preserved as it is. The medical entry additionally drops when
+ * it carries neither an opt-in nor a prompt, because an empty entry would read as
+ * "configured but off" on the settings page.
+ */
+function sanitizeAgents(value: unknown): AiriExtension['agents'] {
+  if (!isRecord(value))
+    return {}
+
+  const agents: AiriExtension['agents'] = {}
+  for (const [key, entry] of Object.entries(value)) {
+    if (!isRecord(entry) || typeof entry.prompt !== 'string')
+      continue
+
+    if (key === 'medical') {
+      const medical = normalizeMedicalAgent(entry)
+      if (medical)
+        agents.medical = medical
+      continue
+    }
+
+    agents[key] = {
+      prompt: entry.prompt,
+      ...(typeof entry.enabled === 'boolean' ? { enabled: entry.enabled } : {}),
+    }
+  }
+
+  return agents
 }
 
 function providerModel(value: unknown) {

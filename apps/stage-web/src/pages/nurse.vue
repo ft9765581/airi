@@ -6,7 +6,7 @@ import workletUrl from '@proj-airi/stage-ui/workers/vad/process.worklet?worker&u
 import { BackgroundProvider } from '@proj-airi/stage-layouts/components/Backgrounds'
 import { useBackgroundThemeColor } from '@proj-airi/stage-layouts/composables/theme-color'
 import { useBackgroundStore } from '@proj-airi/stage-layouts/stores/background'
-import { ViewControlSlider, WidgetStage } from '@proj-airi/stage-ui/components/scenes'
+import { EmotionBadge, ViewControlSlider, WidgetStage } from '@proj-airi/stage-ui/components/scenes'
 import { useAudioRecorder } from '@proj-airi/stage-ui/composables/audio/audio-recorder'
 import { useVAD } from '@proj-airi/stage-ui/stores/ai/models/vad'
 import { useChatStore } from '@proj-airi/stage-ui/stores/chat'
@@ -205,6 +205,9 @@ const cursorPosition = computed(() => ({
       ]"
     >
       <!-- No header on purpose: the header holds settings, account, and character entry points. -->
+      <div :class="['pointer-events-none absolute left-3 top-3 z-30']">
+        <EmotionBadge />
+      </div>
       <div relative flex="~ 1 row gap-y-0 gap-x-2 <md:col">
         <div relative flex-1 min-w="1/2">
           <div

@@ -1,8 +1,11 @@
 <script setup lang="ts">
+import type { MedicalPreviewResult } from '@proj-airi/stage-ui/libs/intent/preview'
 import type { MedicalAgentConfig } from '@proj-airi/stage-ui/libs/intent/route'
 
+import { errorMessageFrom } from '@moeru/std'
 import { allowsMedicalGeneration, parseMedicalGenerationMode } from '@proj-airi/stage-ui/libs/intent/medical-generation'
 import { medicalBehaviorConstraints } from '@proj-airi/stage-ui/libs/intent/medical-prompt'
+import { previewMedicalTurn } from '@proj-airi/stage-ui/libs/intent/preview'
 import { medicalAgentProblem } from '@proj-airi/stage-ui/libs/intent/route'
 import { useAiriCardStore } from '@proj-airi/stage-ui/stores/modules/airi-card'
 import { useConsciousnessStore } from '@proj-airi/stage-ui/stores/modules/consciousness'
@@ -51,7 +54,18 @@ const prompt = ref(storedAgent().prompt)
 const savedAt = ref<number>()
 const failure = ref<string>()
 
-const dirty = computed(() => enabled.value !== storedAgent().enabled || prompt.value !== storedAgent().prompt)
+/**
+ * What the form was last loaded from or saved to.
+ *
+ * Comparing the form against the card would read a switch between two different
+ * cards as an edit, so the comparison uses this copy instead.
+ */
+let loaded = { ...storedAgent() }
+
+const dirty = computed(() => enabled.value !== loaded.enabled || prompt.value !== loaded.prompt)
+
+/** Set when a card switch threw away an edit that was not saved. */
+const draftDiscarded = ref(false)
 
 /** Holds the navigation until the person answers the unsaved-changes prompt. */
 let pendingLeave: ((leave: boolean) => void) | undefined
@@ -59,11 +73,16 @@ const leaveDialogOpen = ref(false)
 
 // A card switch replaces the form, because the settings belong to that card. An
 // edit in progress is dropped on purpose: applying it to another character would
-// write one persona onto another.
-watch(() => activeCard.value?.name, () => {
+// write one persona onto another. The page says so instead of dropping it
+// silently, and it watches the card id rather than its name, because two cards
+// can share a name.
+watch(() => cardStore.activeCardId, () => {
+  draftDiscarded.value = dirty.value
+
   const stored = storedAgent()
   enabled.value = stored.enabled
   prompt.value = stored.prompt
+  loaded = { ...stored }
   savedAt.value = undefined
   failure.value = undefined
 })
@@ -100,6 +119,76 @@ const blockers = computed(() => {
   return reasons
 })
 
+const previewMessage = ref('宝宝黄疸怎么看')
+const previewing = ref(false)
+const previewResult = ref<MedicalPreviewResult>()
+const previewError = ref<string>()
+
+/**
+ * Why the preview cannot run, read from the draft rather than the saved card.
+ *
+ * The draft is what the person is trying to test, so previewing the saved value
+ * would answer a different question than the one on screen.
+ */
+const previewBlockers = computed(() => {
+  const reasons: string[] = []
+
+  if (!generationAllowed)
+    reasons.push('部署开关未开启（VITE_MEDICAL_GENERATION）')
+  if (!enabled.value)
+    reasons.push('医疗助手开关是关闭的')
+  if (!prompt.value.trim())
+    reasons.push('医疗提示词是空的')
+  if (!consciousnessStore.activeProvider || !consciousnessStore.activeModel)
+    reasons.push('没有选中的聊天模型')
+
+  return reasons
+})
+
+/** The branch the router chose, named the way the reader sees it. */
+const previewBranch = computed(() => {
+  switch (previewResult.value?.route.kind) {
+    case 'urgent':
+      return '急诊指引'
+    case 'medical':
+      return '医疗咨询'
+    case 'fallback':
+      return '兜底回复'
+    default:
+      return '普通聊天'
+  }
+})
+
+async function runPreview() {
+  const providerId = consciousnessStore.activeProvider
+  const model = consciousnessStore.activeModel
+  if (!providerId || !model) {
+    previewError.value = '没有选中的聊天模型'
+    return
+  }
+
+  previewing.value = true
+  previewResult.value = undefined
+  previewError.value = undefined
+
+  try {
+    const provider = await consciousnessStore.getChatProviderInstance(providerId)
+    previewResult.value = await previewMedicalTurn({
+      message: previewMessage.value,
+      // The draft, not the saved card: the preview exists to test what is here.
+      agent: { enabled: enabled.value, prompt: prompt.value },
+      allowGeneration: generationAllowed,
+      request: provider.chat(model),
+    })
+  }
+  catch (error) {
+    previewError.value = errorMessageFrom(error)
+  }
+  finally {
+    previewing.value = false
+  }
+}
+
 async function save() {
   failure.value = undefined
 
@@ -109,6 +198,9 @@ async function save() {
     return
   }
 
+  // The store normalises the value, so read it back instead of trusting the form.
+  loaded = { ...storedAgent() }
+  draftDiscarded.value = false
   savedAt.value = Date.now()
 }
 
@@ -239,6 +331,83 @@ function resolveLeave(leave: boolean) {
       <pre :class="['overflow-x-auto whitespace-pre-wrap break-words font-mono text-xs leading-relaxed']">{{ medicalBehaviorConstraints }}</pre>
     </section>
 
+    <section
+      :class="[
+        'flex flex-col gap-3 rounded-2xl border px-4 py-3 text-sm',
+        'bg-white dark:bg-neutral-900',
+        'border-neutral-200 dark:border-neutral-700',
+      ]"
+    >
+      <h2 :class="['text-base font-600']">
+        预览
+      </h2>
+
+      <p :class="['text-xs text-neutral-500 dark:text-neutral-400']">
+        预览复用正式的分流判定与提示词组装，读的是上面的草稿，不需要先保存。它不写入聊天会话，
+        也不触发记忆、绘图或云同步；但会真实消耗模型调用（分类一次，生成一次）。
+      </p>
+
+      <BasicTextarea
+        v-model="previewMessage"
+        :submit-on-enter="false"
+        placeholder="例如：宝宝黄疸怎么看"
+        :class="[
+          'rounded-xl border px-3 py-2',
+          'bg-white dark:bg-neutral-900',
+          'border-neutral-200 dark:border-neutral-700',
+        ]"
+        min-h="[80px]"
+        w-full
+      />
+
+      <div :class="['flex flex-wrap items-center gap-2']">
+        <Button
+          size="sm"
+          :disabled="previewing || previewBlockers.length > 0"
+          :label="previewing ? '预览中…' : '预览'"
+          @click="runPreview"
+        />
+
+        <span v-if="previewBlockers.length" :class="['text-xs text-amber-700 dark:text-amber-400']">
+          不能预览：{{ previewBlockers.join('；') }}
+        </span>
+        <span v-else :class="['text-xs text-neutral-500 dark:text-neutral-400']">
+          使用草稿，不必先保存
+        </span>
+      </div>
+
+      <span v-if="previewError" :class="['text-xs text-red-600 dark:text-red-400']">{{ previewError }}</span>
+
+      <template v-if="previewResult">
+        <div :class="['text-xs']">
+          <span :class="['text-neutral-500 dark:text-neutral-400']">本轮分支：</span>{{ previewBranch }}<span
+            v-if="previewResult.route.reason"
+            :class="['text-neutral-500 dark:text-neutral-400']"
+          >（{{ previewResult.route.reason }}）</span>
+        </div>
+
+        <p
+          v-if="previewResult.reply"
+          :class="['rounded-xl border px-3 py-2', 'border-neutral-200 dark:border-neutral-700']"
+        >
+          {{ previewResult.reply }}
+        </p>
+        <p v-else-if="previewResult.answer" :class="['whitespace-pre-wrap leading-relaxed']">
+          {{ previewResult.answer }}
+        </p>
+        <p v-else-if="previewResult.failure" :class="['text-xs text-red-600 dark:text-red-400']">
+          预览没有拿到回答：{{ previewResult.failure }}
+        </p>
+        <p v-else :class="['text-xs text-neutral-500 dark:text-neutral-400']">
+          这条消息不会进入医疗分支，所以没有咨询回答可预览。
+        </p>
+
+        <p :class="['text-xs text-neutral-500 dark:text-neutral-400']">
+          预览结果只显示在这里，不会写入聊天会话。
+        </p>
+      </template>
+    </section>
+
     <section :class="['flex flex-wrap items-center gap-3']">
       <Button :disabled="!dirty" :label="dirty ? '保存' : (savedAt ? '已保存' : '没有改动')" @click="save" />
 
@@ -252,19 +421,14 @@ function resolveLeave(leave: boolean) {
       <span v-if="failure" :class="['text-xs text-red-600 dark:text-red-400']">
         {{ failure }}
       </span>
+
+      <span v-if="draftDiscarded" :class="['text-xs text-amber-700 dark:text-amber-400']">
+        切换角色卡时丢弃了未保存的改动
+      </span>
     </section>
 
     <p :class="['text-xs text-neutral-500 dark:text-neutral-400']">
       保存后，切换到别的角色卡再切回来，配置会跟着卡片走。
-    </p>
-
-    <p :class="['text-xs text-neutral-500 dark:text-neutral-400']">
-      想确认某一轮走了哪条分支：打开浏览器控制台，发一条消息，看
-      <code class="rounded bg-neutral-200/60 px-1 py-0.5 font-mono dark:bg-neutral-700/60">[medical-consultation] route</code>。
-      <code class="rounded bg-neutral-200/60 px-1 py-0.5 font-mono dark:bg-neutral-700/60">answer: model</code>
-      是医疗模型写的回答，<code class="rounded bg-neutral-200/60 px-1 py-0.5 font-mono dark:bg-neutral-700/60">answer: fixed</code>
-      是固定回复，<code class="rounded bg-neutral-200/60 px-1 py-0.5 font-mono dark:bg-neutral-700/60">kind: chat</code>
-      是普通聊天。
     </p>
 
     <AlertDialogRoot :open="leaveDialogOpen" @update:open="value => !value && resolveLeave(false)">

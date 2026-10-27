@@ -44,7 +44,7 @@ describe('airi card package import/export', () => {
     expect(airi.modules).toMatchObject({ consciousness: { provider: 'openai', model: 'gpt-4o' }, speech: { provider: 'elevenlabs', model: 'eleven', voice_id: 'alloy' } })
     expect(airi.modules).not.toHaveProperty('activeBackgroundId')
     expect(airi.modules.artistry).not.toHaveProperty('workflowId')
-    expect(airi.agents).toEqual({})
+    expect(airi.agents).toEqual({ minecraft: { prompt: 'secret', enabled: true } })
     expect(displayModelsStore.addDisplayModel).toHaveBeenCalledWith(DisplayModelFormat.VRM, expect.objectContaining({ name: 'AvatarSample_A.vrm' }))
     expect(airiFrom(imported).modules.displayModelId).toBe('display-model-imported')
   })
@@ -72,7 +72,50 @@ describe('airi card package import/export', () => {
     expect(imported.data.extensions).not.toHaveProperty('third_party')
     expect(airi.modules).not.toHaveProperty('activeBackgroundId')
     expect(airi.modules.artistry).not.toHaveProperty('workflowId')
-    expect(airi.agents).toEqual({})
+    expect(airi.agents).toEqual({ minecraft: { prompt: 'secret', enabled: true } })
+  })
+
+  it('keeps the medical agent through a round trip', async () => {
+    const displayModelsStore = useDisplayModelsStore()
+    const card = createCard()
+    card.extensions.airi.agents = {
+      medical: { enabled: true, prompt: '  你是产康顾问  ' },
+    }
+
+    const imported = await importAiriCardPackage({ file: await packageFile(exportToJSON(card)), displayModelsStore })
+
+    // The same normalizer the settings page uses trims the prompt on the way out.
+    expect(airiFrom(imported).agents.medical).toEqual({ enabled: true, prompt: '你是产康顾问' })
+  })
+
+  it('keeps a medical agent that the card turned off', async () => {
+    const displayModelsStore = useDisplayModelsStore()
+    const card = createCard()
+    card.extensions.airi.agents = {
+      medical: { enabled: false, prompt: '你是产康顾问' },
+    }
+
+    const imported = await importAiriCardPackage({ file: await packageFile(exportToJSON(card)), displayModelsStore })
+
+    // A disabled agent is still configuration: the round trip must not read it as
+    // "never configured" and drop it.
+    expect(airiFrom(imported).agents.medical).toEqual({ enabled: false, prompt: '你是产康顾问' })
+  })
+
+  it('drops an empty medical entry and keeps the agents it does not know', async () => {
+    const displayModelsStore = useDisplayModelsStore()
+    const card = createCard()
+    card.extensions.airi.agents = {
+      medical: { prompt: '   ' },
+      minecraft: { prompt: 'stay' },
+    }
+
+    const imported = await importAiriCardPackage({ file: await packageFile(exportToJSON(card)), displayModelsStore })
+    const agents = airiFrom(imported).agents
+
+    expect(agents.medical).toBeUndefined()
+    // Another release owns this entry, so this build must not delete it.
+    expect(agents.minecraft).toEqual({ prompt: 'stay' })
   })
 
   it('classifies invalid packages', async () => {

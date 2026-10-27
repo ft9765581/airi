@@ -14,6 +14,18 @@ chat:
     cloud-badge: Synced to cloud
     new-chat-fallback: New chat
     delete: Delete conversation
+emotion-badge:
+  aria: Emotion she shows now
+  emotions:
+    angry: '😠 Angry'
+    awkward: '😳 Awkward'
+    curious: '🧐 Curious'
+    happy: '😄 Happy'
+    neutral: '🙂 Neutral'
+    question: '🤔 Question'
+    sad: '😫 Sad'
+    surprised: '🤯 Surprised'
+    think: '🤨 Think'
 render-error:
   title: '{renderer} could not render this model'
   description: The model is selected, but the Stage could not display it.
