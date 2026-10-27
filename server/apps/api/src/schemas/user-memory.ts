@@ -1,4 +1,4 @@
-import { index, integer, pgTable, text, timestamp } from 'drizzle-orm/pg-core'
+import { index, integer, pgTable, text, timestamp, vector } from 'drizzle-orm/pg-core'
 
 import { nanoid } from '../utils/id'
 
@@ -26,6 +26,10 @@ export const userMemories = pgTable(
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
     deletedAt: timestamp('deleted_at', { withTimezone: true }),
     consolidatedAt: timestamp('consolidated_at', { withTimezone: true }),
+    // 1024 is MEMORY_EMBEDDING_DIMENSION in memory-embedding.ts.
+    // The vchordrq index lives in the SQL migration. This schema is also pushed
+    // onto PGlite, which has the vector type and the <=> operator, but not vchord.
+    embedding: vector('embedding', { dimensions: 1024 }),
   },
   table => [
     index('user_memories_owner_created_idx').on(table.ownerId, table.createdAt),

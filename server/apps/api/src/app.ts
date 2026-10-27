@@ -77,6 +77,7 @@ import { createFluxTransactionService } from './services/domain/flux-transaction
 import { createIntentEvalService } from './services/domain/intent-eval'
 import { createKnowledgeBaseService } from './services/domain/knowledge-base'
 import { createConcurrencyLedger, createConfigSyncSubscriber, createLlmRouterService } from './services/domain/llm-router'
+import { createMemoryEmbedder } from './services/domain/memory-embedding'
 import { createProductEventService } from './services/domain/product-events'
 import { createProviderCatalogService } from './services/domain/provider-catalog'
 import { createProviderService } from './services/domain/providers'
@@ -638,8 +639,12 @@ export async function createApp() {
   // Domain knowledge stays inside each service instead of being copied into
   // a parallel handler file. See `server/apps/api/docs/ai-context/account-deletion.md`.
   const userMemoryService = injeca.provide('services:userMemory', {
-    dependsOn: { db },
-    build: ({ dependsOn }) => createUserMemoryService(dependsOn.db),
+    dependsOn: { db, env: parsedEnv },
+    build: ({ dependsOn }) => createUserMemoryService(dependsOn.db, createMemoryEmbedder({
+      apiKey: dependsOn.env.MEMORY_EMBEDDING_API_KEY,
+      baseURL: dependsOn.env.MEMORY_EMBEDDING_BASE_URL,
+      model: dependsOn.env.MEMORY_EMBEDDING_MODEL,
+    })),
   })
 
   const userRuntimeService = injeca.provide('services:userRuntime', {

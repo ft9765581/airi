@@ -1,12 +1,14 @@
 import type { Database } from '../../libs/db'
 import type { MemoryCategory } from './memory-category'
+import type { MemoryEmbedder } from './memory-embedding'
 
 import { useLogger } from '@guiiai/logg'
-import { and, desc, eq, gte, inArray, isNull, lt, or, sql } from 'drizzle-orm'
+import { and, cosineDistance, desc, eq, gte, inArray, isNotNull, isNull, lt, or, sql } from 'drizzle-orm'
 
 import { nanoid } from '../../utils/id'
-import { isMemoryCategory } from './memory-category'
-import { memoryOverlap, MIN_MATCH_SCORE, scoreMemoryMatch, SUPERSEDE_SCORE } from './user-memory-match'
+import { isMemoryCategory, memoryCategoryFromStored } from './memory-category'
+import { MEMORY_EMBEDDING_DIMENSION } from './memory-embedding'
+import { fusionRanks, memoryOverlap, MIN_MATCH_SCORE, MIN_VECTOR_SCORE, reciprocalRankFusion, scoreMemoryMatch, SUPERSEDE_SCORE } from './user-memory-match'
 import { mergeProfileWithMemories } from './user-memory-profile'
 import { createUserRuntimeService, normalizeClientTimestamp } from './user-runtime'
 import { startOfZonedDay } from './zoned-day'
@@ -20,6 +22,8 @@ const logger = useLogger('user-memory')
 
 /** How many recent facts one search reads before it ranks them. */
 const CANDIDATE_LIMIT = 200
+/** How many nearest vectors one search reads from vchord before it ranks them. */
+const VECTOR_CANDIDATE_LIMIT = 40
 /** How many facts one chat send may receive. */
 const RESULT_LIMIT = 5
 /** A fact loses half its weight after this many days, before recall extends it. */
@@ -95,13 +99,55 @@ function categoryFor(scope: MemoryScope, category: MemoryCategory | undefined): 
   return 'other'
 }
 
+function readSimilarity(value: unknown): number {
+  const numeric = typeof value === 'number' ? value : Number(value)
+  if (!Number.isFinite(numeric))
+    return 0
+  return numeric
+}
+
+function visibleMemoryFilter(ownerId: string, characterId: string) {
+  return and(
+    eq(schema.userMemories.ownerId, ownerId),
+    isNull(schema.userMemories.deletedAt),
+    or(
+      eq(schema.userMemories.scope, 'user'),
+      and(
+        eq(schema.userMemories.scope, 'character'),
+        eq(schema.userMemories.characterId, characterId),
+      ),
+    ),
+  )
+}
+
+/**
+ * Embeds one fact.
+ *
+ * A missing vector, a wrong length, or a provider error returns null. The fact
+ * is still stored, and search for that request uses words only.
+ */
+async function embedFact(embedder: MemoryEmbedder, text: string): Promise<number[] | null> {
+  try {
+    const vector = await embedder.embed(text)
+    if (!vector || vector.length !== MEMORY_EMBEDDING_DIMENSION)
+      return null
+    if (vector.some(value => !Number.isFinite(value)))
+      return null
+    return vector
+  }
+  catch (error) {
+    logger.withError(error).warn('Memory embedding failed')
+    return null
+  }
+}
+
 function toRecord(row: typeof schema.userMemories.$inferSelect): MemoryRecord {
   const scope: MemoryScope = row.scope === 'character' ? 'character' : 'user'
   return {
     id: row.id,
     characterId: row.characterId,
     scope,
-    category: row.category != null && isMemoryCategory(row.category) ? row.category : null,
+    category: memoryCategoryFromStored(row.category),
     content: row.content,
     importance: row.importance,
     recallCount: row.recallCount,
@@ -131,55 +177,109 @@ function memoryWeight(row: typeof schema.userMemories.$inferSelect, now: Date): 
  * Stores short facts for one signed-in user.
  *
  * A `user` fact follows the person onto every character card. A `character`
- * fact stays on the card that learned it. Search keeps a few facts from the
- * local calendar day that share words with the current message, then lowers
- * the weight of facts that are old and rarely recalled inside that day. A
- * later fact that shares most of its words replaces the older one. Once a day,
- * user facts from earlier days are folded into the account profile. Account
- * deletion marks the rows deleted. An empty result leaves the chat prompt
- * unchanged.
+ * fact stays on the card that learned it. Search lowers the weight of facts
+ * that are old and rarely recalled. A later fact that shares most of its words
+ * replaces the older one. Once a day, user facts from earlier days are folded
+ * into the account profile. Account deletion marks the rows deleted. An empty
+ * result leaves the chat prompt unchanged.
+ *
+ * When the embedder returns a vector, search reads every day. Words and cosine
+ * each make one ranked list. Reciprocal rank fusion adds the lists, then the
+ * time weight scales the fused score. Cosine order uses `embedding <=> query`
+ * so Postgres can use the vchordrq index. When the embedder returns null,
+ * search stays on the local calendar day and uses the word list only.
  */
-export function createUserMemoryService(db: Database) {
+export function createUserMemoryService(db: Database, embedder: MemoryEmbedder = {
+  async embed() {
+    return null
+  },
+}) {
   return {
     /**
      * Returns up to five facts for this user and character card.
      *
      * User-scoped facts apply on every card. Character-scoped facts apply only
-     * on the card that stored them. Only facts from the local calendar day of
-     * `now` are candidates. A fact with little overlap is left out. Each
-     * returned fact counts one recall, so the next search keeps it longer.
+     * on the card that stored them. A fact enters when its words overlap enough
+     * or its vector is close enough. A fact on both lists ranks above a fact on
+     * one list. Each returned fact counts one recall, so the next search keeps
+     * it longer.
      */
     async search(ownerId: string, characterId: string, query: string, now = new Date(), timeZone = 'UTC'): Promise<MemoryRecord[]> {
       const trimmed = query.trim()
       if (trimmed.length < 2 || !characterId)
         return []
 
-      const dayStart = startOfZonedDay(timeZone, now)
-      const rows = await db.select().from(schema.userMemories).where(and(
-        eq(schema.userMemories.ownerId, ownerId),
-        isNull(schema.userMemories.deletedAt),
-        gte(schema.userMemories.createdAt, dayStart),
-        or(
-          eq(schema.userMemories.scope, 'user'),
-          and(
-            eq(schema.userMemories.scope, 'character'),
-            eq(schema.userMemories.characterId, characterId),
-          ),
-        ),
-      )).orderBy(desc(schema.userMemories.createdAt)).limit(CANDIDATE_LIMIT)
+      const queryVector = await embedFact(embedder, trimmed)
+      const scope = visibleMemoryFilter(ownerId, characterId)
+      if (!scope)
+        return []
 
-      const ranked = rows
-        .map(row => ({
-          row,
-          score: scoreMemoryMatch(trimmed, row.content),
-          weight: memoryWeight(row, now),
-        }))
-        .filter(entry => entry.score >= MIN_MATCH_SCORE)
+      const recentFilters = [scope]
+      if (!queryVector)
+        recentFilters.push(gte(schema.userMemories.createdAt, startOfZonedDay(timeZone, now)))
+
+      const recent = await db.select().from(schema.userMemories).where(and(...recentFilters)).orderBy(desc(schema.userMemories.createdAt)).limit(CANDIDATE_LIMIT)
+
+      const byId = new Map<string, { row: typeof schema.userMemories.$inferSelect, similarity: number }>()
+      for (const row of recent)
+        byId.set(row.id, { row, similarity: 0 })
+
+      if (queryVector) {
+        const distance = cosineDistance(schema.userMemories.embedding, queryVector)
+        const nearest = await db.select({
+          id: schema.userMemories.id,
+          ownerId: schema.userMemories.ownerId,
+          characterId: schema.userMemories.characterId,
+          scope: schema.userMemories.scope,
+          category: schema.userMemories.category,
+          content: schema.userMemories.content,
+          importance: schema.userMemories.importance,
+          recallCount: schema.userMemories.recallCount,
+          lastRecalledAt: schema.userMemories.lastRecalledAt,
+          createdAt: schema.userMemories.createdAt,
+          updatedAt: schema.userMemories.updatedAt,
+          deletedAt: schema.userMemories.deletedAt,
+          consolidatedAt: schema.userMemories.consolidatedAt,
+          embedding: schema.userMemories.embedding,
+          similarity: sql<number>`1 - (${distance})`,
+        }).from(schema.userMemories).where(and(
+          scope,
+          isNotNull(schema.userMemories.embedding),
+        )).orderBy(distance).limit(VECTOR_CANDIDATE_LIMIT)
+
+        for (const hit of nearest) {
+          const { similarity, ...row } = hit
+          const existing = byId.get(row.id)
+          const score = readSimilarity(similarity)
+          if (existing)
+            existing.similarity = score
+          else
+            byId.set(row.id, { row, similarity: score })
+        }
+      }
+
+      // Two lists, then reciprocal rank fusion. Equal word scores share a rank
+      // so the time weight still breaks that tie.
+      const scored = [...byId.values()].map(entry => ({
+        row: entry.row,
+        lexical: scoreMemoryMatch(trimmed, entry.row.content),
+        similarity: entry.similarity,
+        weight: memoryWeight(entry.row, now),
+      }))
+      const lexicalHits = scored.filter(entry => entry.lexical >= MIN_MATCH_SCORE)
+      const vectorHits = scored.filter(entry => entry.similarity >= MIN_VECTOR_SCORE)
+      const fused = reciprocalRankFusion([
+        fusionRanks(lexicalHits, entry => entry.row.id, entry => entry.lexical),
+        fusionRanks(vectorHits, entry => entry.row.id, entry => entry.similarity),
+      ])
+      const ranked = scored
+        .flatMap((entry) => {
+          const fusedScore = fused.get(entry.row.id)
+          if (fusedScore == null)
+            return []
+          return [{ ...entry, score: fusedScore * entry.weight }]
+        })
         .sort((left, right) => {
-          const leftRank = left.score * left.weight
-          const rightRank = right.score * right.weight
-          if (rightRank !== leftRank)
-            return rightRank - leftRank
           if (right.score !== left.score)
             return right.score - left.score
           return right.row.createdAt.getTime() - left.row.createdAt.getTime()
@@ -273,9 +373,14 @@ export function createUserMemoryService(db: Database) {
       if (!accepted.length)
         return []
 
+      const prepared = await Promise.all(accepted.map(async item => ({
+        ...item,
+        embedding: await embedFact(embedder, item.content),
+      })))
+
       return await db.transaction(async (tx) => {
         const stored: RememberedMemory[] = []
-        for (const item of accepted) {
+        for (const item of prepared) {
           const duplicateFilters = [
             eq(schema.userMemories.ownerId, ownerId),
             eq(schema.userMemories.scope, item.scope),
@@ -295,6 +400,7 @@ export function createUserMemoryService(db: Database) {
               importance: item.importance,
               category: item.category,
               updatedAt: now,
+              ...(item.embedding ? { embedding: item.embedding } : {}),
             }).where(eq(schema.userMemories.id, existing.id))
             stored.push({ id: existing.id, created: false })
             continue
@@ -335,6 +441,7 @@ export function createUserMemoryService(db: Database) {
             updatedAt: now,
             deletedAt: null,
             consolidatedAt: null,
+            embedding: item.embedding,
           }).returning()
 
           stored.push({ id: created!.id, created: true })
@@ -359,6 +466,7 @@ export function createUserMemoryService(db: Database) {
       if (content.length < MIN_CONTENT_LENGTH)
         return null
 
+      const embedding = await embedFact(embedder, content)
       const [existing] = await db.select().from(schema.userMemories).where(and(
         eq(schema.userMemories.id, memoryId),
         eq(schema.userMemories.ownerId, ownerId),
@@ -368,13 +476,12 @@ export function createUserMemoryService(db: Database) {
         return null
 
       const scope: MemoryScope = existing.scope === 'character' ? 'character' : 'user'
-      const storedCategory = existing.category != null && isMemoryCategory(existing.category)
-        ? existing.category
-        : undefined
+      const storedCategory = memoryCategoryFromStored(existing.category) ?? undefined
       const [updated] = await db.update(schema.userMemories).set({
         content,
         category: categoryFor(scope, input.category ?? storedCategory),
         updatedAt: now,
+        ...(embedding ? { embedding } : {}),
       }).where(eq(schema.userMemories.id, memoryId)).returning()
 
       return updated ? toRecord(updated) : null
@@ -424,7 +531,7 @@ export function createUserMemoryService(db: Database) {
 
       const facts = [...byId.values()].map(row => ({
         id: row.id,
-        category: row.category != null && isMemoryCategory(row.category) ? row.category : 'other' as const,
+        category: memoryCategoryFromStored(row.category) ?? 'other',
         content: row.content,
         createdAt: row.createdAt.getTime(),
       }))

@@ -4,6 +4,8 @@ import { eq } from 'drizzle-orm'
 import { beforeAll, describe, expect, it } from 'vitest'
 
 import { mockDB } from '../../libs/mock-db'
+import { memoryCategoryFromStored } from './memory-category'
+import { MEMORY_EMBEDDING_DIMENSION } from './memory-embedding'
 import { createUserMemoryService } from './user-memory'
 
 import * as schema from '../../schemas'
@@ -49,6 +51,25 @@ describe('userMemoryService', () => {
     const matches = await service.search('user-1', 'card-a', '今天天气不错')
 
     expect(matches.every(memory => memory.content !== '用户对花生过敏')).toBe(true)
+  })
+
+  it('returns each allergy fact when the user asks what they are allergic to', async () => {
+    await service.remember('user-allergy-ask', 'card-a', [{
+      scope: 'user',
+      content: '用户对头孢过敏。',
+      importance: 9,
+      category: 'allergy',
+    }], new Date('2026-06-01T00:00:00.000Z'))
+    await service.remember('user-allergy-ask', 'card-a', [{
+      scope: 'user',
+      content: '用户对青霉素过敏',
+      importance: 9,
+      category: 'allergy',
+    }], new Date('2026-06-01T01:00:00.000Z'))
+
+    const matches = await service.search('user-allergy-ask', 'card-a', '我对什么过敏', new Date('2026-06-01T02:00:00.000Z'), 'UTC')
+
+    expect(matches.map(memory => memory.content)).toEqual(['用户对青霉素过敏', '用户对头孢过敏。'])
   })
 
   it('returns an age fact when the user asks how old they are', async () => {
@@ -280,5 +301,159 @@ describe('userMemoryService', () => {
     }, now)
 
     expect(second.rolledCount).toBe(0)
+  })
+})
+
+function vectorFor(text: string): number[] {
+  const vector = Array.from({ length: MEMORY_EMBEDDING_DIMENSION }).fill(0) as number[]
+  if (text.includes('花生') || text.includes('坚果') || text.includes('起疹'))
+    vector[0] = 1
+  else if (text.includes('天气'))
+    vector[1] = 1
+  else
+    vector[2] = 1
+  return vector
+}
+
+function embeddingLength(value: unknown): number {
+  if (Array.isArray(value))
+    return value.length
+  if (typeof value === 'string')
+    return value.split(',').length
+  return 0
+}
+
+describe('userMemoryService with embeddings', () => {
+  let db: Database
+  let service: ReturnType<typeof createUserMemoryService>
+
+  beforeAll(async () => {
+    db = await mockDB(schema)
+    service = createUserMemoryService(db, {
+      async embed(text) {
+        return vectorFor(text)
+      },
+    })
+  })
+
+  it('stores a 1024-number vector with the fact', async () => {
+    const [saved] = await service.remember('user-embed', 'card-a', [{
+      scope: 'user',
+      content: '用户对花生过敏',
+      importance: 9,
+    }])
+
+    const [row] = await db.select({ embedding: schema.userMemories.embedding })
+      .from(schema.userMemories)
+      .where(eq(schema.userMemories.id, saved!.id))
+
+    expect(embeddingLength(row?.embedding)).toBe(MEMORY_EMBEDDING_DIMENSION)
+  })
+
+  it('returns an earlier fact when the vectors match and the words do not', async () => {
+    await service.remember('user-embed-old', 'card-a', [{
+      scope: 'user',
+      content: '用户对花生过敏',
+      importance: 9,
+    }], new Date('2026-04-01T00:00:00.000Z'))
+
+    const matches = await service.search(
+      'user-embed-old',
+      'card-a',
+      '我吃了坚果之后起疹子',
+      new Date('2026-06-01T12:00:00.000Z'),
+      'UTC',
+    )
+
+    expect(matches.map(memory => memory.content)).toEqual(['用户对花生过敏'])
+  })
+
+  it('leaves out a fact whose vector is about a different topic', async () => {
+    const matches = await service.search('user-embed-old', 'card-a', '今天天气不错')
+
+    expect(matches.every(memory => memory.content !== '用户对花生过敏')).toBe(true)
+  })
+
+  it('keeps a character vector on the card that stored it', async () => {
+    await service.remember('user-embed-card', 'card-a', [{
+      scope: 'character',
+      content: '用户对花生过敏',
+      importance: 8,
+    }])
+
+    const sameCard = await service.search('user-embed-card', 'card-a', '我吃了坚果之后起疹子')
+    const otherCard = await service.search('user-embed-card', 'card-b', '我吃了坚果之后起疹子')
+
+    expect(sameCard.some(memory => memory.content === '用户对花生过敏')).toBe(true)
+    expect(otherCard.some(memory => memory.content === '用户对花生过敏')).toBe(false)
+  })
+
+  it('keeps the day limit when embedding fails', async () => {
+    const failing = createUserMemoryService(db, {
+      async embed() {
+        throw new Error('embedding down')
+      },
+    })
+    await failing.remember('user-embed-down', 'card-a', [{
+      scope: 'user',
+      content: '用户对花生过敏',
+      importance: 5,
+    }], new Date('2026-04-01T00:00:00.000Z'))
+
+    const later = await failing.search('user-embed-down', 'card-a', '花生', new Date('2026-06-01T12:00:00.000Z'), 'UTC')
+    expect(later).toHaveLength(0)
+
+    await failing.remember('user-embed-down', 'card-a', [{
+      scope: 'user',
+      content: '用户提到花生酱',
+      importance: 5,
+    }], new Date('2026-06-01T00:00:00.000Z'))
+    const today = await failing.search('user-embed-down', 'card-a', '花生', new Date('2026-06-01T12:00:00.000Z'), 'UTC')
+
+    expect(today.map(memory => memory.content)).toEqual(['用户提到花生酱'])
+  })
+
+  it('ranks a fact found by words and vectors above a fact found by words only', async () => {
+    const hybrid = createUserMemoryService(db, {
+      async embed(text) {
+        const vector = Array.from({ length: MEMORY_EMBEDDING_DIMENSION }).fill(0) as number[]
+        if (text.includes('头孢') || text.includes('抗生素'))
+          vector[0] = 1
+        else if (text.includes('青霉素'))
+          vector[1] = 1
+        else
+          vector[2] = 1
+        return vector
+      },
+    })
+    const storedAt = new Date('2026-06-01T00:00:00.000Z')
+    await hybrid.remember('user-rrf', 'card-a', [
+      { scope: 'user', content: '用户对头孢过敏。', importance: 9 },
+      { scope: 'user', content: '用户对青霉素过敏', importance: 9 },
+    ], storedAt)
+
+    const matches = await hybrid.search(
+      'user-rrf',
+      'card-a',
+      '我对什么过敏，能用抗生素吗',
+      new Date('2026-06-01T02:00:00.000Z'),
+      'UTC',
+    )
+
+    expect(matches.map(memory => memory.content)).toEqual(['用户对头孢过敏。', '用户对青霉素过敏'])
+  })
+})
+
+describe('memoryCategoryFromStored', () => {
+  it('reads a category saved before the profile split', () => {
+    expect(memoryCategoryFromStored('background')).toBe('history')
+    expect(memoryCategoryFromStored('concern')).toBe('visit')
+  })
+
+  it('keeps a current category and drops an unknown one', () => {
+    expect(memoryCategoryFromStored('allergy')).toBe('allergy')
+    expect(memoryCategoryFromStored('demographics')).toBe('demographics')
+    expect(memoryCategoryFromStored('unknown')).toBeNull()
+    expect(memoryCategoryFromStored(null)).toBeNull()
   })
 })

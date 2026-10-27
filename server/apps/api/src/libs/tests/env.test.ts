@@ -19,6 +19,9 @@ describe('parseEnv', () => {
 
     expect(env.DATABASE_URL).toBe('postgres://example')
     expect(env.REDIS_URL).toBe('redis://example')
+    expect(env.MEMORY_EMBEDDING_BASE_URL).toBe('')
+    expect(env.MEMORY_EMBEDDING_API_KEY).toBe('')
+    expect(env.MEMORY_EMBEDDING_MODEL).toBe('')
     expect(env.ADDITIONAL_TRUSTED_ORIGINS).toEqual([])
     expect('BETTER_AUTH_SECRET' in env).toBe(false)
     expect('AUTH_GOOGLE_CLIENT_ID' in env).toBe(false)

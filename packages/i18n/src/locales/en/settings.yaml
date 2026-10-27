@@ -497,10 +497,20 @@ pages:
       description: >-
         AIRI sends this text with every message. Write facts about the user here, not instructions.
       placeholder: |-
-        Name: Yuki
+        Name
+        Yuki
+
+        Basic details
+        Female
+
+        Health background
         Postpartum day 7, caesarean section, twins
+
+        Allergy
         Allergic to penicillin
-        Main concerns: engorgement, poor sleep
+
+        This consultation
+        Engorgement, poor sleep
     saved: Saved automatically
     clear: Clear
   knowledge-base:
@@ -901,9 +911,12 @@ pages:
       category-label: Category
       categories:
         name: Name
-        background: Background
+        demographics: Basic details
+        history: Health background
         allergy: Allergy
-        concern: Concerns
+        medication: Long-term medicine
+        visit: This consultation
+        scene: Consultation context
         other: Other
       scope-user: About you
       scope-character: About {name}

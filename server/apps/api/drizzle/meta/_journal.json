@@ -211,6 +211,13 @@
       "when": 1793034284714,
       "tag": "0029_silly_randall_flagg",
       "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1793089200743,
+      "tag": "0030_user_memory_embedding",
+      "breakpoints": true
     }
   ]
 }
