@@ -32,6 +32,10 @@ const notice = ref<string>()
  * anyone names a collection.
  */
 const activeCollectionId = useLocalStorage('devtools/intent-routing/collection-id', '')
+
+/** Sentinels for the two options that mean "no filter" and "no label". */
+const allCollectionsValue = '__all__'
+const unlabelledValue = '__unlabelled__'
 const newCollectionName = ref('')
 const newCollectionPurpose = ref<'development' | 'acceptance'>('development')
 const renameName = ref('')
@@ -44,7 +48,7 @@ const purposeLabels: Record<'development' | 'acceptance', string> = {
 }
 
 const collectionOptions = computed<SelectOptionItem<string>[]>(() => [
-  { label: '全部样本', value: '' },
+  { label: '全部样本', value: allCollectionsValue },
   ...collections.value.map(collection => ({
     label: `${collection.name}（${purposeLabels[collection.purpose]}）`,
     value: collection.id,
@@ -67,8 +71,8 @@ const importing = ref(false)
 const groupOptions: SelectOptionItem<string>[] = Object.entries(intentSampleGroupLabels)
   .map(([value, label]) => ({ label, value }))
 
-const labelOptions: SelectOptionItem<'medical' | 'chat' | ''>[] = [
-  { label: '未标注', value: '' },
+const labelOptions: SelectOptionItem<string>[] = [
+  { label: '未标注', value: unlabelledValue },
   { label: '医学', value: 'medical' },
   { label: '闲聊', value: 'chat' },
 ]
@@ -330,9 +334,35 @@ async function importJson() {
   }
 }
 
+/** The collection picker: the stored id, or the sentinel for the unfiltered view. */
+const collectionSelection = computed({
+  get: () => activeCollectionId.value || allCollectionsValue,
+  set: (value: string) => {
+    activeCollectionId.value = value === allCollectionsValue ? '' : value
+  },
+})
+
+/** The "new sample" label picker, which stores no label as an empty string. */
+const expectedSelection = computed({
+  get: () => expected.value || unlabelledValue,
+  set: (value: string) => {
+    expected.value = value === unlabelledValue ? '' : value as 'medical' | 'chat'
+  },
+})
+
 /** The sample opened in the inline editor, and the draft being edited. */
 const selected = ref<RemoteIntentSample>()
 const draft = ref<{ input: string, context: { role: 'user' | 'assistant', content: string }[], group: string, expected: 'medical' | 'chat' | '', labelStatus: 'unreviewed' | 'reviewed', source: string }>()
+
+/** The editor draft label, mapped the same way. */
+const draftExpectedSelection = computed({
+  get: () => draft.value?.expected || unlabelledValue,
+  set: (value: string) => {
+    if (!draft.value)
+      return
+    draft.value.expected = value === unlabelledValue ? '' : value as 'medical' | 'chat'
+  },
+})
 const savingDetail = ref(false)
 
 const roleOptions: SelectOptionItem<'user' | 'assistant'>[] = [
@@ -485,7 +515,7 @@ onMounted(async () => {
       <div :class="['flex flex-wrap items-end gap-3']">
         <label :class="['flex flex-col gap-1 text-xs text-neutral-500 dark:text-neutral-400']">
           当前集合
-          <Select v-model="activeCollectionId" :options="collectionOptions" @update:model-value="selectCollection" />
+          <Select v-model="collectionSelection" :options="collectionOptions" @update:model-value="selectCollection" />
         </label>
 
         <label :class="['flex flex-col gap-1 text-xs text-neutral-500 dark:text-neutral-400']">
@@ -576,7 +606,7 @@ onMounted(async () => {
           </label>
           <label :class="['flex items-center gap-2 text-xs text-neutral-500 dark:text-neutral-400']">
             标答
-            <Select v-model="draft.expected" :options="labelOptions" />
+            <Select v-model="draftExpectedSelection" :options="labelOptions" />
           </label>
           <label :class="['flex items-center gap-2 text-xs text-neutral-500 dark:text-neutral-400']">
             复核
@@ -607,7 +637,7 @@ onMounted(async () => {
         </label>
         <label :class="['flex items-center gap-2 text-xs text-neutral-500 dark:text-neutral-400']">
           标答
-          <Select v-model="expected" :options="labelOptions" />
+          <Select v-model="expectedSelection" :options="labelOptions" />
         </label>
         <label :class="['flex items-center gap-2 text-xs text-neutral-500 dark:text-neutral-400']">
           来源

@@ -141,6 +141,14 @@ const collections = ref<RemoteIntentCollection[]>([])
 /** The collection the pages share; empty means every stored sample. */
 const activeCollectionId = useLocalStorage('devtools/intent-routing/collection-id', '')
 
+/**
+ * The sentinel the picker uses for "every sample".
+ *
+ * A select item cannot carry an empty value: the empty string already means
+ * "nothing chosen", so the unfiltered option needs its own value.
+ */
+const allCollectionsValue = '__all__'
+
 /** The collection the bench is reading, when it knows one. */
 const activeCollection = computed(() => collections.value.find(collection => collection.id === activeCollectionId.value))
 
@@ -183,9 +191,17 @@ const evaluationSamples = computed<IntentSample[]>(() => serverSamplesLoaded.val
       : [])
   : collectionBlocked.value ? [] : intentSamples)
 
+/** The picker model: the stored id, or the sentinel for the unfiltered view. */
+const collectionSelection = computed({
+  get: () => activeCollectionId.value || allCollectionsValue,
+  set: (value: string) => {
+    activeCollectionId.value = value === allCollectionsValue ? '' : value
+  },
+})
+
 /** The collections the bench offers: development only, by policy. */
 const benchCollectionOptions = computed<SelectOptionItem<string>[]>(() => [
-  { label: '全部样本', value: '' },
+  { label: '全部样本', value: allCollectionsValue },
   ...collectionsFor('bench', collections.value).map(collection => ({
     label: collection.name,
     value: collection.id,
@@ -1325,7 +1341,7 @@ function downloadReport() {
           to="/devtools/intent-routing/datasets"
           :class="['text-primary-600 underline dark:text-primary-400']"
         >
-          <Select v-model="activeCollectionId" :options="benchCollectionOptions" @update:model-value="loadServerSamples" />
+          <Select v-model="collectionSelection" :options="benchCollectionOptions" @update:model-value="loadServerSamples" />
 
           <!-- What survives a reload: the stored run, not the session table. -->
           <div
