@@ -138,6 +138,35 @@ describe('useLive2DEmotionExpression', () => {
     expect(store.expressions.get('ParamEyeLOpen')?.currentValue).toBe(1)
   })
 
+  it('replaces a group that the settings UI toggled', () => {
+    // ROOT CAUSE:
+    //
+    // The emotion channel only cleared the group that it activated itself. A
+    // group that the settings preview toggled stayed applied, and the next
+    // emotion added its own parameters on top. `f03` and `f04` share
+    // `ParamEyeLOpen`, but `ParamMouthForm` stayed at the `f03` value, so the
+    // face showed a mix of both and looked stuck on "sad".
+    //
+    // We fixed this by clearing every group before an emotion applies.
+    store.toggle('f03')
+    expect(store.expressions.get('ParamMouthForm')?.currentValue).toBe(-2)
+
+    useLive2DEmotionExpression().applyEmotion('happy')
+
+    expect(store.expressions.get('ParamMouthForm')?.currentValue).toBe(0)
+    expect(store.expressions.get('ParamEyeLSmile')?.currentValue).toBe(1)
+  })
+
+  it('clears a group that the settings UI toggled on neutral', () => {
+    store.toggle('f03')
+
+    useLive2DEmotionExpression().applyEmotion('neutral')
+
+    expect(store.expressions.get('ParamMouthForm')?.currentValue).toBe(0)
+    expect(store.expressions.get('ParamEyeLOpen')?.currentValue).toBe(1)
+    expect(store.isGroupActive('f03')).toBe(false)
+  })
+
   it('scales an Add parameter from zero and a Multiply parameter from one', () => {
     store.registerExpressions('blend-model', [
       {

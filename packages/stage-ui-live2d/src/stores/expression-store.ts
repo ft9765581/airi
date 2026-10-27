@@ -700,13 +700,18 @@ export const useExpressionStore = defineStore('live2d-expressions', () => {
   /**
    * Applies one expression group for the stage emotion channel.
    *
+   * The emotion channel owns the face, so every other group returns to its
+   * identity value first. Two groups share parameters (Haru `f03` and `f06`
+   * both write `ParamBrowLY`), and a group that the settings UI toggled must
+   * not stay on top of the emotion. Without that reset, the second emotion
+   * looks stuck on the first one.
+   *
    * `intensity` moves each parameter from the blend identity to the value in the
    * exp3 file. An intensity of 1 gives the exact exp3 result. An intensity of 0
    * restores the model default. Values outside 0–1 are clamped.
    *
-   * The group stays active until the next call, `clearEmotionGroup`, or
-   * `resetAll`. Group names match without case, because model3.json can declare
-   * `Happy` or `happy`.
+   * Group names match without case, because model3.json can declare `Happy` or
+   * `happy`.
    */
   function activateEmotionGroup(name: string, intensity = 1): ExpressionToolResult {
     const group = findEmotionGroup(name)
@@ -718,7 +723,7 @@ export const useExpressionStore = defineStore('live2d-expressions', () => {
       }
     }
 
-    clearEmotionGroup()
+    clearEveryGroup()
 
     const strength = Math.min(1, Math.max(0, intensity))
     const states: ExpressionState[] = []
@@ -737,26 +742,14 @@ export const useExpressionStore = defineStore('live2d-expressions', () => {
   }
 
   /**
-   * Restores the parameters of the active emotion group and forgets the group.
+   * Restores the neutral face: every group returns to its identity value.
    *
-   * Calling this with no active group does nothing, so the stage can call it on
-   * every `neutral` emotion without extra state.
+   * The call covers groups that the settings UI toggled, so `neutral` also
+   * undoes a manual preview. It stays safe to call on every `neutral` emotion.
    */
   function clearEmotionGroup(): ExpressionToolResult {
-    const name = activeEmotionGroup.value
     activeEmotionGroup.value = undefined
-    if (!name)
-      return { success: true }
-
-    const group = findEmotionGroup(name)
-    if (!group)
-      return { success: true }
-
-    for (const param of group.parameters) {
-      const entry = expressions.value.get(param.parameterId)
-      if (entry)
-        applyValue(entry, emotionBlendIdentity(entry))
-    }
+    clearEveryGroup()
     return { success: true }
   }
 
@@ -836,6 +829,28 @@ export const useExpressionStore = defineStore('live2d-expressions', () => {
   }
 
   // ---- private -------------------------------------------------------------
+
+  /**
+   * Returns every expression group to its identity value.
+   *
+   * The stage owns the face while a reply plays. A group that the settings UI
+   * toggled must not survive an emotion, because two groups share parameters
+   * (Haru `f03` and `f06` both write `ParamBrowLY`) and the face then shows a
+   * mix of both. The checkbox state follows the face, so the settings page does
+   * not claim a group that is no longer applied.
+   */
+  function clearEveryGroup() {
+    for (const group of expressionGroups.value.values()) {
+      for (const param of group.parameters) {
+        const entry = expressions.value.get(param.parameterId)
+        if (entry)
+          applyValue(entry, emotionBlendIdentity(entry))
+      }
+    }
+
+    for (const name of expressionGroups.value.keys())
+      activeGroups.value.set(name, false)
+  }
 
   function applyValue(entry: ExpressionEntry, value: number, duration?: number) {
     // Cancel existing timer

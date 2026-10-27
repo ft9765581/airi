@@ -52,6 +52,7 @@ import { useProviderStore } from '../../stores/providers/provider'
 import { useSettings } from '../../stores/settings'
 import { useSpeechOutputControlStore } from '../../stores/speech-output-control'
 import { useSpeechRuntimeStore } from '../../stores/speech-runtime'
+import { useStageEmotionStore } from '../../stores/stage-emotion'
 import { isWebGLAvailable, stageRendererNeedsWebGL } from '../../utils/webgl-available'
 
 const props = withDefaults(defineProps<{
@@ -268,6 +269,7 @@ const { activeBackgroundUrl } = storeToRefs(backgroundStore)
 const { currentMotion } = storeToRefs(useLive2dParams())
 const live2dParams = useLive2dParams()
 const live2dEmotionExpression = useLive2DEmotionExpression()
+const stageEmotion = useStageEmotionStore()
 
 /**
  * Returns whether the loaded Live2D model declares a motion group.
@@ -283,6 +285,10 @@ function hasLive2DMotionGroup(groupName: string) {
 const emotionsQueue = createQueue<EmotionPayload>({
   handlers: [
     async (ctx) => {
+      // The badge shows the emotion the model asked for, even when the current
+      // model cannot show it. That makes a missing expression group visible.
+      stageEmotion.show(ctx.data.name, ctx.data.intensity)
+
       if (stageModelRenderer.value === 'vrm') {
         const value = EMOTION_VRMExpressionName_value[ctx.data.name]
         if (!value)
@@ -894,6 +900,14 @@ chatHookCleanups.push(onBeforeMessageComposed(async (_message, context) => {
 }))
 
 chatHookCleanups.push(onBeforeSend(async () => {
+  // Each turn starts from the neutral face. The previous expression would
+  // otherwise stay on screen while the user types, and a reply that repeats the
+  // same emotion would look like no reaction at all.
+  if (stageModelRenderer.value === 'live2d') {
+    live2dEmotionExpression.applyEmotion(Emotion.Neutral, 0)
+    stageEmotion.clear()
+  }
+
   if (hasLive2DMotionGroup(EmotionThinkMotionName))
     currentMotion.value = { group: EmotionThinkMotionName }
 }))

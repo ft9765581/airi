@@ -9,7 +9,7 @@ import { BackgroundProvider } from '@proj-airi/stage-layouts/components/Backgrou
 import { useBackgroundThemeColor } from '@proj-airi/stage-layouts/composables/theme-color'
 import { useBackgroundStore } from '@proj-airi/stage-layouts/stores/background'
 import { HoloCoupon } from '@proj-airi/stage-ui/components'
-import { ViewControlSlider, WidgetStage } from '@proj-airi/stage-ui/components/scenes'
+import { EmotionBadge, ViewControlSlider, WidgetStage } from '@proj-airi/stage-ui/components/scenes'
 import { useAudioRecorder } from '@proj-airi/stage-ui/composables/audio/audio-recorder'
 import { useVAD } from '@proj-airi/stage-ui/stores/ai/models/vad'
 import { useChatStore } from '@proj-airi/stage-ui/stores/chat'
@@ -211,6 +211,9 @@ const cursorPosition = computed(() => ({
       </div>
       <!-- page -->
       <div relative flex="~ 1 row gap-y-0 gap-x-2 <md:col">
+        <div :class="['pointer-events-none absolute left-3 top-3 z-30']">
+          <EmotionBadge />
+        </div>
         <div relative flex-1 min-w="1/2">
           <div
             absolute left-0 z-15 px-3

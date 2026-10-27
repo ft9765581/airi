@@ -3,12 +3,13 @@ import type { ChatAssistantMessage, ChatHistoryItem, ChatSlices, ChatSlicesText,
 import type { ChatToolCallRendererRegistry } from './tool-call-renderer'
 
 import { isStageCapacitor, isStageWeb } from '@proj-airi/stage-shared'
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 
 import ChatResponsePart from './response-part.vue'
 import ChatToolCallBlock from './tool-call-block.vue'
 
 import { MarkdownRenderer } from '../../../markdown'
+import { routeBadgeOf, routeDetailBranchOf, routeDetailReasonOf, routeNoticeOf } from '../route-copy'
 import { getChatHistoryItemCopyText } from '../utils'
 import { ChatActionMenu } from './action-menu'
 import { createToolCallResultLookup, resolveToolCallBlockState } from './tool-call-results'
@@ -81,6 +82,9 @@ function getToolCallRenderer(slice: ChatSlices) {
 const showLoader = computed(() => props.showPlaceholder && resolvedSlices.value.length === 0)
 const containerClass = computed(() => props.variant === 'mobile' ? 'mr-0' : 'mr-12')
 
+/** True when this turn answered with the emergency instruction. */
+const isUrgent = computed(() => props.route?.kind === 'urgent')
+
 /**
  * A visible edge for the branches that answer differently.
  *
@@ -102,64 +106,27 @@ const routeAccentClass = computed(() => {
 
 const boxClasses = computed(() => [
   props.variant === 'mobile'
-    ? ['px-2 py-2 text-sm', 'bg-primary-50/60 backdrop-blur-xl dark:bg-primary-950/60']
-    : ['px-3 py-3', 'bg-primary-50/80 dark:bg-primary-950/75'],
+    ? ['px-2 py-2 text-sm']
+    : ['px-3 py-3'],
+  // An emergency answer is a card of its own: it leads with the action, and a
+  // reader who is worried should not have to pick it out of a tinted bubble.
+  isUrgent.value
+    ? ['border border-red-300 bg-red-50/80 dark:border-red-900 dark:bg-red-950/40']
+    : [props.variant === 'mobile'
+        ? 'bg-primary-50/60 backdrop-blur-xl dark:bg-primary-950/60'
+        : 'bg-primary-50/80 dark:bg-primary-950/75'],
   routeAccentClass.value,
 ])
 const copyText = computed(() => getChatHistoryItemCopyText(props.message as ChatHistoryItem))
 
-/**
- * The label of the branches that must stand out at a glance.
- *
- * A normal medical answer carries the notice under the text instead, so it needs
- * no tag. Emergency guidance keeps its tag, because the reader has to see it
- * before reading the paragraph.
- */
-const routeBadge = computed(() => {
-  switch (props.route?.kind) {
-    case 'urgent':
-      return {
-        text: '急诊指引',
-        class: 'border-red-300 bg-red-50 text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300',
-      }
-    case 'fallback':
-      return {
-        text: '兜底回复',
-        class: 'border-neutral-300 bg-neutral-100 text-neutral-600 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-300',
-      }
-    default:
-      return undefined
-  }
-})
+// The branch copy and the reason wording live in `../route-copy`, so the
+// policy can be tested without mounting a chat page.
+const routeBadge = computed(() => routeBadgeOf(props.route))
+const routeNotice = computed(() => routeNoticeOf(props.route))
+const detailBranch = computed(() => routeDetailBranchOf(props.route))
+const detailReason = computed(() => routeDetailReasonOf(props.route))
 
-/**
- * The line under a routed answer.
- *
- * The badge says which branch answered; this line says what the person must not
- * conclude from it. It sits under the text, because a reader who finishes the
- * answer is the one who needs it, and a small label at the top is easy to miss.
- */
-const routeNotice = computed(() => {
-  switch (props.route?.kind) {
-    case 'medical':
-      return {
-        text: '以上是普通健康指引，不能替代医生诊断。症状加重或出现紧急情况，请立即就医。',
-        class: 'text-neutral-500 dark:text-neutral-400',
-      }
-    case 'urgent':
-      return {
-        text: '以上不是诊断结论。请立即前往急诊或拨打 120。',
-        class: 'text-red-700 dark:text-red-300',
-      }
-    case 'fallback':
-      return {
-        text: '这一轮没有生成医疗回答，以上是固定回复。',
-        class: 'text-neutral-500 dark:text-neutral-400',
-      }
-    default:
-      return undefined
-  }
-})
+const detailsOpen = ref(false)
 </script>
 
 <template>
@@ -200,6 +167,18 @@ const routeNotice = computed(() => {
           >
             {{ routeBadge.text }}
           </span>
+          <!-- The action comes before the paragraph, and the words carry it:
+               a reader who cannot separate red from grey still reads "立即就医". -->
+          <div
+            v-if="isUrgent"
+            :class="[
+              'flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11px] font-600 leading-none text-white',
+              'bg-red-600 dark:bg-red-500',
+            ]"
+          >
+            <span :class="['i-solar:danger-triangle-bold-duotone', 'text-sm']" />
+            立即就医 · 请前往急诊或拨打 120
+          </div>
           <div v-if="resolvedSlices.length > 0" class="flex flex-col gap-2 break-words" text="primary-700 dark:primary-100">
             <template v-for="(slice, sliceIndex) in resolvedSlices" :key="sliceIndex">
               <component
@@ -228,6 +207,41 @@ const routeNotice = computed(() => {
           >
             {{ routeNotice.text }}
           </p>
+          <!-- A routed turn says which branch answered, on demand. The detail
+               stays collapsed: it is a fact the reader may want, not a banner. -->
+          <div v-if="detailBranch" :class="['flex flex-col gap-1']">
+            <button
+              type="button"
+              :aria-expanded="detailsOpen"
+              :class="[
+                'w-fit text-[10px] underline decoration-dotted underline-offset-2',
+                'text-neutral-500 dark:text-neutral-400',
+              ]"
+              @click="detailsOpen = !detailsOpen"
+            >
+              {{ detailsOpen ? '收起详情' : '详情' }}
+            </button>
+
+            <dl
+              v-if="detailsOpen"
+              :class="[
+                'grid grid-cols-[auto_1fr] gap-x-2 gap-y-0.5 rounded-lg px-2 py-1.5 text-[10px]',
+                'bg-neutral-100/70 dark:bg-neutral-800/60',
+              ]"
+            >
+              <dt :class="['text-neutral-500 dark:text-neutral-400']">
+                分支
+              </dt>
+              <dd>{{ detailBranch }}</dd>
+
+              <template v-if="detailReason">
+                <dt :class="['text-neutral-500 dark:text-neutral-400']">
+                  原因
+                </dt>
+                <dd>{{ detailReason }}</dd>
+              </template>
+            </dl>
+          </div>
         </div>
       </template>
     </ChatActionMenu>
