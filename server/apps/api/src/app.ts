@@ -9,6 +9,7 @@ import type { CharacterService } from './services/domain/characters'
 import type { ChatService } from './services/domain/chats'
 import type { FluxService } from './services/domain/flux'
 import type { FluxTransactionService } from './services/domain/flux-transaction'
+import type { IntentEvalService } from './services/domain/intent-eval'
 import type { LlmRouterService } from './services/domain/llm-router'
 import type { ProductEventService } from './services/domain/product-events'
 import type { ProviderCatalogService } from './services/domain/provider-catalog'
@@ -55,6 +56,7 @@ import { createChatWsV2Handlers } from './routes/chat-ws/v2'
 import { createChatWsPayloadLimit } from './routes/chat-ws/v2/payload-limit'
 import { createChatRoutes } from './routes/chats'
 import { createFluxRoutes } from './routes/flux'
+import { createIntentEvalRoutes } from './routes/intent-eval'
 import { createInternalAuthRoutes } from './routes/internal-auth'
 import { createKnowledgeBaseRoutes } from './routes/knowledge-base'
 import { createV1Routes } from './routes/openai/v1'
@@ -72,6 +74,7 @@ import { createCharacterService } from './services/domain/characters'
 import { createChatService } from './services/domain/chats'
 import { createFluxService } from './services/domain/flux'
 import { createFluxTransactionService } from './services/domain/flux-transaction'
+import { createIntentEvalService } from './services/domain/intent-eval'
 import { createKnowledgeBaseService } from './services/domain/knowledge-base'
 import { createConcurrencyLedger, createConfigSyncSubscriber, createLlmRouterService } from './services/domain/llm-router'
 import { createProductEventService } from './services/domain/product-events'
@@ -91,6 +94,7 @@ import { getTrustedOrigin } from './utils/origin'
 interface AppDeps {
   db: Database
   characterService: CharacterService
+  intentEvalService: IntentEvalService
   chatService: ChatService
   providerService: ProviderService
   fluxService: FluxService
@@ -375,6 +379,7 @@ export async function buildApp(deps: AppDeps) {
      * Character routes are handled by the character service.
      */
     .route('/api/v1/characters', createCharacterRoutes(deps.characterService))
+    .route('/api/v1/intent-eval', createIntentEvalRoutes(deps.intentEvalService))
 
     /**
      * Runtime character cards, the active card, and the handwritten user profile.
@@ -589,6 +594,11 @@ export async function createApp() {
     build: ({ dependsOn }) => createCharacterService(dependsOn.db, dependsOn.otel?.engagement),
   })
 
+  const intentEvalService = injeca.provide('services:intent-eval', {
+    dependsOn: { db },
+    build: ({ dependsOn }) => createIntentEvalService(dependsOn.db),
+  })
+
   const providerService = injeca.provide('services:providers', {
     dependsOn: { db },
     build: ({ dependsOn }) => createProviderService(dependsOn.db),
@@ -638,7 +648,7 @@ export async function createApp() {
   })
 
   const userDeletionService = injeca.provide('services:userDeletion', {
-    dependsOn: { stripeService, fluxService, providerService, characterService, chatService, userRuntimeService, userMemoryService },
+    dependsOn: { stripeService, fluxService, providerService, characterService, chatService, userRuntimeService, userMemoryService, intentEvalService },
     build: ({ dependsOn }) => {
       const service = createUserDeletionService()
       // priority: 10 = external side-effects (Stripe API cancel — unrollable),
@@ -651,6 +661,14 @@ export async function createApp() {
       service.register({ name: 'chats', priority: 30, softDelete: ({ userId }) => dependsOn.chatService.deleteAllForUser(userId) })
       service.register({ name: 'runtime-profile', priority: 30, softDelete: ({ userId }) => dependsOn.userRuntimeService.deleteAllForUser(userId) })
       service.register({ name: 'memories', priority: 30, softDelete: ({ userId }) => dependsOn.userMemoryService.deleteAllForUser(userId) })
+      // The scheduler only awaits the cleanup; the counts are for this module's own tests.
+      service.register({
+        name: 'intent-eval',
+        priority: 30,
+        softDelete: async ({ userId }) => {
+          await dependsOn.intentEvalService.deleteAllForUser(userId)
+        },
+      })
       return service
     },
   })
@@ -729,6 +747,7 @@ export async function createApp() {
   const resolved = await injeca.resolve({
     db,
     characterService,
+    intentEvalService,
     chatService,
     providerService,
     fluxService,
@@ -759,6 +778,7 @@ export async function createApp() {
   const appDeps = {
     db: resolved.db,
     characterService: resolved.characterService,
+    intentEvalService: resolved.intentEvalService,
     chatService: resolved.chatService,
     providerService: resolved.providerService,
     fluxService: resolved.fluxService,

@@ -16,6 +16,7 @@ function createTestDeps() {
   return {
     db: { query: { user: { findFirst: vi.fn() } } } as never,
     characterService: {} as never,
+    intentEvalService: {} as never,
     chatService: {} as never,
     providerService: {} as never,
     fluxService: {} as never,
