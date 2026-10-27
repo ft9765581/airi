@@ -1,8 +1,13 @@
 <script setup lang="ts">
-import type { RemoteIntentRun, RemoteRunCase } from '@proj-airi/stage-ui/libs/intent/api'
+import type { RemoteIntentCollection, RemoteIntentRun, RemoteRunCase } from '@proj-airi/stage-ui/libs/intent/api'
 
 import { describeIntentEvalError, intentEvalApi } from '@proj-airi/stage-ui/libs/intent/api'
-import { Button, SelectTab } from '@proj-airi/ui'
+import { defaultClassifierSystemPrompt } from '@proj-airi/stage-ui/libs/intent/classify-model'
+import { collectionsFor } from '@proj-airi/stage-ui/libs/intent/collection-policy'
+import { evaluateSamples } from '@proj-airi/stage-ui/libs/intent/evaluate'
+import { useConsciousnessStore } from '@proj-airi/stage-ui/stores/modules/consciousness'
+import { useProviderStore } from '@proj-airi/stage-ui/stores/providers/provider'
+import { Button, Select, SelectTab } from '@proj-airi/ui'
 import { computed, onMounted, ref } from 'vue'
 
 /**
@@ -38,6 +43,129 @@ const caseFilters: { label: string, value: CaseFilter }[] = [
 ]
 
 const selected = computed(() => runs.value.find(run => run.id === selectedId.value))
+
+const consciousnessStore = useConsciousnessStore()
+const providerStore = useProviderStore()
+
+/** Acceptance collections the gate may run. */
+const collections = ref<RemoteIntentCollection[]>([])
+const collectionId = ref('')
+const acceptanceRunning = ref(false)
+const acceptanceFailure = ref<string>()
+const acceptanceNotice = ref<string>()
+
+/** The acceptance collections, in the order the API returned them. */
+const acceptanceOptions = computed(() => collectionsFor('acceptance', collections.value).map(collection => ({ label: collection.name, value: collection.id })))
+
+const chosenCollection = computed(() => collections.value.find(collection => collection.id === collectionId.value))
+
+/** Loads the collections the gate offers, so the picker is never stale. */
+async function loadCollections() {
+  try {
+    collections.value = await intentEvalApi.listCollections()
+  }
+  catch (error) {
+    acceptanceFailure.value = describeIntentEvalError(error)
+  }
+}
+
+/** Asks the chat provider for the request one classification needs. */
+async function resolveModelOptions() {
+  const providerId = consciousnessStore.activeProvider
+  const model = consciousnessStore.activeModel
+
+  if (!providerId || !model)
+    throw new Error('未配置聊天 provider 或模型，验收需要模型分类')
+
+  const provider = await providerStore.getChatProviderInstance(providerId, { reasoning: 'disabled' })
+
+  return { request: provider.chat(model), systemPrompt: defaultClassifierSystemPrompt }
+}
+
+/**
+ * Runs one acceptance set and stores it as the gate record.
+ *
+ * Only labelled samples are scored: an unlabelled one has nothing to be right
+ * about, and counting it would move the denominator of the gate.
+ */
+async function runAcceptance() {
+  acceptanceFailure.value = undefined
+  acceptanceNotice.value = undefined
+
+  if (!collectionId.value) {
+    acceptanceFailure.value = '先选择一个验收集'
+    return
+  }
+
+  acceptanceRunning.value = true
+  try {
+    const rows = await intentEvalApi.listSamples(collectionId.value)
+    const samples = rows.flatMap(row => row.expected
+      ? [{
+          id: row.id,
+          input: row.input,
+          context: row.context?.length ? row.context.map(turn => ({ role: turn.role, content: turn.content })) : undefined,
+          expected: row.expected,
+          group: row.group,
+        }]
+      : [])
+
+    if (!samples.length) {
+      acceptanceFailure.value = '这个验收集没有已标注样本'
+      return
+    }
+
+    const report = await evaluateSamples({
+      samples,
+      sampleSetVersion: Math.max(...rows.map(row => row.sampleSetVersion)),
+      mode: 'model',
+      model: await resolveModelOptions(),
+    })
+
+    const run = await intentEvalApi.createRun({
+      sampleSetVersion: report.sampleSetVersion,
+      mode: 'model',
+      configKey: report.configKey,
+      modelId: consciousnessStore.activeModel || undefined,
+      collectionId: collectionId.value,
+      purpose: 'acceptance',
+      total: samples.length,
+    })
+
+    await intentEvalApi.updateRun(run.id, {
+      status: 'completed',
+      completed: samples.length,
+      metrics: {
+        rules: { recall: report.rules.medicalRecall, falsePositive: report.rules.chatFalsePositiveRate, failure: report.rules.fallbackRate },
+        ...(report.model
+          ? { model: { recall: report.model.medicalRecall, falsePositive: report.model.chatFalsePositiveRate, failure: report.model.fallbackRate } }
+          : {}),
+      },
+      cases: samples.map((sample) => {
+        const item = report.cases.find(entry => entry.sample.id === sample.id)
+
+        return {
+          sampleId: sample.id,
+          input: sample.input,
+          context: sample.context,
+          expected: sample.expected,
+          rules: item?.rules.decision,
+          model: item?.model?.source === 'fallback' ? 'failed' : item?.model?.decision,
+        }
+      }),
+    })
+
+    acceptanceNotice.value = `验收运行完成：${samples.length} 条，规则召回 ${(report.rules.medicalRecall * 100).toFixed(1)}%${report.model ? `，生成式召回 ${(report.model.medicalRecall * 100).toFixed(1)}%` : ''}`
+    selectedId.value = run.id
+    await load()
+  }
+  catch (error) {
+    acceptanceFailure.value = describeIntentEvalError(error)
+  }
+  finally {
+    acceptanceRunning.value = false
+  }
+}
 
 /** A verdict cell: the label, or why the run stored none. */
 function verdictText(verdict: string | undefined): string {
@@ -109,8 +237,9 @@ async function load() {
   }
 }
 
-onMounted(() => {
-  void load()
+onMounted(async () => {
+  await loadCollections()
+  await load()
 })
 </script>
 
@@ -133,6 +262,47 @@ onMounted(() => {
       {{ failure }}
     </p>
 
+    <section
+      :class="[
+        'flex flex-col gap-3 rounded-2xl border px-4 py-3 text-sm',
+        'bg-white dark:bg-neutral-900',
+        'border-neutral-200 dark:border-neutral-700',
+      ]"
+    >
+      <h2 :class="['text-base font-600']">
+        最终验收
+        <span :class="['text-xs font-400 text-neutral-500 dark:text-neutral-400']">
+          只跑验收集；开发集在测试台运行
+        </span>
+      </h2>
+
+      <div :class="['flex flex-wrap items-end gap-3']">
+        <label :class="['flex flex-col gap-1 text-xs text-neutral-500 dark:text-neutral-400']">
+          验收集
+          <Select v-model="collectionId" :options="acceptanceOptions" />
+        </label>
+        <Button
+          size="sm"
+          :loading="acceptanceRunning"
+          :label="acceptanceRunning ? '验收运行中…' : '运行验收'"
+          :disabled="!collectionId || acceptanceRunning"
+          @click="runAcceptance"
+        />
+        <span v-if="chosenCollection" :class="['text-xs text-neutral-500 dark:text-neutral-400']">
+          选中：{{ chosenCollection.name }}
+        </span>
+      </div>
+
+      <p v-if="!acceptanceOptions.length" :class="['text-xs text-neutral-500 dark:text-neutral-400']">
+        还没有验收集。先在样本集页新建一个用途为「验收集」的集合，再往里面放已标注样本。
+      </p>
+      <p v-if="acceptanceFailure" :class="['text-xs text-red-600 dark:text-red-400']">
+        {{ acceptanceFailure }}
+      </p>
+      <p v-if="acceptanceNotice" :class="['text-xs text-green-700 dark:text-green-400']">
+        {{ acceptanceNotice }}
+      </p>
+    </section>
     <div :class="['flex flex-wrap items-center gap-2']">
       <SelectTab v-model="limit" :options="limitOptions" size="sm" tab-space="compact" />
     </div>
@@ -355,6 +525,47 @@ onMounted(() => {
           </span>
         </h2>
 
+        <section
+          :class="[
+            'flex flex-col gap-3 rounded-2xl border px-4 py-3 text-sm',
+            'bg-white dark:bg-neutral-900',
+            'border-neutral-200 dark:border-neutral-700',
+          ]"
+        >
+          <h2 :class="['text-base font-600']">
+            最终验收
+            <span :class="['text-xs font-400 text-neutral-500 dark:text-neutral-400']">
+              只跑验收集；开发集在测试台运行
+            </span>
+          </h2>
+
+          <div :class="['flex flex-wrap items-end gap-3']">
+            <label :class="['flex flex-col gap-1 text-xs text-neutral-500 dark:text-neutral-400']">
+              验收集
+              <Select v-model="collectionId" :options="acceptanceOptions" />
+            </label>
+            <Button
+              size="sm"
+              :loading="acceptanceRunning"
+              :label="acceptanceRunning ? '验收运行中…' : '运行验收'"
+              :disabled="!collectionId || acceptanceRunning"
+              @click="runAcceptance"
+            />
+            <span v-if="chosenCollection" :class="['text-xs text-neutral-500 dark:text-neutral-400']">
+              选中：{{ chosenCollection.name }}
+            </span>
+          </div>
+
+          <p v-if="!acceptanceOptions.length" :class="['text-xs text-neutral-500 dark:text-neutral-400']">
+            还没有验收集。先在样本集页新建一个用途为「验收集」的集合，再往里面放已标注样本。
+          </p>
+          <p v-if="acceptanceFailure" :class="['text-xs text-red-600 dark:text-red-400']">
+            {{ acceptanceFailure }}
+          </p>
+          <p v-if="acceptanceNotice" :class="['text-xs text-green-700 dark:text-green-400']">
+            {{ acceptanceNotice }}
+          </p>
+        </section>
         <div :class="['flex flex-wrap items-center gap-2']">
           <Button
             v-for="item in caseFilters"

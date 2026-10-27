@@ -71,6 +71,10 @@ export interface RemoteRunCase {
 export interface RemoteIntentRun {
   id: string
   sampleSetVersion: number
+  /** The collection this run read, when it read one. */
+  collectionId?: string
+  /** development on the bench, cceptance for the release gate. */
+  purpose?: 'development' | 'acceptance'
   mode: 'rules' | 'model' | 'compare'
   status: 'running' | 'completed' | 'failed' | 'cancelled'
   configKey: string
@@ -91,6 +95,8 @@ export interface RemoteIntentRunInput {
   configKey: string
   modelId?: string
   classifierPromptDigest?: string
+  collectionId?: string
+  purpose?: 'development' | 'acceptance'
   total: number
 }
 
