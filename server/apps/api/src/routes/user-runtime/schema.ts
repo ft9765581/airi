@@ -140,6 +140,9 @@ export const AccountSectionsSchema = pipe(
         apiKey: pipe(string(), maxLength(4_096)),
         knowledgeBaseId: pipe(string(), maxLength(256)),
         enabled: boolean(),
+        // Optional: a client that predates the flow switch sends none, and the
+        // older rows in this table have none.
+        scope: optional(picklist(['chat', 'medical'])),
       })), maxLength(20)),
     })),
     connection: optional(object({

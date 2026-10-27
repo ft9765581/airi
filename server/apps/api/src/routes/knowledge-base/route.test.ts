@@ -16,6 +16,13 @@ const configuredEnv = {
 
 const testUser = { id: 'user-1', email: 'test@example.com', name: 'Test User' }
 
+/** The same service reached through its demo search route instead of the external contract. */
+const demoEnv = {
+  ...configuredEnv,
+  KNOWLEDGE_BASE_PROVIDER: 'demo',
+  KNOWLEDGE_BASE_DEMO_BASE_URL: 'https://demo.example.test/api/demo',
+} as unknown as Env
+
 function buildApp(env: Env = configuredEnv) {
   const app = new Hono<HonoEnv>()
 
@@ -120,6 +127,67 @@ describe('knowledge base retrieval proxy', () => {
     expect(res.status).toBe(502)
   })
 
+  it('reads the demo search route and maps its excerpt to a record', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      query: '涨奶怎么办',
+      total: 3,
+      results: [
+        { excerpt: '出现「涨奶」时，可优先考虑：产科门诊。', score: 0.848, section: '涨奶', book_title: '导诊知识库', chunk_id: 'c1', locator_type: 'block' },
+        { excerpt: '温毛巾热敷 3~5 分钟', score: 0.5 },
+        { excerpt: '   ', score: 0.4 },
+      ],
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const res = await post(buildApp(demoEnv), validBody)
+
+    expect(res.status).toBe(200)
+    const body = await res.json() as { records: Array<{ content: string, score?: number, title?: string }> }
+    // The blank excerpt is dropped, so the prompt never quotes an empty record.
+    expect(body.records).toHaveLength(2)
+    expect(body.records[0].content).toBe('出现「涨奶」时，可优先考虑：产科门诊。')
+    expect(body.records[0].score).toBe(0.848)
+    expect(body.records[0].title).toBe('涨奶')
+
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit]
+    expect(url.startsWith('https://demo.example.test/api/demo/knowledge-bases/postpartum/search?q=')).toBe(true)
+    expect(decodeURIComponent(url.split('q=')[1])).toBe('涨奶怎么办')
+    // A GET: the demo route takes the question in the query string and no key.
+    expect(init.method).toBeUndefined()
+    expect(init.headers).toBeUndefined()
+  })
+
+  it('applies top_k locally because the demo route returns a fixed count', async () => {
+    const results = Array.from({ length: 8 }, (_, index) => ({ excerpt: `第 ${index} 条`, score: 0.8 - index * 0.05 }))
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({ results }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    })))
+
+    const res = await post(buildApp(demoEnv), validBody)
+    const body = await res.json() as { records: unknown[] }
+
+    expect(body.records).toHaveLength(3)
+  })
+
+  it('reports a missing knowledge base in the vocabulary the page explains', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('not found', { status: 404 })))
+
+    const res = await post(buildApp(demoEnv), validBody)
+
+    expect(res.status).toBe(200)
+    expect(await res.json()).toEqual({ error_code: 2001, error_msg: '知识库不存在' })
+  })
+
+  it('answers 502 when the demo route answers a shape this API does not know', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({ results: 'nope' }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    })))
+
+    const res = await post(buildApp(demoEnv), validBody)
+    expect(res.status).toBe(502)
+  })
   it('answers 502 when the upstream body is not JSON', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('<html>oops</html>', { status: 200 })))
     const res = await post(buildApp(), validBody)

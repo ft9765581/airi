@@ -109,6 +109,22 @@ const EnvSchema = object({
    */
   KNOWLEDGE_BASE_URL: optional(string()),
   KNOWLEDGE_BASE_API_KEY: optional(string(), ''),
+  /**
+   * Which contract the knowledge service speaks.
+   *
+   * `dify` is the external knowledge base contract the browser already sends.
+   * `demo` reads the same content through the service's read-only demo search
+   * route, used while that deployment's external endpoint returns nothing.
+   *
+   * @default 'dify'
+   */
+  KNOWLEDGE_BASE_PROVIDER: optional(picklist(['dify', 'demo']), 'dify'),
+  /**
+   * Base URL the `demo` provider appends `/knowledge-bases/{id}/search` to.
+   *
+   * @default 'https://knowledge.bestmings.com/api/demo'
+   */
+  KNOWLEDGE_BASE_DEMO_BASE_URL: optional(string(), 'https://knowledge.bestmings.com/api/demo'),
   /** How long one forwarded retrieval may run before this API gives up. */
   KNOWLEDGE_BASE_TIMEOUT_MS: optionalIntegerFromString(8000, 'KNOWLEDGE_BASE_TIMEOUT_MS', 100),
   OTEL_DEBUG: optional(string()),

@@ -113,8 +113,18 @@ export interface KnowledgeBaseSection {
     apiKey: string
     knowledgeBaseId: string
     enabled: boolean
+    /**
+     * The chat flow the connection answers.
+     *
+     * Absent on rows written before the client sent a scope. The client reads a
+     * missing value as `chat`, which is the flow that answered then.
+     */
+    scope?: KnowledgeBaseScope
   }>
 }
+
+/** The chat flows a knowledge base connection can answer. */
+export type KnowledgeBaseScope = 'chat' | 'medical'
 
 export interface ConnectionSection {
   updatedAt: string

@@ -57,6 +57,8 @@ services:
       ADDITIONAL_TRUSTED_ORIGINS: https://${ACCOUNTS_DOMAIN}
       LLM_ROUTER_MASTER_KEY: ${LLM_ROUTER_MASTER_KEY}
       OPENAI_GATEWAY_BILLING_MODE: ${OPENAI_GATEWAY_BILLING_MODE:-off}
+      KNOWLEDGE_BASE_URL: ${KNOWLEDGE_BASE_URL:-}
+      KNOWLEDGE_BASE_API_KEY: ${KNOWLEDGE_BASE_API_KEY:-}
     healthcheck:
       test: ['CMD-SHELL', 'wget -qO- http://localhost:3000/readyz >/dev/null']
       interval: 10s
