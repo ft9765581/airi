@@ -13,16 +13,46 @@ export interface ProfileMemoryFact {
   createdAt: number
 }
 
-const HEADINGS = new Set(Object.values(PROFILE_CATEGORY_HEADING))
+/**
+ * Headings written before the category split.
+ *
+ * A fact continues this section when the current heading is absent.
+ * Health background continues "基本情况". This consultation continues "主要困扰".
+ */
+function olderSectionHeading(category: MemoryCategory): string | undefined {
+  if (category === 'history')
+    return '基本情况'
+  if (category === 'visit')
+    return '主要困扰'
+  return undefined
+}
+
+const HEADINGS = new Set<string>([
+  ...Object.values(PROFILE_CATEGORY_HEADING),
+  '基本情况',
+  '主要困扰',
+])
 
 function isHeading(line: string): boolean {
   return HEADINGS.has(line.trim())
 }
 
+function headingIndexFor(lines: readonly string[], category: MemoryCategory): number {
+  const current = PROFILE_CATEGORY_HEADING[category]
+  const currentIndex = lines.findIndex(line => line.trim() === current)
+  if (currentIndex >= 0)
+    return currentIndex
+
+  const older = olderSectionHeading(category)
+  if (older == null)
+    return -1
+  return lines.findIndex(line => line.trim() === older)
+}
+
 function appendUnderHeading(lines: string[], category: MemoryCategory, content: string): boolean {
   const heading = PROFILE_CATEGORY_HEADING[category]
   const next = lines.slice()
-  const headingIndex = next.findIndex(line => line.trim() === heading)
+  const headingIndex = headingIndexFor(next, category)
 
   if (headingIndex < 0) {
     if (next.length === 1 && next[0] === '') {

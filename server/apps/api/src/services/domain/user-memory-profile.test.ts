@@ -26,7 +26,7 @@ describe('mergeProfileWithMemories', () => {
   it('appends a new fact under its category heading', () => {
     const merged = mergeProfileWithMemories('称呼：小雅', [{
       id: 'sleep',
-      category: 'concern',
+      category: 'visit',
       content: '用户夜里因为涨奶睡不好',
       createdAt: 1,
     }])
@@ -34,7 +34,7 @@ describe('mergeProfileWithMemories', () => {
     expect(merged.content).toBe([
       '称呼：小雅',
       '',
-      '主要困扰',
+      '本次咨询',
       '用户夜里因为涨奶睡不好',
     ].join('\n'))
   })
@@ -43,13 +43,13 @@ describe('mergeProfileWithMemories', () => {
     const merged = mergeProfileWithMemories('产后第 7 天，剖宫产，双胎', [
       {
         id: 'older',
-        category: 'background',
+        category: 'history',
         content: '用户是剖宫产，目前是产后第 7 天',
         createdAt: 1,
       },
       {
         id: 'newer',
-        category: 'background',
+        category: 'history',
         content: '用户是剖宫产，目前是产后第 8 天',
         createdAt: 2,
       },
@@ -62,19 +62,54 @@ describe('mergeProfileWithMemories', () => {
 
   it('adds a second fact under a heading that already exists', () => {
     const merged = mergeProfileWithMemories([
-      '主要困扰',
+      '本次咨询',
       '用户夜里睡不好',
     ].join('\n'), [{
       id: 'milk',
-      category: 'concern',
+      category: 'visit',
       content: '用户涨奶',
       createdAt: 3,
     }])
 
     expect(merged.content).toBe([
-      '主要困扰',
+      '本次咨询',
       '用户夜里睡不好',
       '用户涨奶',
+    ].join('\n'))
+  })
+
+  it('continues an older section when the current heading is absent', () => {
+    const merged = mergeProfileWithMemories([
+      '基本情况',
+      '用户有哮喘',
+      '',
+      '主要困扰',
+      '用户咳嗽',
+    ].join('\n'), [
+      {
+        id: 'surgery',
+        category: 'history',
+        content: '用户做过剖宫产',
+        createdAt: 4,
+      },
+      {
+        id: 'age',
+        category: 'demographics',
+        content: '用户 32 岁',
+        createdAt: 5,
+      },
+    ])
+
+    expect(merged.content).toBe([
+      '基本情况',
+      '用户有哮喘',
+      '用户做过剖宫产',
+      '',
+      '主要困扰',
+      '用户咳嗽',
+      '',
+      '人口基础信息',
+      '用户 32 岁',
     ].join('\n'))
   })
 })

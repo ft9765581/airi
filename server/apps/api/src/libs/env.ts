@@ -147,6 +147,17 @@ const EnvSchema = object({
   KNOWLEDGE_GRAPH_API_KEY: optional(string(), ''),
   /** How long one forwarded graph search may run before this API gives up. */
   KNOWLEDGE_GRAPH_TIMEOUT_MS: optionalIntegerFromString(8000, 'KNOWLEDGE_GRAPH_TIMEOUT_MS', 100),
+  /**
+   * OpenAI-compatible embeddings for long-term memory.
+   *
+   * An empty base URL or model leaves search on keyword overlap for the local day.
+   * The stored column is `vector(1024)`. The endpoint must return 1024 numbers.
+   * A call may send `dimensions: 1024`. When that call fails, the server tries once
+   * more without `dimensions`, inside the same two-second limit.
+   */
+  MEMORY_EMBEDDING_API_KEY: optional(string(), ''),
+  MEMORY_EMBEDDING_BASE_URL: optional(string(), ''),
+  MEMORY_EMBEDDING_MODEL: optional(string(), ''),
   OTEL_DEBUG: optional(string()),
 
   OTEL_EXPORTER_OTLP_ENDPOINT: optional(string()),

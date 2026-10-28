@@ -1,4 +1,14 @@
-export const MEMORY_CATEGORIES = ['name', 'background', 'allergy', 'concern', 'other'] as const
+/** The same ids are stored by `server/apps/api/src/services/domain/memory-category.ts`. */
+export const MEMORY_CATEGORIES = [
+  'name',
+  'demographics',
+  'history',
+  'allergy',
+  'medication',
+  'visit',
+  'scene',
+  'other',
+] as const
 
 export type MemoryCategory = typeof MEMORY_CATEGORIES[number]
 
@@ -25,15 +35,23 @@ const EXTRACTION_SYSTEM = [
   'Each object has scope, content, importance, and category.',
   'scope is "user" when the fact is about the person and any character should know it.',
   'scope is "character" when the fact is about this character and this person together.',
-  'category is "name", "background", "allergy", "concern", or "other" when scope is "user".',
+  'When scope is "user", category is "name", "demographics", "history", "allergy", "medication", "visit", "scene", or "other".',
   'Use "name" for what to call the person.',
-  'Use "background" for stable facts such as family or medical history.',
-  'Use "allergy" for allergies and medicines.',
-  'Use "concern" for the person\'s current problems.',
+  'Use "demographics" for age, sex, weeks of pregnancy, or whether the person is a child.',
+  'Use "history" for a chronic disease, a past surgery, a past injury, or a diagnosed disease.',
+  'Also use "history" for tobacco use, alcohol use, menstrual history, sleep, or body constitution.',
+  'Use "allergy" for a drug allergy or a food allergy.',
+  'Use "medication" for a medicine the person takes for a long time.',
+  'Use "visit" for this consultation.',
+  'A visit fact is the main problem, a symptom, a trigger, a hospital visit, a test, or the request.',
+  'Use "scene" for who needs care, and for signs of urgent danger.',
+  'Who needs care is the person, or someone they ask about, such as a child or an older adult.',
   'Use "other" when none of those fit.',
   'Omit category when scope is "character".',
   'content is one short sentence in the language of the conversation.',
-  'importance is an integer from 1 to 10. A name, allergy, or preference is 8 or more. A passing detail is 3 or less.',
+  'importance is an integer from 1 to 10.',
+  'A name, an allergy, or a long-term medicine is 8 or more.',
+  'A passing detail is 3 or less.',
   'Skip greetings, questions, and instructions to the character.',
   'When nothing is worth storing, return [].',
   'Return only the JSON array.',

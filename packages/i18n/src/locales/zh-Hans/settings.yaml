@@ -484,10 +484,20 @@ pages:
       description: >-
         这条内容会随每条消息一起发给模型。这里写用户的事实，不要写指令。
       placeholder: |-
-        称呼：小雅
+        称呼
+        小雅
+
+        人口基础信息
+        女性
+
+        健康背景
         产后第 7 天，剖宫产，双胎
+
+        过敏
         青霉素过敏
-        主要困扰：涨奶、夜里睡不好
+
+        本次咨询
+        涨奶、夜里睡不好
     saved: 已自动保存
     clear: 清空
   knowledge-base:
@@ -946,9 +956,12 @@ pages:
       category-label: 类别
       categories:
         name: 称呼
-        background: 基本情况
+        demographics: 人口基础信息
+        history: 健康背景
         allergy: 过敏
-        concern: 主要困扰
+        medication: 长期用药
+        visit: 本次咨询
+        scene: 咨询场景
         other: 其他
       scope-user: 关于你
       scope-character: 关于{name}
