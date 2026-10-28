@@ -32,6 +32,7 @@ import { toast, Toaster } from 'vue-sonner'
 import PerformanceOverlay from './components/Devtools/PerformanceOverlay.vue'
 
 import { repairDeploymentCredentials } from './modules/credential-repair'
+import { useSharedRuntimeStore } from './modules/shared-runtime'
 import { usePWAStore } from './stores/pwa'
 
 usePWAStore()
@@ -51,11 +52,16 @@ const settingsAudioDeviceStore = useSettingsAudioDevice()
 const { showingSetup } = storeToRefs(onboardingStore)
 const { isDark } = useTheme()
 const cardStore = useAiriCardStore()
-const runtimeProfileSync = useRuntimeProfileSync()
+const sharedRuntime = useSharedRuntimeStore()
+const runtimeProfileSync = useRuntimeProfileSync({ sharedRuntime: () => sharedRuntime.enabled })
 const memoryProfileRollup = useMemoryProfileRollup({
   readProfile: () => runtimeProfileSync.readProfileRevision(),
   applyProfile: (content, updatedAt) => runtimeProfileSync.applyRolledProfile(content, updatedAt),
 })
+function refreshSharedRuntime() {
+  if (!sharedRuntime.canEdit)
+    void sharedRuntime.load().catch(error => console.error('[shared-runtime] refresh failed', error))
+}
 useArtistryStore()
 useConsciousnessStore()
 useHearingStore()
@@ -137,7 +143,10 @@ onMounted(async () => {
   registerAuthenticatedSetup()
   if (!authStore.isAuthenticated)
     await removeAuthenticationProviderConfiguration()
-  void runtimeProfileSync.start().then(() => memoryProfileRollup.start())
+  await sharedRuntime.load().catch(error => console.error('[shared-runtime] load failed', error))
+  await runtimeProfileSync.start()
+  window.addEventListener('focus', refreshSharedRuntime)
+  memoryProfileRollup.start()
 
   // The welcome wizard is a manual action on the data settings page. A
   // deployment ships its providers, so a visitor must not enter a setup flow on
@@ -158,6 +167,7 @@ onMounted(async () => {
 })
 
 onUnmounted(() => {
+  window.removeEventListener('focus', refreshSharedRuntime)
   stopAuthenticatedSetup?.()
   stopLoggedOutSetup?.()
   chatStore.dispose()

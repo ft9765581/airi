@@ -1,7 +1,11 @@
+import type { Plugin } from 'vite'
+
 import process, { cwd, env } from 'node:process'
 
+import { Buffer } from 'node:buffer'
 import { execSync } from 'node:child_process'
-import { join, resolve } from 'node:path'
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { dirname, join, resolve } from 'node:path'
 
 import VueI18n from '@intlify/unplugin-vue-i18n/vite'
 import templateCompilerOptions from '@tresjs/core/template-compiler-options'
@@ -20,11 +24,76 @@ import { tryCatch } from '@moeru/std'
 import { Download } from '@proj-airi/unplugin-fetch/vite'
 import { DownloadLive2DSDK } from '@proj-airi/unplugin-live2d-sdk/vite'
 import { LFS, SpaceCard } from 'hfup/vite'
-import { defineConfig, loadEnv } from 'vite'
+import { defineConfig } from 'vite'
 import { VitePWA } from 'vite-plugin-pwa'
 
 const stageUIAssetsRoot = resolve(join(import.meta.dirname, '..', '..', 'packages', 'stage-ui', 'src', 'assets'))
 const sharedCacheDir = resolve(join(import.meta.dirname, '..', '..', '.cache'))
+
+/**
+ * Answers the shared runtime endpoint while `vite dev` runs.
+ *
+ * The settings page publishes deployment settings through
+ * `/api/v1/shared-runtime`, which the API serves. A plain `pnpm dev` has no API,
+ * so the page would sit in "administrator only" forever. This plugin keeps one
+ * JSON file under `.cache/` and answers both methods, so publish and apply can
+ * be exercised without Docker or a sign-in. It never runs in a build.
+ *
+ * Removal condition: when the local backend is part of the standard dev flow.
+ */
+function devSharedRuntime(): Plugin {
+  const file = resolve(join(sharedCacheDir, 'dev-shared-runtime.json'))
+
+  function read(): { settings: unknown, updatedAt: string | null } {
+    try {
+      const parsed = JSON.parse(readFileSync(file, 'utf8')) as { settings?: unknown, updatedAt?: string }
+      return { settings: parsed.settings ?? null, updatedAt: parsed.updatedAt ?? null }
+    }
+    catch {
+      // No file yet, or a hand-edited one: an empty deployment is a valid state.
+      return { settings: null, updatedAt: null }
+    }
+  }
+
+  return {
+    name: 'airi:dev-shared-runtime',
+    apply: 'serve',
+    configureServer(server) {
+      server.middlewares.use('/api/v1/shared-runtime', (request, response) => {
+        if (request.method === 'GET') {
+          const { settings, updatedAt } = read()
+          response.setHeader('Content-Type', 'application/json')
+          response.end(JSON.stringify({ settings, updatedAt, canEdit: true }))
+          return
+        }
+
+        if (request.method !== 'PUT') {
+          response.statusCode = 405
+          response.end()
+          return
+        }
+
+        const chunks: Buffer[] = []
+        request.on('data', (chunk: Buffer) => chunks.push(chunk))
+        request.on('end', () => {
+          try {
+            const body = JSON.parse(Buffer.concat(chunks).toString('utf8')) as unknown
+            const savedAt = new Date().toISOString()
+            mkdirSync(dirname(file), { recursive: true })
+            writeFileSync(file, JSON.stringify({ settings: body, updatedAt: savedAt }, null, 2), 'utf8')
+            response.setHeader('Content-Type', 'application/json')
+            response.end(JSON.stringify({ settings: body, updatedAt: savedAt, canEdit: true }))
+          }
+          catch {
+            response.statusCode = 400
+            response.setHeader('Content-Type', 'application/json')
+            response.end(JSON.stringify({ error: 'INVALID_REQUEST' }))
+          }
+        })
+      })
+    },
+  }
+}
 
 function hasFlagEnableMkcert(): boolean {
   if (process.argv.includes('--mkcert')) {
@@ -36,8 +105,6 @@ function hasFlagEnableMkcert(): boolean {
 
   return false
 }
-
-const knowledgeBaseDevApiKey = loadEnv('development', import.meta.dirname, 'KNOWLEDGE_BASE_DEV_').KNOWLEDGE_BASE_DEV_API_KEY
 
 export default defineConfig({
   optimizeDeps: {
@@ -84,30 +151,6 @@ export default defineConfig({
       //
       // See: https://vite.dev/config/server-options#server-fs-strict
       strict: false,
-    },
-    proxy: {
-      // NOTICE:
-      // The knowledge base service rejects most browser origins, including
-      // local dev ports other than 5173. The deployment proxy at
-      // `localhost:6112` works but needs the Docker backend and a session
-      // cookie, so a fresh checkout cannot test the knowledge base page at all.
-      // This same-origin path makes the settings page testable without either.
-      // The dev server adds the key from its private environment; the key
-      // does not enter the browser bundle. `server.proxy` never reaches a build.
-      // Removal condition: when the knowledge service allows the local dev
-      // origins, or when the local backend is part of the standard dev flow.
-      '/knowledge-base-dev': {
-        target: env.VITE_KNOWLEDGE_BASE_DEV_TARGET || 'https://knowledge.bestmings.com',
-        changeOrigin: true,
-        rewrite: path => path.replace(/^\/knowledge-base-dev/, ''),
-        configure: (proxy) => {
-          if (knowledgeBaseDevApiKey) {
-            proxy.on('proxyReq', (request) => {
-              request.setHeader('Authorization', `Bearer ${knowledgeBaseDevApiKey}`)
-            })
-          }
-        },
-      },
     },
     watch: {
       // NOTICE:
@@ -179,6 +222,8 @@ export default defineConfig({
     Info(),
 
     Yaml(),
+
+    devSharedRuntime(),
 
     VueMacros({
       plugins: {

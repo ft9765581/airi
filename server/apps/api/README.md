@@ -35,6 +35,12 @@ the API and Auth container ports private.
 
 ## Service boundaries
 
+### Shared runtime settings
+
+`GET /api/v1/shared-runtime` returns the published character cards, selected models, and knowledge base connections. Every visitor reads the same record. `PUT /api/v1/shared-runtime` accepts updates only from the verified `nurse@example.com` account. Set `SHARED_RUNTIME_ADMIN_EMAIL` to change that account.
+
+The web settings page at `/settings/shared-runtime` publishes the administrator's current browser setup. Publish once after configuring the cards, models, and knowledge base. Other browsers load the published setup on startup and refresh it when the page regains focus. Provider credentials and knowledge base keys stay in server configuration; the shared record contains no knowledge base API key.
+
 - `AUTH_SERVER_URL` is Auth's canonical public issuer origin used for JWKS,
   issuer, and audience validation. It must exactly equal Auth's `PUBLIC_URL`.
 - `/internal/auth/*` is reachable only on the deployment's trusted private

@@ -284,6 +284,16 @@ live2d:
 microphone: Microphone
 models: Model
 pages:
+  shared-runtime:
+    title: Shared settings
+    description: Publish character cards, models, and knowledge base connections for everyone.
+    summary: Character cards, the active character, chat and speech models, and knowledge base connections are shared by all users.
+    updated-at: 'Last published: {date}'
+    admin-only: Only the administrator can publish shared settings.
+    instructions: Configure character cards, modules, and knowledge base connections before publishing.
+    publish: Publish current settings
+    published: Shared settings published. Other users receive them when they refresh the page.
+    failed: Could not publish shared settings.
   account:
     title: Account
     description: View your profile and manage your account

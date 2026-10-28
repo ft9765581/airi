@@ -266,6 +266,16 @@ live2d:
 microphone: 麦克风
 models: 模型
 pages:
+  shared-runtime:
+    title: 共享配置
+    description: 为所有用户发布角色卡、模型和知识库连接。
+    summary: 所有用户共享角色卡、当前角色、聊天和语音模型以及知识库连接。
+    updated-at: '上次发布：{date}'
+    admin-only: 只有管理员可以发布共享配置。
+    instructions: 发布前，请先设置角色卡、模块和知识库连接。
+    publish: 发布当前配置
+    published: 共享配置已发布。其他用户刷新页面后生效。
+    failed: 共享配置发布失败。
   account:
     title: 账号
     description: 查看您的个人资料并管理您的帐户

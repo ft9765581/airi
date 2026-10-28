@@ -62,6 +62,7 @@ import { createKnowledgeBaseRoutes } from './routes/knowledge-base'
 import { createKnowledgeGraphRoutes } from './routes/knowledge-graph'
 import { createV1Routes } from './routes/openai/v1'
 import { createProviderRoutes } from './routes/providers'
+import { createSharedRuntimeRoutes } from './routes/shared-runtime'
 import { createStripeRoutes } from './routes/stripe'
 import { createUserMemoryRoutes } from './routes/user-memory'
 import { createUserRuntimeRoutes } from './routes/user-runtime'
@@ -388,6 +389,7 @@ export async function buildApp(deps: AppDeps) {
      * These rows follow the signed-in user. They are not the public character catalog.
      */
     .route('/api/v1/runtime-profile', createUserRuntimeRoutes(deps.userRuntimeService))
+    .route('/api/v1/shared-runtime', createSharedRuntimeRoutes(deps.db, deps.env.SHARED_RUNTIME_ADMIN_EMAIL))
 
     /**
      * Long-term memory for the signed-in user.

@@ -67,11 +67,16 @@ services:
       api:
         condition: service_healthy
     env_file:
-      - path: ./apps/api/.env
+      # Auth reads its own secrets (BETTER_AUTH_SECRET, AUTH_UI_URL, ...). The api
+      # env files do not carry them, so auth exited on a missing secret before.
+      - path: ./apps/auth/.env
         required: false
-      - path: ./apps/api/.env.local
+      - path: ./apps/auth/.env.local
         required: false
     environment:
+      # The auth env file names the host port (3001). Inside the network auth
+      # answers on 3000, which is what the healthcheck and caddy expect.
+      PORT: '3000'
       DATABASE_URL: postgres://postgres:example-PAssw0rd-xHjDYR.b7N@db:5432/postgres
       PUBLIC_URL: http://localhost:6112
       REDIS_URL: redis://redis:6379

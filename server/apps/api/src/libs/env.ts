@@ -55,6 +55,7 @@ const EnvSchema = object({
 
   AUTH_SERVER_INTERNAL_URL: optional(string()),
   AUTH_SERVER_URL: optional(string(), 'http://localhost:3000'),
+  SHARED_RUNTIME_ADMIN_EMAIL: optional(string(), 'nurse@example.com'),
   DATABASE_URL: pipe(string(), nonEmpty('DATABASE_URL is required')),
 
   DB_POOL_CONNECTION_TIMEOUT_MS: optionalIntegerFromString(5000, 'DB_POOL_CONNECTION_TIMEOUT_MS', 1),

@@ -141,8 +141,11 @@ function iso(value: string | Date): string {
  * UI asks before uploading this device's copy. That question is once for each
  * account in this browser. A later save with a newer timestamp wins. Whole
  * character cards are not uploaded.
+ * When the web deployment has shared settings, character and model selections
+ * are read from that deployment instead of this account.
  */
-export function useRuntimeProfileSync() {
+export function useRuntimeProfileSync(options: { sharedRuntime?: () => boolean } = {}) {
+  const usesSharedRuntime = () => options.sharedRuntime?.() ?? false
   const auth = useAuthStore()
   const cards = useAiriCardStore()
   const profile = useSettingsUserProfile()
@@ -384,14 +387,14 @@ export function useRuntimeProfileSync() {
       localUpdatedAt: revisions.modulesUpdatedAt,
       remote: remote.modules ? { value: remote.modules, updatedAt: remote.modules.updatedAt } : null,
     })
-    if (modulesAction.type === 'push' && revisions.modulesUpdatedAt)
+    if (!usesSharedRuntime() && modulesAction.type === 'push' && revisions.modulesUpdatedAt)
       sections.modules = { ...readModulesBody(), updatedAt: revisions.modulesUpdatedAt }
 
     const knowledgeAction = planFieldSync({
       localUpdatedAt: revisions.knowledgeBaseUpdatedAt,
       remote: remote.knowledgeBase ? { value: remote.knowledgeBase, updatedAt: remote.knowledgeBase.updatedAt } : null,
     })
-    if (knowledgeAction.type === 'push' && revisions.knowledgeBaseUpdatedAt)
+    if (!usesSharedRuntime() && knowledgeAction.type === 'push' && revisions.knowledgeBaseUpdatedAt)
       sections.knowledgeBase = { ...readKnowledgeBaseBody(), updatedAt: revisions.knowledgeBaseUpdatedAt }
 
     const connectionAction = planFieldSync({
@@ -415,7 +418,7 @@ export function useRuntimeProfileSync() {
     if (modelAction.type === 'push' && revisions.modelViewUpdatedAt)
       sections.modelView = { ...readModelViewBody(), updatedAt: revisions.modelViewUpdatedAt }
 
-    const override = readActiveCardOverride()
+    const override = usesSharedRuntime() ? null : readActiveCardOverride()
     if (override) {
       const remoteOverride = remote.cardOverrides?.find(item => item.cardId === override.cardId)
       const speechAt = revisions.cardSpeech[override.cardId] ?? null
@@ -554,7 +557,7 @@ export function useRuntimeProfileSync() {
     })
     const payload = await collectPushSections(sections)
     const hasSections = Object.keys(payload).length > 0
-    if (activeAction.type === 'push' || profileAction.type === 'push' || hasSections)
+    if ((!usesSharedRuntime() && activeAction.type === 'push') || profileAction.type === 'push' || hasSections)
       await pushSettings(userId, hasSections ? payload : undefined)
   }
 
@@ -581,13 +584,13 @@ export function useRuntimeProfileSync() {
     let changed = false
 
     const modules = JSON.stringify(readModulesBody())
-    if (modules !== lastModules) {
+    if (!usesSharedRuntime() && modules !== lastModules) {
       revisions.modulesUpdatedAt = now
       lastModules = modules
       changed = true
     }
     const knowledge = JSON.stringify(readKnowledgeBaseBody())
-    if (knowledge !== lastKnowledge) {
+    if (!usesSharedRuntime() && knowledge !== lastKnowledge) {
       revisions.knowledgeBaseUpdatedAt = now
       lastKnowledge = knowledge
       changed = true
@@ -613,7 +616,7 @@ export function useRuntimeProfileSync() {
 
     const activeCardId = readActiveCardId()
     const cardChanged = activeCardId !== lastActiveCardId
-    if (cardChanged) {
+    if (cardChanged && !usesSharedRuntime()) {
       revisions.activeCardUpdatedAt = now
       lastActiveCardId = activeCardId
       changed = true
@@ -626,7 +629,7 @@ export function useRuntimeProfileSync() {
     }
 
     const override = readActiveCardOverride()
-    if (override && !cardChanged) {
+    if (override && !cardChanged && !usesSharedRuntime()) {
       const speech = JSON.stringify(override.speech)
       if (speech !== lastSpeech) {
         revisions.cardSpeech[override.cardId] = now
@@ -750,7 +753,7 @@ export function useRuntimeProfileSync() {
   }
 
   async function applyRemoteSections(sections: AccountSections) {
-    for (const override of sections.cardOverrides ?? []) {
+    for (const override of usesSharedRuntime() ? [] : sections.cardOverrides ?? []) {
       // The signed-in account owns the voice, scene, display model, and
       // expression choices. A stale local revision time used to skip these
       // writes, so another browser kept its own model and scene after every
@@ -793,7 +796,7 @@ export function useRuntimeProfileSync() {
       }
     }
 
-    if (sections.modules) {
+    if (!usesSharedRuntime() && sections.modules) {
       const action = planFieldSync({
         localUpdatedAt: revisions.modulesUpdatedAt,
         remote: { value: sections.modules, updatedAt: sections.modules.updatedAt },
@@ -803,7 +806,7 @@ export function useRuntimeProfileSync() {
       if (action.type === 'apply' || action.type === 'none')
         revisions.modulesUpdatedAt = sections.modules.updatedAt
     }
-    if (sections.knowledgeBase) {
+    if (!usesSharedRuntime() && sections.knowledgeBase) {
       const action = planFieldSync({
         localUpdatedAt: revisions.knowledgeBaseUpdatedAt,
         remote: { value: sections.knowledgeBase, updatedAt: sections.knowledgeBase.updatedAt },
@@ -909,7 +912,7 @@ export function useRuntimeProfileSync() {
       remote: { value: settings.profileContent, updatedAt: profileUpdatedAt },
     })
 
-    if (shouldWriteAccountField(activeAction.type, readActiveCardId() === settings.activeCardId) && cards.cards.has(settings.activeCardId))
+    if (!usesSharedRuntime() && shouldWriteAccountField(activeAction.type, readActiveCardId() === settings.activeCardId) && cards.cards.has(settings.activeCardId))
       await cards.activateCard(settings.activeCardId)
     if (activeAction.type !== 'push' && readActiveCardId() === settings.activeCardId)
       revisions.activeCardUpdatedAt = activeUpdatedAt
@@ -968,15 +971,17 @@ export function useRuntimeProfileSync() {
     const now = new Date().toISOString()
     revisions.activeCardUpdatedAt = now
     revisions.profileUpdatedAt = now
-    revisions.modulesUpdatedAt = now
-    revisions.knowledgeBaseUpdatedAt = now
+    if (!usesSharedRuntime()) {
+      revisions.modulesUpdatedAt = now
+      revisions.knowledgeBaseUpdatedAt = now
+    }
     revisions.connectionUpdatedAt = now
     revisions.systemUpdatedAt = now
     revisions.modelViewUpdatedAt = now
-    const override = readActiveCardOverride()
+    const override = usesSharedRuntime() ? null : readActiveCardOverride()
     const sections: AccountSections = {
-      modules: { ...readModulesBody(), updatedAt: now },
-      knowledgeBase: { ...readKnowledgeBaseBody(), updatedAt: now },
+      ...(!usesSharedRuntime() ? { modules: { ...readModulesBody(), updatedAt: now } } : {}),
+      ...(!usesSharedRuntime() ? { knowledgeBase: { ...readKnowledgeBaseBody(), updatedAt: now } } : {}),
       connection: { ...readConnectionBody(), updatedAt: now },
       system: { ...readSystemBody(), updatedAt: now },
       modelView: { ...readModelViewBody(), updatedAt: now },
