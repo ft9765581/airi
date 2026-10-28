@@ -128,10 +128,12 @@ vi.mock('../composables/use-io-tracer', () => ({
 
 vi.mock('./chat/context-providers', () => ({
   createKnowledgeBaseContext: () => undefined,
+  createKnowledgeGraphContext: () => undefined,
   createLongTermMemoryContext: () => undefined,
   createMinecraftContext: () => createMinecraftContextMock(),
   createUserProfileContext: () => undefined,
   retrieveKnowledgeBaseContext: async () => null,
+  retrieveMedicalReferenceContext: async () => null,
 }))
 
 vi.mock('./chat/context-store', () => ({

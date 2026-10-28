@@ -1,14 +1,14 @@
 <script setup lang="ts">
 import type { KnowledgeBaseConnection } from '@proj-airi/stage-ui/stores/settings/knowledge-base'
 
-import { connectionScope } from '@proj-airi/stage-ui/stores/settings/knowledge-base'
+import { connectionScope } from '@proj-airi/stage-ui/stores/settings/connection-scope'
 import { Checkbox, GhostButton } from '@proj-airi/ui'
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 
-import KnowledgeBaseStatusBadge from './knowledge-base-status-badge.vue'
+import ConnectionStatusBadge from './connection-status-badge.vue'
 
-import { useKnowledgeBaseConnectionTest } from '../composables/use-connection-test'
+import { useKnowledgeBaseConnectionTest } from '../composables/use-knowledge-base-connection-test'
 
 const props = defineProps<{
   connection: KnowledgeBaseConnection
@@ -59,7 +59,10 @@ function handleTest() {
         >
           {{ scopeLabel }}
         </span>
-        <KnowledgeBaseStatusBadge :status="status" />
+        <ConnectionStatusBadge
+          :status="status"
+          phrase-prefix="settings.pages.knowledge-base.result"
+        />
       </div>
       <span :class="['truncate text-xs text-neutral-500 dark:text-neutral-400']">
         {{ connection.baseUrl }}<template v-if="connection.knowledgeBaseId"> · {{ connection.knowledgeBaseId }}</template>

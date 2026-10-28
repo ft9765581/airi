@@ -3,7 +3,8 @@ import type { KnowledgeBaseConnection } from './knowledge-base'
 import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it } from 'vitest'
 
-import { connectionScope, useSettingsKnowledgeBase } from './knowledge-base'
+import { connectionScope } from './connection-scope'
+import { useSettingsKnowledgeBase } from './knowledge-base'
 
 function connection(overrides: Partial<KnowledgeBaseConnection> = {}): KnowledgeBaseConnection {
   return {

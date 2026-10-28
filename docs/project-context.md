@@ -25,6 +25,7 @@
 | LLM 端点 | `https://airi.bestmings.com/v1` → nginx 反代 → `124.222.129.13:39111`（vLLM，`Qwen3-8B`） |
 | 语音 | 直连小米 `https://api.xiaomimimo.com/v1/`（`mimo-v2.5-tts` / 冰糖） |
 | 知识库 | 不用 Dify，走服务端代理 `POST /api/v1/knowledge-base/retrieval`（`docs/fork-changes.md` 第 18 节） |
+| 知识图谱 | 设置页「知识库」里的第二个 Tab，**已接进医疗对话与常规聊天**。接口文档见 `知识图谱检索接口说明.docx`（`GET /api/graph/search`，词法命中）；该端点不放 CORS，所以走本仓库新增的代理 `GET /api/v1/knowledge-graph/search`，**上线要先部署这个 API 版本**（进度见 `docs/knowledge-graph.md`） |
 | 后端（可选） | 官方 `server/` 那套（db+redis+api+auth），部署包在 `deploy/`；本机 `pnpm dev:backend` |
 
 ## 3. 打包给线上时必须设 `VITE_SERVER_URL`

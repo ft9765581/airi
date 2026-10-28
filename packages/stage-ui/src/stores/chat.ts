@@ -33,7 +33,7 @@ import { useLLM } from './ai/chat-llm/llm'
 import { resolveLlmTools } from './ai/chat-llm/tool-resolver'
 import { useLlmToolsStore } from './ai/chat-llm/tools'
 import { useLlmToolsetPromptsStore } from './ai/chat-llm/toolset-prompts'
-import { createKnowledgeBaseContext, createLongTermMemoryContext, createMinecraftContext, createUserProfileContext, retrieveKnowledgeBaseContext } from './chat/context-providers'
+import { createKnowledgeBaseContext, createKnowledgeGraphContext, createLongTermMemoryContext, createMinecraftContext, createUserProfileContext, retrieveMedicalReferenceContext } from './chat/context-providers'
 import { useChatContextStore } from './chat/context-store'
 import { rememberTurn } from './chat/remember-turn'
 import { useChatSessionStore } from './chat/session-store'
@@ -331,6 +331,7 @@ export const useChatStore = defineStore('chat', () => {
       createUserProfileContext,
       createLongTermMemoryContext,
       createKnowledgeBaseContext,
+      createKnowledgeGraphContext,
     ],
     createId: nanoid,
     unwrapMessage: message => toRaw(message),
@@ -475,9 +476,10 @@ export const useChatStore = defineStore('chat', () => {
       agent: cardStore.activeCard?.extensions?.airi?.agents?.medical,
       allowGeneration: medicalGenerationEnabled,
       // A medical turn is isolated, so it cannot use the runtime providers. It
-      // asks the medical-scoped knowledge bases here instead, and only after the
-      // router decided this turn really generates an answer.
-      retrieveContext: () => retrieveKnowledgeBaseContext(message, 'medical'),
+      // asks the medical-scoped knowledge bases and graphs here instead, and only
+      // after the router decided this turn really generates an answer. Both
+      // sources arrive as one reference block.
+      retrieveContext: () => retrieveMedicalReferenceContext(message),
     })
 
     // Kept per session so a failed generation can end with the copy that fits

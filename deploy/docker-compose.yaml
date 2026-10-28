@@ -65,6 +65,11 @@ services:
       KNOWLEDGE_BASE_PROVIDER: ${KNOWLEDGE_BASE_PROVIDER:-dify}
       KNOWLEDGE_BASE_DEMO_BASE_URL: ${KNOWLEDGE_BASE_DEMO_BASE_URL:-}
       KNOWLEDGE_BASE_TIMEOUT_MS: ${KNOWLEDGE_BASE_TIMEOUT_MS:-8000}
+      # The graph search proxy. Empty leaves /api/v1/knowledge-graph answering
+      # 503, and the settings page then reports that the deployment has no graph.
+      KNOWLEDGE_GRAPH_URL: ${KNOWLEDGE_GRAPH_URL:-}
+      KNOWLEDGE_GRAPH_API_KEY: ${KNOWLEDGE_GRAPH_API_KEY:-}
+      KNOWLEDGE_GRAPH_TIMEOUT_MS: ${KNOWLEDGE_GRAPH_TIMEOUT_MS:-8000}
     healthcheck:
       test: ['CMD-SHELL', 'wget -qO- http://localhost:3000/readyz >/dev/null']
       interval: 10s

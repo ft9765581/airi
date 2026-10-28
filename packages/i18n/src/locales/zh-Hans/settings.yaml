@@ -482,7 +482,10 @@ pages:
     clear: 清空
   knowledge-base:
     title: 知识库连接
-    description: 连接一个或多个外部知识库
+    description: 连接外部知识库与知识图谱
+    tabs:
+      knowledge-base: 知识库
+      knowledge-graph: 知识图谱
     status:
       title: 连接状态
       connected-count: '已连接 {count} 个知识库'
@@ -491,8 +494,6 @@ pages:
       empty: 还没有连接知识库。
       empty-hint: 点「添加知识库」开始连接。
       add: 添加知识库
-      add-medical: 添加医疗知识库
-      add-medical-name: 医疗知识库
       edit: 编辑
       enabled: 启用
       scope-chat: 常规聊天
@@ -541,11 +542,82 @@ pages:
       authentication-hint: 认证失败，请检查 API Key。
       knowledge-base-not-found-hint: 知识库不存在，请检查知识库 ID。
       missing-knowledge-id-hint: 服务拒绝了请求体，请检查知识库 ID。
+      endpoint-not-found-hint: 这个地址上没有接口，请检查服务地址。
+      server-not-configured-hint: 本部署没有配好知识库地址，或者地址格式不对。请管理员检查服务端环境变量。
+      server-unreachable-hint: 服务端这一跳连不上知识库服务，请检查服务端的网络和地址。
+      server-timeout-hint: 服务端等知识库服务超时了，请检查那个服务是不是太慢。
       timeout-hint: 服务在 {seconds} 秒内没有响应。
       blocked-origin-hint: 浏览器拦下了跨域请求。先确认该地址在浏览器里能正常打开（502 或打不开 = 服务端问题），再把 {origin} 加入允许来源，或改用桌面端。
       unreachable-hint: 服务没有响应。请检查服务地址和网络连接。
     notice:
       storage: 连接保存在本机浏览器里，API Key 以明文保存。
+    graph:
+      status:
+        title: 连接状态
+        connected-count: '已连接 {count} 个图谱'
+      list:
+        title: 图谱列表
+        empty: 还没有连接知识图谱。
+        empty-hint: 点「添加知识图谱」开始连接。
+        add: 添加知识图谱
+        edit: 编辑
+        enabled: 启用
+        scope-chat: 常规聊天
+        scope-medical: 医疗咨询
+        test: 测试
+        remove: 删除
+      form:
+        title: 新增知识图谱
+        title-edit: 编辑知识图谱
+        name:
+          label: 名称
+          description: 用于在列表里区分这个图谱。
+          placeholder: 妇幼导诊图谱
+        base-url:
+          label: 服务地址
+          description: 图谱检索接口的地址。
+          placeholder: https://knowledge.bestmings.com/api/graph/search
+        api-key:
+          label: API Key
+          description: 作为 X-API-Key 请求头发送。接口不需要密钥时留空。
+          placeholder: 请输入 API Key
+        book-id:
+          label: 文档 ID（可选）
+          description: 只检索某一份文档。填文档 ID，不是知识库 ID；留空检索全部已发布图谱。
+          placeholder: 请输入文档 ID
+        medical-flow:
+          label: 在医疗咨询流程中使用
+          description: 不勾选时只用于常规聊天；勾选后只在医疗问题进入咨询分支时检索。
+        save: 添加
+        save-edit: 保存修改
+        show-api-key: 显示 API Key
+        hide-api-key: 隐藏 API Key
+        test: 测试连接
+        cancel: 取消
+        needs-server-url: 测试连接需要填写服务地址。
+      result:
+        untested: 未测试
+        testing: 测试中
+        connected: 已连接
+        failed: 连接失败
+        http-detail: 'HTTP {status} · {latency} 毫秒'
+        relation-count: '命中 {count} 条关系（每次最多取 {limit} 条）'
+        mode: '检索模式：{mode}'
+        empty-graph-hint: 连接正常。接口按字面匹配已发布图谱里的词，换个探测词仍可能没有命中，不代表图谱是空的；真实问题有没有结果要在聊天里试。
+        service-error: '服务返回错误 {code}：{message}'
+        authorization-format-hint: Authorization 请求头格式无效。
+        authentication-hint: 认证失败，请检查 API Key。
+        rejected-query-hint: 服务拒绝了这次请求，请检查文档 ID 和探测词。
+        timeout-hint: 服务在 {seconds} 秒内没有响应。
+        endpoint-not-found-hint: 这个地址上没有接口，请检查服务地址。
+        server-not-configured-hint: 本部署没有配好图谱地址，或者地址格式不对。请管理员检查服务端环境变量。
+        server-unreachable-hint: 服务端这一跳连不上图谱服务，请检查服务端的网络和地址。
+        server-timeout-hint: 服务端等图谱服务超时了，请检查那个服务是不是太慢。
+        blocked-origin-hint: 浏览器拦下了跨域请求。先确认该地址在浏览器里能正常打开（502 或打不开 = 服务端问题），再把 {origin} 加入允许来源，或改用桌面端。
+        unreachable-hint: 服务没有响应。请检查服务地址和网络连接。
+      notice:
+        storage: 连接保存在本机浏览器里，API Key 以明文保存。
+        scope: 只检索已发布的图谱。接口目前按字面命中关系，还没有按语义检索。
   data:
     title: Data
     description: 管理存储清锡医疗数据、导出和重置

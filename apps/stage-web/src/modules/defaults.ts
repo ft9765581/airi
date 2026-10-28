@@ -24,7 +24,7 @@ import {
   SPEECH_PROVIDER_KEY,
   SPEECH_VOICE_KEY,
 } from '@proj-airi/stage-ui/libs/deployment-default-keys'
-import { KNOWLEDGE_BASE_RETRIEVAL_PATH } from '@proj-airi/stage-ui/libs/server'
+import { KNOWLEDGE_BASE_RETRIEVAL_PATH, KNOWLEDGE_GRAPH_SEARCH_PATH } from '@proj-airi/stage-ui/libs/server'
 
 import xiaoqingCard from '../assets/airi-cards/xiaoqing.json'
 
@@ -95,6 +95,16 @@ const KNOWLEDGE_BASE_CONNECTIONS_KEY = 'settings/knowledge-base/connections'
  * that serves another knowledge base adds that one.
  */
 const MEDICAL_KNOWLEDGE_BASE_KEY = 'settings/defaults/medical-knowledge-base'
+/** Where the settings store keeps its knowledge graph connections. */
+const KNOWLEDGE_GRAPH_CONNECTIONS_KEY = 'settings/knowledge-graph/connections'
+/**
+ * Remembers the graph connection this build added.
+ *
+ * Same purpose and same rules as `MEDICAL_KNOWLEDGE_BASE_KEY`: a removed
+ * connection stays removed, and a later build that serves another graph adds
+ * that one.
+ */
+const MEDICAL_KNOWLEDGE_GRAPH_KEY = 'settings/defaults/medical-knowledge-graph'
 const ADDED_PROVIDERS_KEY = 'settings/providers/added'
 
 const CARDS_KEY = 'airi-cards'
@@ -307,9 +317,7 @@ function writeProviderRecord(record: ProviderDefault): void {
 function ensureMedicalKnowledgeBase(): void {
   const configuredUrl = envValue(import.meta.env.VITE_KNOWLEDGE_BASE_URL)
   const serverUrl = envValue(import.meta.env.VITE_SERVER_URL)
-  const baseUrl = configuredUrl || (import.meta.env.DEV
-    ? `${window.location.origin}/knowledge-base-dev/api/dify/retrieval`
-    : serverUrl ? new URL(KNOWLEDGE_BASE_RETRIEVAL_PATH, serverUrl).toString() : '')
+  const baseUrl = configuredUrl || (serverUrl ? new URL(KNOWLEDGE_BASE_RETRIEVAL_PATH, serverUrl).toString() : '')
   const knowledgeBaseId = envValue(import.meta.env.VITE_KNOWLEDGE_BASE_ID)
   if (!baseUrl || !knowledgeBaseId)
     return
@@ -349,6 +357,71 @@ function ensureMedicalKnowledgeBase(): void {
   }
 
   window.localStorage.setItem(MEDICAL_KNOWLEDGE_BASE_KEY, identity)
+}
+
+/**
+ * Adds the medical knowledge graph connection of this deployment.
+ *
+ * The graph reads only the connections marked for the medical branch, so a
+ * browser that never opened the settings page asks the graph nothing. This pass
+ * runs on every start and adds the deployment's connection once: a connection the
+ * visitor edited keeps its values, and a connection the visitor removed stays
+ * removed.
+ *
+ * Why the address is not a constant:
+ * - The graph service refuses browser origins, so a production build reaches it
+ *   through this deployment's API. That address depends on `VITE_SERVER_URL`.
+ * - `VITE_KNOWLEDGE_GRAPH_URL` overrides both, for a deployment that proxies the
+ *   graph somewhere else.
+ *
+ * A build with neither value adds nothing: a connection with no address fails
+ * every lookup and would only put a broken row in the settings page.
+ */
+function ensureMedicalKnowledgeGraph(): void {
+  const configuredUrl = envValue(import.meta.env.VITE_KNOWLEDGE_GRAPH_URL)
+  const serverUrl = envValue(import.meta.env.VITE_SERVER_URL)
+  const baseUrl = configuredUrl || (serverUrl ? new URL(KNOWLEDGE_GRAPH_SEARCH_PATH, serverUrl).toString() : '')
+  if (!baseUrl)
+    return
+
+  // The document id is optional: without one the service searches every published
+  // graph, which is the normal setting for a deployment.
+  const bookId = envValue(import.meta.env.VITE_KNOWLEDGE_GRAPH_BOOK_ID)
+  const identity = `${baseUrl}|${bookId}`
+  if (window.localStorage.getItem(MEDICAL_KNOWLEDGE_GRAPH_KEY) === identity)
+    return
+
+  const raw = window.localStorage.getItem(KNOWLEDGE_GRAPH_CONNECTIONS_KEY)
+  let connections: unknown[] = []
+  try {
+    const parsed: unknown = raw ? JSON.parse(raw) : []
+    connections = Array.isArray(parsed) ? parsed : []
+  }
+  catch {
+    // A damaged list is replaced by the deployment connection below.
+    connections = []
+  }
+
+  const alreadyThere = connections.some((connection) => {
+    const candidate = connection as Record<string, unknown>
+    return candidate.scope === 'medical'
+      && `${String(candidate.baseUrl ?? '')}|${String(candidate.bookId ?? '')}` === identity
+  })
+
+  if (!alreadyThere) {
+    connections.push({
+      id: 'deployment-graph',
+      name: '妇幼导诊图谱',
+      baseUrl,
+      apiKey: '',
+      ...(bookId ? { bookId } : {}),
+      enabled: true,
+      scope: 'medical',
+    })
+    window.localStorage.setItem(KNOWLEDGE_GRAPH_CONNECTIONS_KEY, JSON.stringify(connections))
+  }
+
+  window.localStorage.setItem(MEDICAL_KNOWLEDGE_GRAPH_KEY, identity)
 }
 /**
  * Writes the provider records of this deployment while a browser lacks them.
@@ -796,6 +869,7 @@ export function applyBuildDefaults(): void {
   // Same reason as the provider records above: this runs on every start, because
   // a settings reset or a fresh browser must reach the same configured state.
   ensureMedicalKnowledgeBase()
+  ensureMedicalKnowledgeGraph()
 
   // Dropping a card and shipping one are the same concern: a deployment that
   // hands the cards to its visitors does neither.

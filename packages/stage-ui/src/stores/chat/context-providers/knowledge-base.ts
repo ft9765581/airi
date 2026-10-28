@@ -1,7 +1,7 @@
 import type { ContextMessage, RuntimeContextProviderInput } from '@proj-airi/core-agent'
 
 import type { KnowledgeBaseRecord } from '../../../libs/knowledge-base'
-import type { KnowledgeBaseScope } from '../../settings/knowledge-base'
+import type { ConnectionScope } from '../../settings/connection-scope'
 
 import { ContextUpdateStrategy } from '@proj-airi/server-sdk'
 import { nanoid } from 'nanoid'
@@ -106,7 +106,7 @@ function formatContextText(records: RetrievedRecord[]): string {
  */
 export async function retrieveKnowledgeBaseContext(
   query: string,
-  scope: KnowledgeBaseScope,
+  scope: ConnectionScope,
 ): Promise<ContextMessage | null> {
   const trimmed = query.trim()
   if (!trimmed)

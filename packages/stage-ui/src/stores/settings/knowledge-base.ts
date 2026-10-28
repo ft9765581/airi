@@ -1,8 +1,9 @@
+import type { ConnectionScope } from './connection-scope'
+
 import { useLocalStorageManualReset } from '@proj-airi/stage-shared/composables'
 import { defineStore } from 'pinia'
 
-/** The chat flow a connection answers. */
-export type KnowledgeBaseScope = 'chat' | 'medical'
+import { connectionScope } from './connection-scope'
 
 /** One external knowledge base connection. */
 export interface KnowledgeBaseConnection {
@@ -25,16 +26,8 @@ export interface KnowledgeBaseConnection {
   knowledgeBaseId: string
   /** A disabled connection stays in the list, but no send uses it. */
   enabled: boolean
-  /**
-   * The flow this connection answers.
-   *
-   * NOTICE:
-   * A connection saved before this switch existed has no value. It keeps
-   * answering ordinary chat, which was the only flow that read the list when it
-   * was written. Remove the default in `connectionScope` once the settings page
-   * has written a scope for every stored connection.
-   */
-  scope?: KnowledgeBaseScope
+  /** The flow this connection answers. */
+  scope?: ConnectionScope
 }
 
 /** The values a user typed in the connection form. */
@@ -43,21 +36,7 @@ export interface KnowledgeBaseDraft {
   baseUrl: string
   apiKey: string
   knowledgeBaseId: string
-  scope: KnowledgeBaseScope
-}
-
-/**
- * The scope a stored connection answers.
- *
- * The default exists for connections written before the switch. Only ordinary
- * chat read the list then, so that is the flow they were configured for.
- *
- * @example
- * connectionScope({ ...connection, id: '1', name: 'x', baseUrl: 'y', apiKey: '', knowledgeBaseId: 'z', enabled: true })
- * // => 'chat'
- */
-export function connectionScope(connection: KnowledgeBaseConnection): KnowledgeBaseScope {
-  return connection.scope ?? 'chat'
+  scope: ConnectionScope
 }
 
 /**
@@ -79,7 +58,7 @@ export const useSettingsKnowledgeBase = defineStore('settings-knowledge-base', (
    * A connection without an address or a knowledge id cannot answer a
    * retrieval, so the filter drops it before the turn reaches the network.
    */
-  function connectionsFor(scope: KnowledgeBaseScope): KnowledgeBaseConnection[] {
+  function connectionsFor(scope: ConnectionScope): KnowledgeBaseConnection[] {
     return connections.value.filter(connection =>
       connection.enabled
       && connectionScope(connection) === scope

@@ -722,3 +722,118 @@ better-auth 1.4.22 自带该插件，它的 `signIn.phoneNumber` 支持密码模
 | `stage-ui` chat 契约 | 25 项通过 |
 | `core-agent` / `server/apps/api` typecheck | 通过 |
 | `stage-ui` typecheck | 仅剩既有的 `@proj-airi/stage-ui-live2d` 缺导出（与本改动无关） |
+
+## 22. 知识图谱接入：与知识库同页 Tab（2026-10-28）
+
+需求：知识库页面加一个「知识图谱」Tab，能像知识库那样配连接并做连接测试。**本轮只做设置页
+接入**，图谱不参与对话。
+
+分步进度、未完成事项和待拍板的问题见 `docs/knowledge-graph.md`。
+
+### 接口（`知识图谱检索接口说明.docx` v1.0，2026-10-28）
+
+```
+GET https://knowledge.bestmings.com/api/graph/search?q=<词>&limit=<1~50>&book_id=<可选>
+→ { query, mode, fallback_reason, vector_index, embedding_configured, embedding_model,
+    total, results[{ source_title, relation_type, target_title, evidence, weight, … }] }
+```
+
+- 鉴权：线上 `RAG_API_TOKEN` 为空，无需 Key；网关另设密钥时读 **`X-API-Key`**（不是
+  `Authorization: Bearer`，知识库检索用的是后者，两者不同）。
+- 只检索**已发布**图谱；线上 `mode=lexical`（`vector_index=not_configured`），没有语义检索。
+- `total` 实测等于 `results` 条数（`limit=1`→1，`limit=50`→50），是本次返回条数，不是全库命中
+  数。所以成功文案写成「命中 N 条关系（每次最多取 5 条）」。
+- `book_id` 是**文档 ID（Book.id）**，不是知识库 ID，也不是「图谱 ID」——图谱没有图谱 ID，
+  所以表单字段是「文档 ID（可选）」，留空检索全部已发布图谱。
+
+### 必须有服务端代理（和知识库同一个原因）
+
+实测该端点**响应头没有 `access-control-allow-origin`**（只有
+`access-control-allow-credentials: true`），浏览器直连会被拦。所以照第 18 节给知识库做代理的
+方式补了一套同构代理：
+
+| 文件 | 改动 |
+| --- | --- |
+| `server/apps/api/src/routes/knowledge-graph/index.ts` | **新增** `GET /api/v1/knowledge-graph/search`。**不加 `authGuard`**：上游 `RAG_API_TOKEN` 为空，这个路由不保护密钥，而要求登录会让没账号的访客完全用不了图谱。知识库代理保留校验，因为它持有密钥 |
+| `server/apps/api/src/routes/knowledge-graph/schema.ts` | **新增** Valibot 校验；`q` 1~2000 字，`limit` 1~50（文本先转数字再判界，`2.5`/`abc` 都拒绝）；`limit` 缺省时**不补**，让服务用自己的默认值 |
+| `server/apps/api/src/services/domain/knowledge-graph.ts` | **新增** 转发、超时、错误映射（未配置 503 / 不可达 502 / 超时 504）；Key 走 `X-API-Key` |
+| `server/apps/api/src/routes/knowledge-graph/route.test.ts` | **新增** 10 个用例 |
+| `server/apps/api/src/libs/env.ts` | 新增 `KNOWLEDGE_GRAPH_URL` / `_API_KEY` / `_TIMEOUT_MS` |
+| `server/apps/api/src/app.ts` | 挂载 `/api/v1/knowledge-graph` |
+| `packages/stage-ui/src/libs/server.ts` | 新增 `KNOWLEDGE_GRAPH_SEARCH_PATH` |
+
+上游 body **原样透传**（和第 18 节同样的理由：前端已经会解释响应，服务端再翻译就是两套词汇）。
+
+**上线前必须做**：部署这个 API 版本（`KNOWLEDGE_GRAPH_URL` 指向
+`https://knowledge.bestmings.com/api/graph/search`）。未部署时，前端默认地址
+`/api/v1/knowledge-graph/search` 会返回 404，页面提示「这个地址上没有接口」。
+
+### 前端
+
+| 文件 | 改动 |
+| --- | --- |
+| `packages/stage-ui/src/libs/external-service.ts` | **新增**：两条连接共用的传输层——URL 补 scheme、GET/POST、query 拼接、超时、`no-cors` 探测区分「被 CORS 拦下 / 主机不可达」、本部署 API 改用 `authedFetch` 且**不再带连接自己的 Key**、body 的宽松读取器 |
+| `packages/stage-ui/src/libs/knowledge-base.ts` | 改为调用上面那层；`records` 解析留在本文件，`ok` 仍然要求 body 里没有 `error_code` |
+| `packages/stage-ui/src/libs/knowledge-graph.ts` | **新增**：图谱契约与 `requestKnowledgeGraphSearch`（读 `results` / `total` / `mode`，关系保留 `evidence`） |
+| `packages/stage-ui/src/stores/settings/connection-scope.ts` | **新增**：`ConnectionScope` / `connectionScope()` 从知识库 store 移到这里，两种连接共用 |
+| `packages/stage-ui/src/stores/settings/knowledge-graph.ts` | **新增**：`useSettingsKnowledgeGraph`，键 `settings/knowledge-graph/connections`，与知识库列表互不影响 |
+| `packages/stage-pages/src/pages/settings/knowledge-base/index.vue` | 页面改成 `SelectTab` 两个 Tab；原来的知识库内容整体搬到 `components/knowledge-base-connections.vue` |
+| `.../components/knowledge-graph-{connections,list,item,form}.vue` | **新增**：与知识库一套同构的图谱面板 |
+| `.../components/connection-status-badge.vue` | 原 `knowledge-base-status-badge.vue` 改名共用，多一个 `phrasePrefix` 属性 |
+| `.../composables/use-service-probe.ts` | **新增**：两条连接共用的探针状态机（`untested/testing/connected/failed` + 失败原因文案），失败词汇只有一份 |
+| `.../composables/use-{knowledge-base,knowledge-graph}-connection-test.ts` | 原 `use-connection-test.ts` 拆成两条，各自只描述「发什么请求、成功那行怎么说」 |
+| `.../defaults.ts` | 图谱默认地址：`VITE_KNOWLEDGE_GRAPH_URL` → 本部署代理 → 服务直连地址；另有 `VITE_KNOWLEDGE_GRAPH_{BOOK_ID,API_KEY}` |
+| `packages/i18n/src/locales/{en,zh-Hans}/settings.yaml` | 新增 `knowledge-base.tabs.*` 与整个 `knowledge-base.graph.*` 子树；旧键只加不改，其他语种留给 Crowdin |
+
+### 行为
+
+- 两个 Tab 各自维护「一条正在编辑的连接」，切换 Tab 会收起表单（不保留草稿）。
+- 图谱连接带「在医疗咨询流程中使用」勾选。勾了走医疗分支，不勾走常规聊天。
+- 连接测试与知识库共用超时（8 秒）和错误解释：超时 / 被 CORS 拦下（文案里带本页 origin）/
+  不可达 / HTTP 400·422（请求被拒）/ 404（地址上没有接口）/ 401·403 / 503·502·504（够到本部署
+  API，但它那一跳失败：没配地址 / 连不上 / 超时）/ 服务 `error_code` 1001·1002·2001（只有知识库
+  会走到这三条）。
+- 探测词是 `发热`（接口文档里的示例词），不是 `连接测试`：接口是词法命中，探测词必须是一个
+  图谱里真的有的医学词，否则测了也说明不了问题。
+- 成功提示：「命中 N 条关系（每次最多取 5 条）· 检索模式：lexical」；0 条时额外说明词法命中
+  没结果很正常。
+
+### 图谱进聊天（2026-10-28）
+
+| 文件 | 改动 |
+| --- | --- |
+| `packages/stage-ui/src/stores/chat/context-providers/knowledge-graph.ts` | **新增**：`retrieveKnowledgeGraphContext`（按流程读连接、并发查询、去重、最多 5 条 / 1200 字）+ `createKnowledgeGraphContext`（常规聊天 provider） |
+| `packages/stage-ui/src/stores/chat/context-providers/medical-references.ts` | **新增**：`retrieveMedicalReferenceContext` 把知识库段落和图谱关系合成一条 `system:medical-reference` 上下文 |
+| `packages/stage-ui/src/stores/chat.ts` | 医疗轮次的 `retrieveContext` 换成合成块；provider 列表加 `createKnowledgeGraphContext` |
+| `apps/stage-web/src/modules/defaults.ts` | **新增** `ensureMedicalKnowledgeGraph()`：每次启动补一条本部署的医疗图谱连接，键 `settings/defaults/medical-knowledge-graph` 记住已加过的组合 |
+
+三个决定值得记：
+
+- **医疗轮次仍不能用 provider**：轮次 `isolate: true`，所以走 `turn.ts` 的 `retrieveContext`（第 21
+  节同一个坑）。
+- **两个来源合成一条消息**，`Promise.allSettled` 各自失败各自丢。图谱挂了段落还在，反之亦然。
+- **`evidence` 不进 prompt**：线上它只有 `分段 blk-…` 定位符，没有原句。写进去会让模型以为手里
+  有原文，只能引用它没有的东西。
+
+### 遗留
+
+- **不随账号同步**：`account-settings` 那套只同步知识库连接，图谱连接仅存在本机浏览器。
+- **代理不校验登录**：见上面路由那一行。撤回条件：图谱服务开始要求密钥。
+- **没有原文**：图谱给的是关系，不是句子。要引用原句得按 block 号另取（见第 22 节 N6）。
+- 设置页多一个 Tab 后，设置入口仍然只有「知识库连接」一个（路由 `/settings/knowledge-base` 未改）。
+
+### 实测
+
+| 检查 | 结果 |
+| --- | --- |
+| 真实接口 `GET …/api/graph/search?q=发热&limit=2` | 200，`mode=lexical`、`total=2`、字段与文档一致；`limit=1`→total 1、`limit=50`→total 50 |
+| 同上，带 `Origin: https://airi.bestmings.com` | **无 `access-control-allow-origin`**，只有 `allow-credentials: true` → 浏览器直连被拦，故需代理 |
+| `server/apps/api` 图谱路由 + 知识库路由 vitest | 11 + 11 项通过（图谱含「没有会话也能访问」与「非法 URL 返回 503」） |
+| `stage-ui` `src/libs` | 439 项通过（含新增 `knowledge-base.test.ts` 6 项、`knowledge-graph.test.ts` 12 项） |
+| `stage-ui` settings stores | 知识库 4 项 + 图谱 6 项通过 |
+| `stage-ui` 图谱上下文 + 医疗引用块 | `knowledge-graph.test.ts` 8 项、`medical-references.test.ts` 4 项通过 |
+| `stage-ui` chat 契约回归 | 25 项通过（`context-providers` 的 mock 已补两个新导出） |
+| `stage-web` 构建默认值 | 21 项通过（含图谱自动下发 5 项） |
+| `stage-ui` / `stage-pages` / `stage-web` / `server/apps/api` typecheck | 通过（`stage-ui` 仅剩既有的 `stage-ui-live2d` 缺导出） |
+| `moeru-lint`（图谱相关文件） | 0 警告 0 错误；全仓 `pnpm lint` 13 警告 0 错误，全部是既有警告 |
+| 页面截图（`localhost:5181/settings/knowledge-base`） | 两个 Tab 正常；知识库 Tab 与原来一致；图谱 Tab 空列表 + 「只检索已发布图谱、目前按字面命中」提示；表单含「文档 ID（可选）」、必填星号与按钮状态正确 |

@@ -309,7 +309,7 @@ describe('build defaults: medical knowledge base', () => {
     })
   })
 
-  it('uses the same-origin development proxy when the local API is unavailable', () => {
+  it('uses the deployment API in development', () => {
     vi.stubEnv('DEV', true)
     vi.stubEnv('VITE_KNOWLEDGE_BASE_URL', '')
     vi.stubEnv('VITE_SERVER_URL', 'http://localhost:6112')
@@ -320,7 +320,7 @@ describe('build defaults: medical knowledge base', () => {
     const connections = JSON.parse(storage.get(connectionsKey) ?? '[]') as Array<Record<string, unknown>>
     expect(connections).toHaveLength(1)
     expect(connections[0]).toMatchObject({
-      baseUrl: 'http://localhost:5180/knowledge-base-dev/api/dify/retrieval',
+      baseUrl: 'http://localhost:6112/api/v1/knowledge-base/retrieval',
       apiKey: '',
       knowledgeBaseId: deploymentId,
       scope: 'medical',
@@ -366,6 +366,92 @@ describe('build defaults: medical knowledge base', () => {
 
   it('adds nothing when the build serves no knowledge base', () => {
     vi.stubEnv('VITE_KNOWLEDGE_BASE_ID', '')
+    const storage = installStorage()
+
+    applyBuildDefaults()
+
+    expect(storage.get(connectionsKey)).toBeNull()
+    expect(storage.get(ensuredKey)).toBeNull()
+  })
+})
+
+describe('build defaults: medical knowledge graph', () => {
+  const connectionsKey = 'settings/knowledge-graph/connections'
+  const ensuredKey = 'settings/defaults/medical-knowledge-graph'
+  const graphUrl = 'https://api.example.test/api/v1/knowledge-graph/search'
+
+  function stubGraphEnv() {
+    vi.stubEnv('VITE_KNOWLEDGE_GRAPH_URL', graphUrl)
+    vi.stubEnv('VITE_KNOWLEDGE_GRAPH_BOOK_ID', '')
+  }
+
+  beforeEach(() => {
+    stubDeploymentEnv()
+    stubGraphEnv()
+  })
+
+  afterEach(() => {
+    vi.unstubAllEnvs()
+    vi.unstubAllGlobals()
+  })
+
+  it('adds the deployment connection for the medical branch', () => {
+    const storage = installStorage()
+
+    applyBuildDefaults()
+
+    const connections = JSON.parse(storage.get(connectionsKey) ?? '[]') as Array<Record<string, unknown>>
+    expect(connections).toHaveLength(1)
+    expect(connections[0]).toMatchObject({
+      name: '妇幼导诊图谱',
+      baseUrl: graphUrl,
+      apiKey: '',
+      enabled: true,
+      scope: 'medical',
+    })
+    // The service searches every published graph without a document id, so the
+    // record must not carry an empty one.
+    expect(connections[0]).not.toHaveProperty('bookId')
+  })
+
+  it('uses the deployment API when the build has no graph URL override', () => {
+    vi.stubEnv('VITE_KNOWLEDGE_GRAPH_URL', '')
+    vi.stubEnv('VITE_SERVER_URL', 'https://airi.example.test')
+    const storage = installStorage()
+
+    applyBuildDefaults()
+
+    const connections = JSON.parse(storage.get(connectionsKey) ?? '[]') as Array<Record<string, unknown>>
+    expect(connections[0]).toMatchObject({
+      baseUrl: 'https://airi.example.test/api/v1/knowledge-graph/search',
+    })
+  })
+
+  it('carries the document id when the build names one', () => {
+    vi.stubEnv('VITE_KNOWLEDGE_GRAPH_BOOK_ID', 'book-1')
+    const storage = installStorage()
+
+    applyBuildDefaults()
+
+    const connections = JSON.parse(storage.get(connectionsKey) ?? '[]') as Array<Record<string, unknown>>
+    expect(connections[0]).toMatchObject({ bookId: 'book-1' })
+  })
+
+  it('does not come back after the visitor removes it', () => {
+    // Same rule as the knowledge base: the pass runs on every start, so it must
+    // remember the deployment connection separately from the connection list.
+    const storage = installStorage({ [ensuredKey]: `${graphUrl}|` })
+
+    applyBuildDefaults()
+
+    expect(storage.get(connectionsKey)).toBeNull()
+  })
+
+  // A connection with no address fails every lookup. The settings page would show
+  // a broken row that the visitor did not create.
+  it('adds nothing when the build serves no graph address', () => {
+    vi.stubEnv('VITE_KNOWLEDGE_GRAPH_URL', '')
+    vi.stubEnv('VITE_SERVER_URL', '')
     const storage = installStorage()
 
     applyBuildDefaults()

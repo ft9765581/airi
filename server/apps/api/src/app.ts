@@ -59,6 +59,7 @@ import { createFluxRoutes } from './routes/flux'
 import { createIntentEvalRoutes } from './routes/intent-eval'
 import { createInternalAuthRoutes } from './routes/internal-auth'
 import { createKnowledgeBaseRoutes } from './routes/knowledge-base'
+import { createKnowledgeGraphRoutes } from './routes/knowledge-graph'
 import { createV1Routes } from './routes/openai/v1'
 import { createProviderRoutes } from './routes/providers'
 import { createStripeRoutes } from './routes/stripe'
@@ -76,6 +77,7 @@ import { createFluxService } from './services/domain/flux'
 import { createFluxTransactionService } from './services/domain/flux-transaction'
 import { createIntentEvalService } from './services/domain/intent-eval'
 import { createKnowledgeBaseService } from './services/domain/knowledge-base'
+import { createKnowledgeGraphService } from './services/domain/knowledge-graph'
 import { createConcurrencyLedger, createConfigSyncSubscriber, createLlmRouterService } from './services/domain/llm-router'
 import { createProductEventService } from './services/domain/product-events'
 import { createProviderCatalogService } from './services/domain/provider-catalog'
@@ -411,6 +413,15 @@ export async function buildApp(deps: AppDeps) {
      * refuses browser origins still works and the key never reaches the bundle.
      */
     .route('/api/v1/knowledge-base', createKnowledgeBaseRoutes(createKnowledgeBaseService(deps.env)))
+
+    /**
+     * Knowledge graph search proxy.
+     *
+     * The browser sends the published search parameters and this process forwards
+     * them, so a graph service that refuses browser origins still works and its
+     * key, when it needs one, never reaches the bundle.
+     */
+    .route('/api/v1/knowledge-graph', createKnowledgeGraphRoutes(createKnowledgeGraphService(deps.env)))
 
     /**
      * Chat routes are handled by the chat service.

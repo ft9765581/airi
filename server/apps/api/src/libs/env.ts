@@ -127,6 +127,25 @@ const EnvSchema = object({
   KNOWLEDGE_BASE_DEMO_BASE_URL: optional(string(), 'https://knowledge.bestmings.com/api/demo'),
   /** How long one forwarded retrieval may run before this API gives up. */
   KNOWLEDGE_BASE_TIMEOUT_MS: optionalIntegerFromString(8000, 'KNOWLEDGE_BASE_TIMEOUT_MS', 100),
+  /**
+   * Knowledge graph search endpoint that this API forwards for the browser.
+   *
+   * The same service also refuses browser origins for its graph search route, so
+   * the browser asks this process instead and the call becomes server-to-server.
+   *
+   * Empty disables the endpoint, which then answers 503
+   * `KNOWLEDGE_GRAPH_NOT_CONFIGURED`.
+   */
+  KNOWLEDGE_GRAPH_URL: optional(string()),
+  /**
+   * The key the graph service or its gateway requires.
+   *
+   * The service reads it as `X-API-Key`. The live deployment leaves it empty,
+   * because `RAG_API_TOKEN` is empty there too.
+   */
+  KNOWLEDGE_GRAPH_API_KEY: optional(string(), ''),
+  /** How long one forwarded graph search may run before this API gives up. */
+  KNOWLEDGE_GRAPH_TIMEOUT_MS: optionalIntegerFromString(8000, 'KNOWLEDGE_GRAPH_TIMEOUT_MS', 100),
   OTEL_DEBUG: optional(string()),
 
   OTEL_EXPORTER_OTLP_ENDPOINT: optional(string()),

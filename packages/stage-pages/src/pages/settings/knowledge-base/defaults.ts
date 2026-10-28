@@ -1,4 +1,4 @@
-import { KNOWLEDGE_BASE_RETRIEVAL_PATH, SERVER_URL } from '@proj-airi/stage-ui/libs/server'
+import { KNOWLEDGE_BASE_RETRIEVAL_PATH, KNOWLEDGE_GRAPH_SEARCH_PATH, SERVER_URL } from '@proj-airi/stage-ui/libs/server'
 
 /**
  * The values a new connection form starts from.
@@ -14,20 +14,9 @@ import { KNOWLEDGE_BASE_RETRIEVAL_PATH, SERVER_URL } from '@proj-airi/stage-ui/l
  * a production build. A production build must send retrieval requests through a
  * server that holds the key.
  */
-/**
- * The path this app's dev server forwards to the knowledge base.
- *
- * The service rejects most browser origins. The development proxy forwards
- * requests while the local backend is optional.
- */
-const devProxyPath = '/knowledge-base-dev/api/dify/retrieval'
-
 function resolveDefaultServerUrl(): string {
   if (import.meta.env.VITE_KNOWLEDGE_BASE_URL)
     return import.meta.env.VITE_KNOWLEDGE_BASE_URL
-
-  if (import.meta.env.DEV && typeof window !== 'undefined')
-    return `${window.location.origin}${devProxyPath}`
 
   if (import.meta.env.VITE_SERVER_URL)
     return new URL(KNOWLEDGE_BASE_RETRIEVAL_PATH, SERVER_URL).toString()
@@ -50,3 +39,42 @@ export const defaultKnowledgeBaseApiKey
  */
 export const defaultKnowledgeBaseKnowledgeId
   = import.meta.env.VITE_KNOWLEDGE_BASE_ID || ''
+
+/**
+ * The values a new graph connection form starts from.
+ *
+ * Precedence:
+ * 1. `VITE_KNOWLEDGE_GRAPH_URL`, when the deployment points the form somewhere
+ *    else.
+ * 2. This deployment's API, because the graph service refuses browser origins the
+ *    same way its retrieval route does. A browser reaches the graph through the
+ *    server that holds it.
+ * 3. The documented service endpoint, for a client with no deployment API.
+ *
+ * The service needs no key while its `RAG_API_TOKEN` is empty, so the form starts
+ * with an empty key.
+ */
+function resolveDefaultGraphServerUrl(): string {
+  if (import.meta.env.VITE_KNOWLEDGE_GRAPH_URL)
+    return import.meta.env.VITE_KNOWLEDGE_GRAPH_URL
+
+  if (import.meta.env.VITE_SERVER_URL)
+    return new URL(KNOWLEDGE_GRAPH_SEARCH_PATH, SERVER_URL).toString()
+
+  return 'https://knowledge.bestmings.com/api/graph/search'
+}
+
+export const defaultKnowledgeGraphServerUrl = resolveDefaultGraphServerUrl()
+
+export const defaultKnowledgeGraphApiKey
+  = import.meta.env.VITE_KNOWLEDGE_GRAPH_API_KEY || ''
+
+/**
+ * The `Book.id` a new connection form starts from.
+ *
+ * The search covers every published graph without it, so empty is the normal
+ * value. The id is not a secret, but it is deployment data, so it comes from the
+ * environment instead of being written into the bundle source.
+ */
+export const defaultKnowledgeGraphBookId
+  = import.meta.env.VITE_KNOWLEDGE_GRAPH_BOOK_ID || ''

@@ -505,7 +505,10 @@ pages:
     clear: Clear
   knowledge-base:
     title: Knowledge Base
-    description: Connect one or more external knowledge bases
+    description: Connect one or more external knowledge bases and knowledge graphs
+    tabs:
+      knowledge-base: Knowledge base
+      knowledge-graph: Knowledge graph
     status:
       title: Connection status
       connected-count: 'Connected: {count}'
@@ -514,8 +517,6 @@ pages:
       empty: No knowledge base is connected.
       empty-hint: Select Add knowledge base to connect one.
       add: Add knowledge base
-      add-medical: Add medical knowledge base
-      add-medical-name: Medical knowledge base
       edit: Edit
       enabled: Enabled
       scope-chat: Chat
@@ -564,11 +565,82 @@ pages:
       authentication-hint: Authentication failed. Check the API key.
       knowledge-base-not-found-hint: The knowledge base does not exist. Check the knowledge base ID.
       missing-knowledge-id-hint: The service rejected the request body. Check the knowledge base ID.
+      endpoint-not-found-hint: No endpoint answers at this address. Check the server URL.
+      server-not-configured-hint: This deployment has no knowledge base address configured, or the address is not valid. Ask the administrator to check the server environment.
+      server-unreachable-hint: The server cannot reach the knowledge base service. Check the server network and the address.
+      server-timeout-hint: The server waited too long for the knowledge base service. Check whether that service is slow.
       timeout-hint: The service did not answer within {seconds} seconds.
       blocked-origin-hint: The browser blocked the cross-origin request. First check that the address opens in the browser (a 502 or no response means a server problem). Then add {origin} to the allowed origins, or use the desktop build.
       unreachable-hint: The service did not answer. Check the server URL and the network connection.
     notice:
       storage: The connections are stored in this browser. The API key is stored in clear text.
+    graph:
+      status:
+        title: Connection status
+        connected-count: 'Connected: {count}'
+      list:
+        title: Knowledge graphs
+        empty: No knowledge graph is connected.
+        empty-hint: Select Add knowledge graph to connect one.
+        add: Add knowledge graph
+        edit: Edit
+        enabled: Enabled
+        scope-chat: Chat
+        scope-medical: Medical
+        test: Test
+        remove: Remove
+      form:
+        title: New knowledge graph
+        title-edit: Edit knowledge graph
+        name:
+          label: Name
+          description: A short name for this knowledge graph.
+          placeholder: Pregnancy care guide graph
+        base-url:
+          label: Server URL
+          description: The address of the graph search endpoint.
+          placeholder: https://kb.example.com/api/graph/search
+        api-key:
+          label: API Key
+          description: Sent as the X-API-Key header. Leave it empty when the endpoint needs no key.
+          placeholder: Enter the API key
+        book-id:
+          label: Document ID (optional)
+          description: Limits the search to one document. Use the document ID, not the knowledge base ID. Empty searches every published graph.
+          placeholder: Enter the document ID
+        medical-flow:
+          label: Use in the medical consultation flow
+          description: Unchecked, this connection answers ordinary chat only. Checked, it is read only when a medical question reaches the consultation branch.
+        save: Add
+        save-edit: Save changes
+        show-api-key: Show API key
+        hide-api-key: Hide API key
+        test: Test connection
+        cancel: Cancel
+        needs-server-url: The connection test needs the server URL.
+      result:
+        untested: Not tested
+        testing: Testing
+        connected: Connected
+        failed: Failed
+        http-detail: 'HTTP {status} · {latency} ms'
+        relation-count: '{count} relations (at most {limit} per test)'
+        mode: 'Search mode: {mode}'
+        empty-graph-hint: The connection works. The service searches the words of the published graph, so a probe word can still find nothing; a real question is the only way to judge it.
+        service-error: 'Service error {code}: {message}'
+        authorization-format-hint: The Authorization header format is not valid.
+        authentication-hint: Authentication failed. Check the API key.
+        rejected-query-hint: The service rejected the request. Check the document ID and the query.
+        timeout-hint: The service did not answer within {seconds} seconds.
+        endpoint-not-found-hint: No endpoint answers at this address. Check the server URL.
+        server-not-configured-hint: This deployment has no graph address configured, or the address is not valid. Ask the administrator to check the server environment.
+        server-unreachable-hint: The server cannot reach the graph service. Check the server network and the address.
+        server-timeout-hint: The server waited too long for the graph service. Check whether that service is slow.
+        blocked-origin-hint: The browser blocked the cross-origin request. First check that the address opens in the browser (a 502 or no response means a server problem). Then add {origin} to the allowed origins, or use the desktop build.
+        unreachable-hint: The service did not answer. Check the server URL and the network connection.
+      notice:
+        storage: The connections are stored in this browser. The API key is stored in clear text.
+        scope: The search covers published graphs only. The service answers from the words of the graph today and does not search by meaning yet.
   data:
     title: Data
     description: Manage stored Qingxi Medical data, exports, and resets

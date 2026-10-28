@@ -1,26 +1,19 @@
 <script setup lang="ts">
 import type { KnowledgeBaseConnection, KnowledgeBaseDraft } from '@proj-airi/stage-ui/stores/settings/knowledge-base'
 
-import { connectionScope } from '@proj-airi/stage-ui/stores/settings/knowledge-base'
+import { connectionScope } from '@proj-airi/stage-ui/stores/settings/connection-scope'
 import { Button, FieldCheckbox, FieldInput, GhostButton } from '@proj-airi/ui'
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 
-import KnowledgeBaseStatusBadge from './knowledge-base-status-badge.vue'
+import ConnectionStatusBadge from './connection-status-badge.vue'
 
-import { useKnowledgeBaseConnectionTest } from '../composables/use-connection-test'
+import { useKnowledgeBaseConnectionTest } from '../composables/use-knowledge-base-connection-test'
 import { defaultKnowledgeBaseApiKey, defaultKnowledgeBaseServerUrl } from '../defaults'
 
 const props = defineProps<{
   /** The connection to edit. Without it, the form creates a connection. */
   connection?: KnowledgeBaseConnection
-  /**
-   * Values a new connection starts from.
-   *
-   * Ignored when `connection` is set: an edit must show the stored row, not a
-   * preset that would silently replace it.
-   */
-  preset?: Partial<KnowledgeBaseConnection>
 }>()
 
 const emit = defineEmits<{
@@ -49,17 +42,15 @@ const medicalFlow = ref(false)
 
 // The page keeps one form open at a time and replaces the `connection` prop
 // when the user edits another row, so the fields follow the prop.
-watch(() => [props.connection, props.preset] as const, () => {
-  const source = props.connection ?? props.preset
+watch(() => props.connection, () => {
+  const source = props.connection
 
   name.value = source?.name ?? ''
   baseUrl.value = source?.baseUrl ?? defaultKnowledgeBaseServerUrl
   apiKey.value = source?.apiKey ?? defaultKnowledgeBaseApiKey
   knowledgeBaseId.value = source?.knowledgeBaseId ?? ''
   revealApiKey.value = false
-  medicalFlow.value = props.connection
-    ? connectionScope(props.connection) === 'medical'
-    : source?.scope === 'medical'
+  medicalFlow.value = source ? connectionScope(source) === 'medical' : false
 }, { immediate: true })
 
 /** The retrieval test needs the address and the knowledge id. */
@@ -170,7 +161,10 @@ function handleTest() {
     </span>
 
     <div v-if="detail" :class="['flex items-center gap-2']">
-      <KnowledgeBaseStatusBadge :status="status" />
+      <ConnectionStatusBadge
+        :status="status"
+        phrase-prefix="settings.pages.knowledge-base.result"
+      />
       <span :class="['text-xs text-neutral-500 dark:text-neutral-400']">{{ detail }}</span>
     </div>
   </div>

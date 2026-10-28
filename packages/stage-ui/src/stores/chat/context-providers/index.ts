@@ -1,4 +1,6 @@
 export { createKnowledgeBaseContext, retrieveKnowledgeBaseContext } from './knowledge-base'
+export { createKnowledgeGraphContext, retrieveKnowledgeGraphContext } from './knowledge-graph'
 export { createLongTermMemoryContext } from './long-term-memory'
+export { retrieveMedicalReferenceContext } from './medical-references'
 export { createMinecraftContext } from './minecraft'
 export { createUserProfileContext } from './user-profile'
